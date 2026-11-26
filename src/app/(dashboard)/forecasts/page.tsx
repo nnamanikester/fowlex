@@ -10,6 +10,7 @@ export default function ForecastsPage() {
       title="Forecasts"
       description="What the farm is likely to earn: batch projections, the trend and what-if plans."
       step="9.3"
+      permission="finance.read"
     />
   );
 }

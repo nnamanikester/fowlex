@@ -55,3 +55,8 @@ const TABLE: Record<Role, ReadonlySet<Permission>> = {
 export function can(role: Role, permission: Permission) {
   return TABLE[role].has(permission);
 }
+
+/** Where each role lands: staff on the daily log (no money), customers in their portal. */
+export function homeFor(role: Role) {
+  return role === "customer" ? "/portal" : role === "staff" ? "/log" : "/";
+}

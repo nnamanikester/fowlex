@@ -1,15 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { E2E_PASSWORD, E2E_USERS } from "./users";
+import { signIn } from "./helpers";
+import { E2E_USERS } from "./users";
 
 // These start signed out.
 test.use({ storageState: { cookies: [], origins: [] } });
-
-async function signIn(page: Page, email: string, password = E2E_PASSWORD) {
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-}
 
 test("sign in, stay signed in after a refresh, sign out and get sent back to sign in", async ({ page }) => {
   await page.goto("/batches");
@@ -48,7 +43,7 @@ test("a wrong password shows the error without saying which field was wrong", as
 });
 
 test("forgot password emails a link that sets a new one and signs in", async ({ page, request }) => {
-  const email = E2E_USERS.staff.email;
+  const email = E2E_USERS.forgetful.email;
   await page.goto("/auth/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("link", { name: "Forgot password?" }).click();

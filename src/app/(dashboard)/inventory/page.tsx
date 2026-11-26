@@ -10,6 +10,7 @@ export default function InventoryPage() {
       title="Inventory"
       description="Feed, drugs and equipment on hand, what they cost and which batch used them."
       step="3.1"
+      permission="inventory.read"
     />
   );
 }

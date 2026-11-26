@@ -10,6 +10,7 @@ export default function SettingsPage() {
       title="Settings"
       description="Business details, invoice numbering, approval limits, houses and users."
       step="1.11"
+      permission="settings.manage"
     />
   );
 }
