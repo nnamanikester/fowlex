@@ -74,7 +74,8 @@ test("a batch's page: stats, tabs, selling, editing and deleting", async ({ page
   const tabs = page.getByRole("navigation", { name: "Batch sections" });
   await tabs.getByRole("link", { name: "Daily logs" }).click();
   await expect(page).toHaveURL(/tab=logs/);
-  await expect(page.getByText("arrive in step 2.3")).toBeVisible();
+  // Real now: the seeded batch has no logs yet, or some from other tests.
+  await expect(page.getByText(/No days logged yet|days? logged/).first()).toBeVisible();
   await tabs.getByRole("link", { name: "Overview" }).click();
 
   await page.getByRole("button", { name: `${seeded.code} actions` }).click();

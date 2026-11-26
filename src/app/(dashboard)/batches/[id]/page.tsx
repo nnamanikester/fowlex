@@ -7,7 +7,7 @@ import { PageSkeleton, RequirePermission } from "../../_components/require-permi
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadBatch, loadHouses } from "@/lib/page-data";
+import { loadBatch, loadHouses, loadLogs } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Batch" };
 
@@ -26,15 +26,21 @@ const TABS = ["overview", "logs", "health", "costs", "sales"] as const;
 async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
   const user = await requireUser();
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
-  const [batch, houses] = await Promise.all([loadBatch(user.farmId, id), loadHouses(user.farmId)]);
+  const [batch, houses, logs] = await Promise.all([
+    loadBatch(user.farmId, id),
+    loadHouses(user.farmId),
+    loadLogs(user.farmId, id),
+  ]);
   if (!batch) notFound();
   return (
     <BatchDetail
       batch={batch}
       houses={houses}
+      logs={logs}
       today={today()}
       tab={TABS.includes(tab as (typeof TABS)[number]) ? (tab as (typeof TABS)[number]) : "overview"}
       canWrite={can(user.role, "batch.write")}
+      canLog={can(user.role, "log.write")}
       canManageHouses={can(user.role, "settings.manage")}
     />
   );
