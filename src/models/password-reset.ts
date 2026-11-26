@@ -12,7 +12,8 @@ const schema = new Schema({
   expiresAt: { type: Date, required: true },
   usedAt: { type: Date, default: null },
 });
-schema.plugin(basePlugin);
+// Reset tokens are secrets with a one-hour life: not audited (the password change itself is, on User).
+schema.plugin(basePlugin, { audit: false });
 schema.index({ expiresAt: 1 }, { expireAfterSeconds: 24 * 60 * 60 });
 
 export type PasswordReset = InferSchemaType<typeof schema> & Base;

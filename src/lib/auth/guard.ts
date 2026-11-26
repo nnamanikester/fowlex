@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { type CurrentUser, getCurrentUser } from "./current-user";
+import { setActor, withAuditContext } from "@/lib/audit/context";
 import { can, type Permission, type Role } from "./permissions";
 
 /** A refusal an API route turns into a JSON error. */
@@ -20,6 +21,8 @@ export class HttpError extends Error {
 export async function requireSession(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) throw new HttpError(401, "unauthenticated", "Sign in first.");
+  // Every change for the rest of this request is logged as theirs.
+  setActor({ id: user.id, name: user.name });
   return user;
 }
 
@@ -39,16 +42,18 @@ export async function requirePermission(permission: Permission): Promise<Current
 
 /**
  * Wraps a route handler so a guard's refusal becomes `{ error: { code, message } }` with its
- * status. Every handler starts with requireSession(), requireRole() or requirePermission().
+ * status, and so changes it makes are logged as the signed-in person's. Every handler starts with
+ * requireSession(), requireRole() or requirePermission().
  */
 export function apiRoute<Args extends unknown[]>(handler: (...args: Args) => Promise<Response>) {
-  return async (...args: Args): Promise<Response> => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      if (error instanceof HttpError)
-        return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
-      throw error;
-    }
-  };
+  return (...args: Args): Promise<Response> =>
+    withAuditContext(async () => {
+      try {
+        return await handler(...args);
+      } catch (error) {
+        if (error instanceof HttpError)
+          return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+        throw error;
+      }
+    });
 }

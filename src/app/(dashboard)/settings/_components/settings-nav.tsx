@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/settings", label: "General" },
   { href: "/settings/users", label: "Users" },
+  { href: "/settings/audit", label: "Audit log" },
 ];
 
 /** The settings sections, as tabs under the page title. */

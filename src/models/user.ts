@@ -19,7 +19,14 @@ const schema = new Schema({
   lockedUntil: { type: Date, default: null },
   lastLoginAt: { type: Date, default: null },
 });
-schema.plugin(basePlugin);
+schema.plugin(basePlugin, {
+  audit: {
+    label: (u) => `${u.name} (${u.email})`,
+    // Sign-in bookkeeping changes on every login: not worth a row.
+    exclude: ["failedLogins", "lockedUntil", "lastLoginAt", "sessionVersion"],
+    redact: ["passwordHash"],
+  },
+});
 
 export type User = InferSchemaType<typeof schema> & Base;
 export type UserDocument = HydratedDocument<User, SoftDeleteMethods>;

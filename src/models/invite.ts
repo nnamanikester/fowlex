@@ -16,7 +16,7 @@ const schema = new Schema({
   acceptedAt: { type: Date, default: null },
   revokedAt: { type: Date, default: null },
 });
-schema.plugin(basePlugin);
+schema.plugin(basePlugin, { audit: { label: (i) => `${i.email}`, redact: ["tokenHash"] } });
 
 export type Invite = InferSchemaType<typeof schema> & Base;
 export type InviteDocument = HydratedDocument<Invite, SoftDeleteMethods>;

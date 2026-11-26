@@ -1,5 +1,7 @@
 import { type HydratedDocument, type Query, Schema, type Types } from "mongoose";
 
+import { type AuditOptions, auditPlugin } from "./audit";
+
 /** The fields every Fowlex document carries. */
 export type Base = {
   farmId: Types.ObjectId;
@@ -35,11 +37,14 @@ const QUERIES = [
 
 /**
  * Adds what every document needs: `farmId` (each farm's data stays its own; `farm: false` for the
- * Farm model itself), `createdBy`, timestamps, and soft delete. Deleted documents are left out of
- * every query and aggregation unless it asks for them with WITH_DELETED, so a deleted expense can't
- * leak into a report.
+ * Farm model itself), `createdBy`, timestamps, soft delete and the audit log. Deleted documents are
+ * left out of every query and aggregation unless it asks for them with WITH_DELETED, so a deleted
+ * expense can't leak into a report. `audit: false` only for records that are themselves secrets.
  */
-export function basePlugin(schema: Schema, { farm = true }: { farm?: boolean } = {}) {
+export function basePlugin(
+  schema: Schema,
+  { farm = true, audit = {} }: { farm?: boolean; audit?: AuditOptions | false } = {},
+) {
   if (farm) schema.add({ farmId: { type: Schema.Types.ObjectId, ref: "Farm", required: true, index: true } });
   schema.add({
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
@@ -53,6 +58,8 @@ export function basePlugin(schema: Schema, { farm = true }: { farm?: boolean } =
     this.where({ deletedAt: null });
   }
   for (const op of QUERIES) schema.pre(op, hideDeleted);
+  // After hideDeleted, so the audit reads the same documents the write will touch.
+  if (audit) auditPlugin(schema, audit);
 
   schema.pre("aggregate", function () {
     if (this.options.withDeleted) return;
