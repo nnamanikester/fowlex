@@ -1,0 +1,37 @@
+import { expect, test } from "@playwright/test";
+
+import { watchErrors } from "./helpers";
+
+test("add a supplier with a bank account the bank names before saving", async ({ page }, info) => {
+  const errors = watchErrors(page, [/status of 400/]);
+  const name = `Amo Byng ${info.project.name}`;
+  await page.goto("/suppliers");
+  await page
+    .getByRole("button", { name: /Add (a )?supplier/ })
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Add a supplier" });
+  await sheet.getByLabel("Name").fill(name);
+  await sheet.getByRole("button", { name: "Day-old chicks" }).click();
+  await sheet.getByLabel("Phone").fill("0803 123 4567");
+
+  await sheet.getByLabel("Bank").selectOption({ label: "Guaranty Trust Bank" });
+  await sheet.getByLabel("Account number").fill("0000000000");
+  await expect(sheet.getByText("We couldn't find that account. Check the number and the bank.")).toBeVisible();
+  await sheet.getByRole("button", { name: "Add supplier" }).click();
+  // Not saved: the bank hasn't named the account.
+  await expect(sheet.getByLabel("Account number")).toBeFocused();
+  await expect(page.getByText(`${name} added.`)).toHaveCount(0);
+
+  await sheet.getByLabel("Account number").fill("0123456781");
+  await expect(sheet.getByText("CHIOMA EZE")).toBeVisible();
+  await sheet.getByRole("button", { name: "Add supplier" }).click();
+  await expect(page.getByText(`${name} added.`)).toBeVisible();
+
+  const card = page.getByRole("main").getByRole("listitem").filter({ hasText: name });
+  await expect(card).toContainText("Day-old chicks");
+  await expect(card).toContainText("Guaranty Trust Bank ••••6781");
+  await expect(card).toContainText("Can pay");
+  await expect(card.getByRole("link", { name: "0803 123 4567" })).toHaveAttribute("href", "tel:+2348031234567");
+  expect(errors).toEqual([]);
+});

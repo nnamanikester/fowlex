@@ -7,7 +7,11 @@ import { GET as outbox } from "./dev/outbox/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
+import { GET as listBanks } from "./banks/route";
+import { GET as resolveBank } from "./banks/resolve/route";
 import { DELETE as deleteMovement } from "./inventory/movements/[id]/route";
+import { DELETE as deleteSupplier, PATCH as updateSupplier } from "./suppliers/[id]/route";
+import { GET as listSuppliers, POST as createSupplier } from "./suppliers/route";
 import { POST as recordMovement } from "./inventory/movements/route";
 import { POST as reopenBatch } from "./batches/[id]/reopen/route";
 import { DELETE as deleteHealth, PATCH as updateHealth } from "./health/[id]/route";
@@ -449,5 +453,53 @@ describe("stock movement routes", () => {
     expect(
       (await deleteMovement(req("DELETE", `/api/inventory/movements/${movement.id}`), ctx(movement.id))).status,
     ).toBe(204);
+  });
+});
+
+describe("supplier and bank routes", () => {
+  it("list banks, name an account, add, edit and delete a supplier; staff can't", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    const manager = await signInAs("manager");
+    expect((await (await listBanks()).json()).length).toBeGreaterThan(10);
+    const named = await resolveBank(req("GET", "/api/banks/resolve?accountNumber=0123456781&bankCode=058"));
+    expect(await named.json()).toMatchObject({ accountName: "CHIOMA EZE" });
+    expect((await resolveBank(req("GET", "/api/banks/resolve?accountNumber=0000000000&bankCode=058"))).status).toBe(
+      400,
+    );
+
+    const created = await createSupplier(
+      req("POST", "/api/suppliers", {
+        name: "Amo Byng",
+        supplies: ["chicks"],
+        bank: { bankCode: "058", accountNumber: "0123456781" },
+      }),
+    );
+    expect(created.status).toBe(201);
+    const supplier = await created.json();
+    expect(await (await listSuppliers()).json()).toHaveLength(1);
+    const saved = await updateSupplier(
+      req("PATCH", `/api/suppliers/${supplier.id}`, { name: "Amo Byng Ltd", version: supplier.version }),
+      ctx(supplier.id),
+    );
+    expect((await saved.json()).name).toBe("Amo Byng Ltd");
+    expect((await createSupplier(new Request(`${BASE}/api/suppliers`, { method: "POST", body: "{oops" }))).status).toBe(
+      400,
+    );
+    expect(
+      (
+        await updateSupplier(
+          new Request(`${BASE}/api/suppliers/${supplier.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(supplier.id),
+        )
+      ).status,
+    ).toBe(400);
+
+    session.user = { ...manager, role: "staff" };
+    expect((await listSuppliers()).status).toBe(403);
+    expect((await listBanks()).status).toBe(403);
+    session.user = manager;
+    expect((await deleteSupplier(req("DELETE", `/api/suppliers/${supplier.id}`), ctx(supplier.id))).status).toBe(204);
+    vi.unstubAllEnvs();
   });
 });

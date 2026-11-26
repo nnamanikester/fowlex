@@ -36,6 +36,7 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadLogs,
       loadMovements,
       loadSettings,
+      loadSuppliers,
       loadTeam,
     } = await import("./page-data");
     const actor = await owner();
@@ -52,7 +53,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadHealth(actor.farmId, actor.id)).toEqual([]);
     expect(await loadItems(actor.farmId)).toEqual([]);
     expect(await loadMovements(actor.farmId, actor.id)).toEqual([]);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 11 : 0);
+    expect(await loadSuppliers(actor.farmId)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 12 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });
