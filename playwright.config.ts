@@ -36,9 +36,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // CI tests a production build; locally the dev server is quicker to start.
-    // e2e/server.mts starts an in-memory MongoDB, seeds one person per role, then runs the app on it.
-    command: `npx tsx e2e/server.mts -- ${process.env.CI ? `sh -c "yarn build && npx next start --port ${APP_PORT}"` : `npx next dev --port ${APP_PORT}`}`,
+    // CI tests a production build (the workflow runs `yarn build` first); locally the dev server
+    // is quicker to start. e2e/server.mts starts an in-memory MongoDB, seeds one person per role,
+    // then runs the app on it.
+    command: `npx tsx e2e/server.mts -- ${process.env.CI ? `npx next start --port ${APP_PORT}` : `npx next dev --port ${APP_PORT}`}`,
     port: APP_PORT,
     // Hides the dev-only Next.js badge, which covers the phone tab bar's More button.
     env: { PLAYWRIGHT: "1" },

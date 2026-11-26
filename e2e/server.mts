@@ -33,6 +33,13 @@ const app = spawn(command[0], command.slice(1), {
     MONGODB_URI: uri,
     JWT_SECRET: "e2e-only-secret-that-is-long-enough-for-hs256",
     PLAYWRIGHT: "1",
+    // Next loads .env.local even for `next start`, so blank every outside service: tests never
+    // send real email, charge through Paystack or write to Blob. (A set variable, even empty,
+    // isn't overridden by .env files.) Emails go to the outbox instead.
+    RESEND_API_KEY: "",
+    PAYSTACK_SECRET_KEY: "",
+    BLOB_READ_WRITE_TOKEN: "",
+    CRON_SECRET: "",
   },
 });
 

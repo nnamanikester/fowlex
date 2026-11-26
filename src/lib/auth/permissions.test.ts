@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { can, PERMISSIONS, ROLES } from "./permissions";
+import { can, homeFor, PERMISSIONS, ROLES } from "./permissions";
 
 /**
  * Every role against every permission, written out: a change to the table has to change this too,
@@ -44,5 +44,9 @@ describe("permissions", () => {
 
   it("gives customers nothing in the dashboard", () => {
     expect(PERMISSIONS.filter((p) => can("customer", p))).toEqual([]);
+  });
+
+  it("sends each role to its own home page", () => {
+    expect(ROLES.map(homeFor)).toEqual(["/", "/", "/log", "/portal"]);
   });
 });
