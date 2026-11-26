@@ -13,10 +13,12 @@ import {
   placedCount,
   validateBatch,
 } from "./rules";
+import { liveBirds, removedBirds } from "./bird-count";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { addDays, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
+import { type LogTotals, logTotals, NO_TOTALS } from "@/lib/logs/service";
 import { getSettings } from "@/lib/settings/service";
 import { BatchModel } from "@/models/batch";
 import { nextSequence } from "@/models/counter";
@@ -38,6 +40,8 @@ export type BatchView = BatchInput & {
   chickCostKobo: number;
   liveBirds: number;
   ageDays: number;
+  /** What the daily logs add up to. */
+  totals: LogTotals;
 };
 
 type Doc = BatchInput & {
@@ -49,7 +53,7 @@ type Doc = BatchInput & {
   closedOn?: string | null;
 };
 
-function view(b: Doc, houseName: string, today: string): BatchView {
+function view(b: Doc, houseName: string, today: string, totals: LogTotals = NO_TOTALS): BatchView {
   return {
     id: String(b._id),
     version: b.__v ?? 0,
@@ -73,9 +77,9 @@ function view(b: Doc, houseName: string, today: string): BatchView {
     placed: placedCount(b),
     paid: paidCount(b),
     chickCostKobo: chickCostKobo(b),
-    // Until daily logs (2.3) and sales (6.3) exist, every placed bird is alive.
-    liveBirds: placedCount(b),
+    liveBirds: liveBirds({ placed: placedCount(b), ...totals }),
     ageDays: ageOn(b, today),
+    totals,
   };
 }
 
@@ -92,7 +96,13 @@ export async function listBatches(farmId: string, today = lagosToday()): Promise
     BatchModel.find({ farmId }).sort({ placedOn: -1, seq: -1 }).lean(),
     houseNames(farmId),
   ]);
-  return batches.map((b) => view(b as unknown as Doc, names.get(String(b.houseId)) ?? "Unknown house", today));
+  const totals = await logTotals(
+    farmId,
+    batches.map((b) => String(b._id)),
+  );
+  return batches.map((b) =>
+    view(b as unknown as Doc, names.get(String(b.houseId)) ?? "Unknown house", today, totals.get(String(b._id))),
+  );
 }
 
 export async function getBatch(farmId: string, id: string, today = lagosToday()): Promise<BatchView | null> {
@@ -101,8 +111,11 @@ export async function getBatch(farmId: string, id: string, today = lagosToday())
     .lean()
     .catch(() => null);
   if (!batch) return null;
-  const house = await HouseModel.findById(batch.houseId, { name: 1 }).setOptions(WITH_DELETED).lean();
-  return view(batch as unknown as Doc, house?.name ?? "Unknown house", today);
+  const [house, totals] = await Promise.all([
+    HouseModel.findById(batch.houseId, { name: 1 }).setOptions(WITH_DELETED).lean(),
+    logTotals(farmId, [id]),
+  ]);
+  return view(batch as unknown as Doc, house?.name ?? "Unknown house", today, totals.get(id));
 }
 
 /** The batches the shell's switcher offers: everything not closed. */
@@ -183,7 +196,15 @@ export async function placementWarnings(
       message: `${others.map((b) => b.code).join(", ")} ${others.length === 1 ? "is" : "are"} still in ${house.name}. Mixing ages in one house works against all-in, all-out.`,
     });
 
-  const occupied = others.reduce((sum, b) => sum + placedCount(b), 0);
+  // Live birds: deaths, culls and sales in the other batches free up room.
+  const othersTotals = await logTotals(
+    farmId,
+    others.map((b) => String(b._id)),
+  );
+  const occupied = others.reduce(
+    (sum, b) => sum + liveBirds({ placed: placedCount(b), ...(othersTotals.get(String(b._id)) ?? NO_TOTALS) }),
+    0,
+  );
   const total = occupied + placedCount(values);
   if (total > house.capacity)
     warnings.push({
@@ -290,6 +311,14 @@ export async function updateBatch(
   const batch = await load(actor, id);
   if (batch.status === "closed") throw new HttpError(409, "closed", "A closed batch can't be changed.");
   if (typeof version !== "number" || version !== batch.__v) throw stale();
+  const removed = removedBirds((await logTotals(actor.farmId, [id])).get(id) ?? NO_TOTALS);
+  if (placedCount(values) < removed)
+    throw new HttpError(
+      400,
+      "invalid_batch",
+      `The daily logs already account for ${n(removed)} birds, more than the ${n(placedCount(values))} this would place.`,
+      "delivered",
+    );
 
   const moved =
     String(batch.houseId) !== values.houseId ||
@@ -322,8 +351,15 @@ export async function setBatchStatus(actor: CurrentUser, id: string, status: unk
   return (await getBatch(actor.farmId, id, today))!;
 }
 
-/** Deletes a batch (kept, hidden and audited). Records against it will block this from 2.3 on. */
+/** Deletes a batch (kept, hidden and audited), only while nothing has been logged against it. */
 export async function deleteBatch(actor: CurrentUser, id: string) {
   const batch = await load(actor, id);
+  const days = (await logTotals(actor.farmId, [id])).get(id)?.days ?? 0;
+  if (days)
+    throw new HttpError(
+      409,
+      "has_logs",
+      `${batch.code} has ${days} day${days === 1 ? "" : "s"} of logs. Delete those first, or close the batch instead.`,
+    );
   await batch.softDelete();
 }

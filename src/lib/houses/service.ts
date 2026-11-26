@@ -1,11 +1,12 @@
 import "server-only";
 
-import { Types } from "mongoose";
-
 import { type HouseInput, nameKey, tidyName, validateHouse } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
+import { liveBirds } from "@/lib/batches/bird-count";
+import { placedCount } from "@/lib/batches/rules";
 import { connectDb } from "@/lib/db";
+import { logTotals, NO_TOTALS } from "@/lib/logs/service";
 import { BatchModel } from "@/models/batch";
 import { HouseModel } from "@/models/house";
 
@@ -38,18 +39,20 @@ export async function listHouses(farmId: string): Promise<HouseView[]> {
   await connectDb();
   const [houses, occupancy] = await Promise.all([
     HouseModel.find({ farmId }).collation({ locale: "en", numericOrdering: true }).sort({ name: 1 }).lean(),
-    BatchModel.aggregate<{ _id: unknown; occupied: number; batchCount: number }>([
-      { $match: { farmId: new Types.ObjectId(farmId), status: { $ne: "closed" } } },
-      {
-        $group: {
-          _id: "$houseId",
-          occupied: { $sum: { $subtract: ["$delivered", "$deadOnArrival"] } },
-          batchCount: { $sum: 1 },
-        },
-      },
-    ]),
+    BatchModel.find({ farmId, status: { $ne: "closed" } }, { houseId: 1, delivered: 1, deadOnArrival: 1 }).lean(),
   ]);
-  const byHouse = new Map(occupancy.map((o) => [String(o._id), o]));
+  // Live birds, not placed ones: deaths, culls and sales free up room.
+  const totals = await logTotals(
+    farmId,
+    occupancy.map((b) => String(b._id)),
+  );
+  const byHouse = new Map<string, { occupied: number; batchCount: number }>();
+  for (const b of occupancy) {
+    const o = byHouse.get(String(b.houseId)) ?? { occupied: 0, batchCount: 0 };
+    o.occupied += liveBirds({ placed: placedCount(b), ...(totals.get(String(b._id)) ?? NO_TOTALS) });
+    o.batchCount += 1;
+    byHouse.set(String(b.houseId), o);
+  }
   return houses.map((h) => view(h as unknown as HouseDoc, byHouse.get(String(h._id))));
 }
 

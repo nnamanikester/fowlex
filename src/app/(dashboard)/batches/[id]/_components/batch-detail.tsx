@@ -151,7 +151,11 @@ export function BatchDetail({
               value={b.phase === "planned" ? "Not placed" : formatAge(b.ageDays).split(" · ")[0]}
               hint={b.phase === "planned" ? `Arrives ${day(b.placedOn)}` : formatAge(b.ageDays).split(" · ")[1]}
             />
-            <StatCard label="Mortality" value="0.0%" hint="Daily logs start in step 2.3" />
+            <StatCard
+              label="Mortality"
+              value={`${b.placed ? (((b.totals.deaths + b.totals.culls) / b.placed) * 100).toFixed(1) : "0.0"}%`}
+              hint={`${n(b.totals.deaths)} dead, ${n(b.totals.culls)} culled${b.totals.sold ? `, ${n(b.totals.sold)} sold` : ""}`}
+            />
             <StatCard
               label="To target"
               value={
