@@ -96,6 +96,15 @@ describe("daily logs", () => {
     expect(await DailyLogModel.countDocuments()).toBe(1);
   });
 
+  it("returns the saved log when its resend arrives while the first copy is being saved", async () => {
+    const { actor, log } = await farm();
+    const requestId = "phone-0002-abcd";
+    const { log: saved } = await createLog(actor, log(), { requestId }, TODAY);
+    // The resend checked for its request id just before the first copy landed.
+    vi.spyOn(DailyLogModel, "findOne").mockReturnValueOnce({ lean: async () => null } as never);
+    expect(await createLog(actor, log(), { requestId }, TODAY)).toEqual({ log: saved, created: false });
+  });
+
   it("won't remove more birds than are left, counting earlier days", async () => {
     const { actor, log } = await farm(10);
     await createLog(actor, log({ date: "2026-11-25", deaths: 6 }), {}, TODAY);
