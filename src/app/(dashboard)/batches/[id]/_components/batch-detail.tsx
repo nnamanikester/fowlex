@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ClipboardPen, Hammer, MoreHorizontal, Pencil, ShoppingCart, Sprout, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { HealthTab } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
+import { HealthAlerts } from "@/components/health-alerts";
 import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -16,6 +18,8 @@ import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
 import type { BatchView } from "@/lib/batches/service";
 import { formatRange } from "@/lib/dates";
+import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
+import type { HealthView } from "@/lib/health/service";
 import type { HouseView } from "@/lib/houses/service";
 import { bags } from "@/lib/logs/rules";
 import type { LogView } from "@/lib/logs/service";
@@ -25,7 +29,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   ["overview", "Overview", null],
   ["logs", "Daily logs", null],
-  ["health", "Health", "2.5"],
+  ["health", "Health", null],
   ["costs", "Costs", "8.1"],
   ["sales", "Sales", "6.3"],
 ] as const;
@@ -39,6 +43,7 @@ export function BatchDetail({
   batch: b,
   houses,
   logs,
+  health,
   today,
   tab,
   canWrite,
@@ -48,6 +53,7 @@ export function BatchDetail({
   batch: BatchView;
   houses: HouseView[];
   logs: LogView[];
+  health: HealthView[];
   canLog: boolean;
   today: string;
   tab: Tab;
@@ -70,6 +76,12 @@ export function BatchDetail({
   };
 
   const daysLeft = b.targetSellAgeDays - b.ageDays;
+  const plan = vaccinationPlan(
+    b,
+    new Map(health.filter((e) => e.scheduleKey).map((e) => [e.scheduleKey!, e.date])),
+    today,
+  );
+  const withdrawal = open ? withdrawalUntil(health, today) : null;
 
   return (
     <div className="space-y-6">
@@ -144,6 +156,11 @@ export function BatchDetail({
 
       {tab === "overview" ? (
         <>
+          <HealthAlerts
+            attention={b.phase === "planned" ? [] : needsAttention(plan)}
+            withdrawal={withdrawal}
+            href={`/batches/${b.id}?tab=health`}
+          />
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Live birds" value={n(b.liveBirds)} hint={`of ${n(b.placed)} placed`} />
             <StatCard
@@ -199,6 +216,8 @@ export function BatchDetail({
             </Panel>
           </div>
         </>
+      ) : tab === "health" ? (
+        <HealthTab batch={b} plan={plan} events={health} today={today} canLog={canLog && open} canWrite={canWrite} />
       ) : tab === "logs" ? (
         <DailyLogs logs={logs} batch={b} canLog={canLog && open} />
       ) : (

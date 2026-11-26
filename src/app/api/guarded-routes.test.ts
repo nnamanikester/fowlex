@@ -4,6 +4,8 @@ import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/rout
 import { POST as batchStatus } from "./batches/[id]/status/route";
 import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
+import { DELETE as deleteHealth, PATCH as updateHealth } from "./health/[id]/route";
+import { GET as listHealth, POST as createHealth } from "./health/route";
 import { DELETE as deleteLog, PATCH as updateLog } from "./logs/[id]/route";
 import { GET as listLogs, POST as createLog } from "./logs/route";
 import { DELETE as deleteHouse, PATCH as updateHouse } from "./houses/[id]/route";
@@ -268,5 +270,62 @@ describe("log routes", () => {
 
     await signInAs("customer");
     expect((await createLog(req("POST", "/api/logs", body))).status).toBe(403);
+  });
+});
+
+describe("health routes", () => {
+  it("record (201, resent 200, dose twice 409), list, edit and delete; customers can't", async () => {
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: "2026-11-01",
+          breed: "Ross 308",
+          delivered: 1000,
+          pricePerChickKobo: 85_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    const body = {
+      batchId: batch.id,
+      date: "2026-11-08",
+      kind: "vaccination",
+      product: "Lasota",
+      scheduleKey: "nd-1",
+      route: "Eye drop",
+      requestId: "route-health-0001",
+    };
+    const created = await createHealth(req("POST", "/api/health", body));
+    expect(created.status).toBe(201);
+    const event = await created.json();
+    expect((await createHealth(req("POST", "/api/health", body))).status).toBe(200);
+    const twice = await createHealth(req("POST", "/api/health", { ...body, requestId: undefined }));
+    expect(twice.status).toBe(409);
+    expect((await twice.json()).error).toMatchObject({ code: "already_given", details: { id: event.id } });
+
+    expect(await (await listHealth(req("GET", `/api/health?batchId=${batch.id}`))).json()).toHaveLength(1);
+    const saved = await updateHealth(
+      req("PATCH", `/api/health/${event.id}`, { ...body, givenBy: "Ada", version: event.version }),
+      ctx(event.id),
+    );
+    expect((await saved.json()).givenBy).toBe("Ada");
+    expect((await createHealth(new Request(`${BASE}/api/health`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    expect(
+      (
+        await updateHealth(
+          new Request(`${BASE}/api/health/${event.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(event.id),
+        )
+      ).status,
+    ).toBe(409);
+    expect((await deleteHealth(req("DELETE", `/api/health/${event.id}`), ctx(event.id))).status).toBe(204);
+
+    await signInAs("customer");
+    expect((await createHealth(req("POST", "/api/health", body))).status).toBe(403);
   });
 });

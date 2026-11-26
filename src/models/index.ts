@@ -3,6 +3,7 @@ import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { DailyLogModel } from "./daily-log";
 import { FarmModel } from "./farm";
+import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
@@ -16,6 +17,7 @@ export const ALL_MODELS = [
   CounterModel,
   DailyLogModel,
   FarmModel,
+  HealthEventModel,
   HouseModel,
   InviteModel,
   PasswordResetModel,
