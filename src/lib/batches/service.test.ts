@@ -11,6 +11,7 @@ import {
 } from "./service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { createHouse, deleteHouse, listHouses, updateHouse } from "@/lib/houses/service";
+import { createLog } from "@/lib/logs/service";
 import { BatchModel } from "@/models/batch";
 import { oid, setupTestDb } from "@/test/db";
 
@@ -288,5 +289,44 @@ describe("races", () => {
     const { actor } = await farm();
     expect(await getBatch(actor.farmId, "not-an-id", TODAY)).toBeNull();
     expect(await refusal(deleteBatch(actor, "not-an-id"))).toMatchObject({ status: 404 });
+  });
+});
+
+describe("live birds from the logs", () => {
+  it("counts placed less deaths, culls and sold everywhere: list, page, switcher and house", async () => {
+    const { actor, house, input } = await farm();
+    const { batch } = await createBatch(actor, input(), {}, TODAY);
+    await createLog(actor, { batchId: batch.id, date: "2026-11-20", deaths: 7, culls: 3 }, {}, TODAY);
+    await createLog(actor, { batchId: batch.id, date: "2026-11-25", deaths: 5, sold: 200 }, {}, TODAY);
+
+    expect((await getBatch(actor.farmId, batch.id, TODAY))?.liveBirds).toBe(785);
+    const [listed] = await listBatches(actor.farmId, TODAY);
+    expect(listed).toMatchObject({ liveBirds: 785, totals: { deaths: 12, culls: 3, sold: 200, days: 2 } });
+    expect((await batchSummaries(actor.farmId, TODAY))[0].liveBirds).toBe(785);
+    expect((await listHouses(actor.farmId)).find((h) => h.id === house.id)).toMatchObject({ occupied: 785 });
+  });
+
+  it("frees room in a house as birds leave", async () => {
+    const { actor, input } = await farm();
+    const { batch } = await createBatch(actor, input({ delivered: 1000 }), {}, TODAY);
+    expect((await refusal(createBatch(actor, input({ delivered: 300 }), { confirm: false }, TODAY)))?.warnings).toEqual(
+      ["house_shared", "over_capacity"],
+    );
+    await createLog(actor, { batchId: batch.id, date: TODAY, sold: 200 }, {}, TODAY);
+    expect((await refusal(createBatch(actor, input({ delivered: 300 }), {}, TODAY)))?.warnings).toEqual([
+      "house_shared",
+    ]);
+  });
+
+  it("won't place fewer birds than the logs already removed, or delete a logged batch", async () => {
+    const { actor, input } = await farm();
+    const { batch } = await createBatch(actor, input({ delivered: 100 }), {}, TODAY);
+    await createLog(actor, { batchId: batch.id, date: TODAY, deaths: 40, sold: 40 }, {}, TODAY);
+    expect(await refusal(updateBatch(actor, batch.id, input({ delivered: 79 }), { version: 0 }, TODAY))).toMatchObject({
+      status: 400,
+      field: "delivered",
+    });
+    expect((await updateBatch(actor, batch.id, input({ delivered: 80 }), { version: 0 }, TODAY)).liveBirds).toBe(0);
+    expect(await refusal(deleteBatch(actor, batch.id))).toMatchObject({ status: 409, code: "has_logs" });
   });
 });
