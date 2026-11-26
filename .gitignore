@@ -49,3 +49,6 @@ next-env.d.ts
 /playwright/.cache/
 /playwright/.auth/
 /test-results/
+
+# local MongoDB data (yarn db)
+/.data/

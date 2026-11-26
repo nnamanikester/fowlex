@@ -19,6 +19,17 @@ cp .env.example .env.local   # fill in from the password manager
 yarn dev                     # http://localhost:3000
 ```
 
+### Database
+
+The app needs `MONGODB_URI`. Until Atlas is set up, run a local one in a second terminal:
+
+```bash
+yarn db    # prints the MONGODB_URI line for .env.local; data stays in .data/mongo
+```
+
+It is a single-node replica set, like Atlas, so transactions work. Unit tests start their own
+in-memory MongoDB and need nothing running.
+
 ## Scripts
 
 | Script           | What it does                              |
@@ -30,6 +41,7 @@ yarn dev                     # http://localhost:3000
 | `yarn test`      | Unit tests (Vitest)                       |
 | `yarn e2e`       | End-to-end tests (Playwright)             |
 | `yarn format`    | Prettier over the repo                    |
+| `yarn db`        | Local MongoDB for development             |
 
 The pre-commit hook runs ESLint, Prettier and related unit tests on staged files.
 
