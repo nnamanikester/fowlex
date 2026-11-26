@@ -1,5 +1,6 @@
 import "server-only";
 
+import { attachDatabasePool } from "@vercel/functions";
 import mongoose, { type ClientSession } from "mongoose";
 
 type Cache = { conn: typeof mongoose | null; promise: Promise<typeof mongoose> | null };
@@ -14,12 +15,25 @@ export async function connectDb() {
   if (cache.conn) return cache.conn;
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set. Copy .env.example to .env.local and fill it in.");
-  cache.promise ??= mongoose.connect(uri, {
-    // Fail fast instead of queueing queries while disconnected.
-    bufferCommands: false,
-    maxPoolSize: 10,
-    serverSelectionTimeoutMS: 10_000,
-  });
+  const production = process.env.NODE_ENV === "production";
+  cache.promise ??= mongoose
+    .connect(uri, {
+      // Fail fast instead of queueing queries while disconnected.
+      bufferCommands: false,
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10_000,
+      // In production, indexes and collections are made at deploy time (yarn db:indexes), so no
+      // visitor's request waits on a createIndex.
+      autoIndex: !production,
+      autoCreate: !production,
+    })
+    .then((m) => {
+      // On Vercel's Fluid compute, closes idle connections before an instance is suspended so
+      // they're never left dangling; a no-op anywhere else.
+      const client = m.connection.getClient?.();
+      if (client) attachDatabasePool(client);
+      return m;
+    });
   try {
     cache.conn = await cache.promise;
   } catch (error) {

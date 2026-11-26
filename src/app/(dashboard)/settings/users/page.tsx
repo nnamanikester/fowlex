@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { TeamManager } from "./_components/team-manager";
 import { PageSkeleton } from "../../_components/require-permission";
 import { requireUser } from "@/lib/auth/current-user";
-import { listTeam } from "@/lib/users/service";
+import { loadTeam } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Users" };
 
@@ -18,5 +18,5 @@ export default function UsersPage() {
 
 async function Users() {
   const actor = await requireUser();
-  return <TeamManager team={await listTeam(actor)} />;
+  return <TeamManager team={await loadTeam(actor)} />;
 }

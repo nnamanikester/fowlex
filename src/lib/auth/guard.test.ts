@@ -6,7 +6,10 @@ import { apiRoute, HttpError, requirePermission, requireRole, requireSession } f
 import { currentActor } from "@/lib/audit/context";
 
 const session = vi.hoisted(() => ({ user: null as CurrentUser | null }));
-vi.mock("./current-user", () => ({ getCurrentUser: async () => session.user }));
+vi.mock("./current-user", () => ({
+  getSessionUser: async () => session.user,
+  getCurrentUser: async () => session.user,
+}));
 
 const as = (role: CurrentUser["role"]): CurrentUser => ({
   id: "u1",
