@@ -1,5 +1,5 @@
 /** Calls the app's API from the browser. Errors come back as { status, code, message, field? }. */
-export type AuthError = { status: number; code: string; message: string; field?: string };
+export type AuthError = { status: number; code: string; message: string; field?: string; details?: unknown };
 
 export async function authRequest<T>(
   path: string,
@@ -24,6 +24,7 @@ export async function authRequest<T>(
       code: data?.error?.code ?? "unknown",
       message: data?.error?.message ?? "Something went wrong. Try again in a moment.",
       field: data?.error?.field,
+      details: data?.error?.details,
     } satisfies AuthError;
   return data as T;
 }

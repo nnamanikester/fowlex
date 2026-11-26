@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/route";
+import { POST as batchStatus } from "./batches/[id]/status/route";
+import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
 import { DELETE as deleteHouse, PATCH as updateHouse } from "./houses/[id]/route";
 import { POST as createHouse } from "./houses/route";
@@ -163,5 +166,54 @@ describe("house routes", () => {
     expect((await (await createHouse(raw)).json()).error.field).toBe("name");
     const rawPatch = new Request(`${BASE}/api/houses/${house.id}`, { method: "PATCH", body: "{oops" });
     expect((await updateHouse(rawPatch, ctx(house.id))).status).toBe(400);
+  });
+});
+
+describe("batch routes", () => {
+  it("place (201, retried 200, warnings 409), edit, change status and delete; staff can't", async () => {
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 100 }))).json();
+    const body = {
+      houseId: house.id,
+      placedOn: new Date().toISOString().slice(0, 10),
+      breed: "Arbor Acres",
+      delivered: 120,
+      pricePerChickKobo: 85_000,
+      targetSellAgeDays: 42,
+      targetWeightGrams: 2200,
+      requestId: "route-test-0001",
+    };
+    const warned = await createBatch(req("POST", "/api/batches", body));
+    expect(warned.status).toBe(409);
+    expect((await warned.json()).error.details.warnings[0].code).toBe("over_capacity");
+
+    const created = await createBatch(req("POST", "/api/batches", { ...body, confirm: true }));
+    expect(created.status).toBe(201);
+    const batch = await created.json();
+    const retried = await createBatch(req("POST", "/api/batches", { ...body, confirm: true }));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).id).toBe(batch.id);
+
+    const saved = await updateBatch(
+      req("PATCH", `/api/batches/${batch.id}`, { ...body, breed: "Cobb 500", version: batch.version }),
+      ctx(batch.id),
+    );
+    expect((await saved.json()).breed).toBe("Cobb 500");
+    const selling = await batchStatus(
+      req("POST", `/api/batches/${batch.id}/status`, { status: "selling" }),
+      ctx(batch.id),
+    );
+    expect((await selling.json()).phase).toBe("selling");
+    const rawStatus = new Request(`${BASE}/api/batches/${batch.id}/status`, { method: "POST", body: "{oops" });
+    expect((await batchStatus(rawStatus, ctx(batch.id))).status).toBe(400);
+    const rawPatch = new Request(`${BASE}/api/batches/${batch.id}`, { method: "PATCH", body: "{oops" });
+    expect((await updateBatch(rawPatch, ctx(batch.id))).status).toBe(400);
+    expect((await createBatch(new Request(`${BASE}/api/batches`, { method: "POST", body: "{oops" }))).status).toBe(400);
+
+    expect((await deleteBatch(req("DELETE", `/api/batches/${batch.id}`), ctx(batch.id))).status).toBe(204);
+    expect((await deleteBatch(req("DELETE", `/api/batches/${batch.id}`), ctx(batch.id))).status).toBe(404);
+
+    await signInAs("staff");
+    expect((await createBatch(req("POST", "/api/batches", body))).status).toBe(403);
   });
 });

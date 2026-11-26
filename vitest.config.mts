@@ -19,7 +19,7 @@ export default defineConfig({
       provider: "v8",
       // Logic is unit-tested here; pages and components by the e2e suite (yarn e2e) on every PR.
       include: ["src/lib/**", "src/models/**", "src/app/api/**", "src/proxy.ts"],
-      exclude: ["**/*.test.*", "src/lib/workspace-preview.ts"],
+      exclude: ["**/*.test.*"],
       reporter: ["text-summary", "text", "html", "json-summary"],
       // The floor, just under where it stands: new logic without tests fails CI.
       thresholds: { statements: 97, branches: 93, functions: 97, lines: 97 },

@@ -12,8 +12,8 @@ export type BatchSummary = {
   id: string;
   code: string;
   house: string;
-  status: "active" | "selling";
-  /** Days since placement. */
+  status: "planned" | "active" | "selling";
+  /** Age in days: Day 0 is placement day; negative while planned. */
   day: number;
   liveBirds: number;
 };

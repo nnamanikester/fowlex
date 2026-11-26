@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createHouse, deleteHouse, listHouses, updateHouse } from "./service";
 import type { CurrentUser } from "@/lib/auth/current-user";
@@ -100,5 +100,20 @@ describe("houses", () => {
     await doc.save();
     expect(await refusal(updateHouse(a, house.id, { ...house, capacity: 900 }, 1))).toBeNull();
     expect((await HouseModel.findById(house.id))?.capacity).toBe(900);
+  });
+});
+
+describe("house races", () => {
+  it("refuses a save that loses a race with another save, and passes other errors on", async () => {
+    const a = actor();
+    const house = await createHouse(a, { name: "House 1", capacity: 500 });
+    const lost = Object.assign(new Error("No matching document"), { name: "VersionError" });
+    const save = vi.spyOn(HouseModel.prototype, "save").mockRejectedValueOnce(lost);
+    expect(await refusal(updateHouse(a, house.id, { ...house, capacity: 600 }, 0))).toMatchObject({ code: "stale" });
+    save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(updateHouse(a, house.id, { ...house, capacity: 600 }, 0)).rejects.toThrow("disk full");
+    const create = vi.spyOn(HouseModel, "create").mockRejectedValueOnce(new Error("network"));
+    await expect(createHouse(a, { name: "House 2", capacity: 5 })).rejects.toThrow("network");
+    create.mockRestore();
   });
 });

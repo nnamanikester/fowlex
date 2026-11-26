@@ -10,7 +10,10 @@ import bcrypt from "bcryptjs";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import mongoose from "mongoose";
 
-import { E2E_PASSWORD, E2E_USERS } from "./users";
+import { E2E_BATCHES, E2E_HOUSES, E2E_PASSWORD, E2E_USERS } from "./users";
+import { BatchModel } from "../src/models/batch";
+import { CounterModel } from "../src/models/counter";
+import { HouseModel } from "../src/models/house";
 import { FarmModel } from "../src/models/farm";
 import { ensureIndexes } from "../src/models/index";
 import { UserModel } from "../src/models/user";
@@ -26,6 +29,29 @@ await ensureIndexes();
 const farm = await FarmModel.create({ name: "Fowlex Farms" });
 const passwordHash = await bcrypt.hash(E2E_PASSWORD, 4); // Low cost: test data only.
 await UserModel.create(Object.values(E2E_USERS).map((u) => ({ ...u, farmId: farm._id, passwordHash })));
+const houses = await HouseModel.create(
+  E2E_HOUSES.map((h) => ({ ...h, nameKey: h.name.toLowerCase(), farmId: farm._id })),
+);
+await BatchModel.create(
+  E2E_BATCHES.map((b, i) => ({
+    farmId: farm._id,
+    houseId: houses.find((h) => h.name === b.house)!._id,
+    code: b.code,
+    year: Number(b.placedOn.slice(0, 4)),
+    seq: i + 1,
+    breed: "Arbor Acres",
+    placedOn: b.placedOn,
+    delivered: b.delivered,
+    pricePerChickKobo: 85_000,
+  })),
+);
+// The codes above took the first numbers of their years.
+for (const b of E2E_BATCHES)
+  await CounterModel.updateOne(
+    { farmId: farm._id, key: `batch:${b.placedOn.slice(0, 4)}` },
+    { $max: { seq: Number(b.code.slice(-2)) } },
+    { upsert: true },
+  );
 await mongoose.disconnect();
 
 const app = spawn(command[0], command.slice(1), {
