@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { watchErrors } from "./helpers";
+
 const PAGES = [
   ["Overview", "/"],
   ["Batches", "/batches"],
@@ -26,13 +28,6 @@ async function openPalette(page: Page) {
     await expect(search).toBeFocused({ timeout: 500 });
   }).toPass();
   return search;
-}
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  page.on("pageerror", (e) => errors.push(e.message));
-  return errors;
 }
 
 test.describe("desktop", () => {

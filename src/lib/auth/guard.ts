@@ -1,0 +1,54 @@
+import "server-only";
+
+import { NextResponse } from "next/server";
+
+import { type CurrentUser, getCurrentUser } from "./current-user";
+import { can, type Permission, type Role } from "./permissions";
+
+/** A refusal an API route turns into a JSON error. */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** The signed-in person, or a 401. */
+export async function requireSession(): Promise<CurrentUser> {
+  const user = await getCurrentUser();
+  if (!user) throw new HttpError(401, "unauthenticated", "Sign in first.");
+  return user;
+}
+
+/** The signed-in person if their role is one of `roles`, or a 403. */
+export async function requireRole(...roles: Role[]): Promise<CurrentUser> {
+  const user = await requireSession();
+  if (!roles.includes(user.role)) throw new HttpError(403, "forbidden", "Your role can't do this.");
+  return user;
+}
+
+/** The signed-in person if their role has `permission`, or a 403. */
+export async function requirePermission(permission: Permission): Promise<CurrentUser> {
+  const user = await requireSession();
+  if (!can(user.role, permission)) throw new HttpError(403, "forbidden", "Your role can't do this.");
+  return user;
+}
+
+/**
+ * Wraps a route handler so a guard's refusal becomes `{ error: { code, message } }` with its
+ * status. Every handler starts with requireSession(), requireRole() or requirePermission().
+ */
+export function apiRoute<Args extends unknown[]>(handler: (...args: Args) => Promise<Response>) {
+  return async (...args: Args): Promise<Response> => {
+    try {
+      return await handler(...args);
+    } catch (error) {
+      if (error instanceof HttpError)
+        return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+      throw error;
+    }
+  };
+}

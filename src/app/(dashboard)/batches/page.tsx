@@ -10,6 +10,7 @@ export default function BatchesPage() {
       title="Batches"
       description="Every group of birds from day-old chicks to sale: counts, growth, feed and health."
       step="2.2"
+      permission="batch.read"
     />
   );
 }

@@ -1,13 +1,8 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  page.on("pageerror", (e) => errors.push(e.message));
-  return errors;
-}
+import { watchErrors } from "./helpers";
 
 const money = (text: string) => Number(text.replace(/[₦,]/g, ""));
 

@@ -10,6 +10,7 @@ export default function ReportsPage() {
       title="Reports"
       description="Profit and loss by batch, month and year, cash flow and exports."
       step="8.3"
+      permission="finance.read"
     />
   );
 }

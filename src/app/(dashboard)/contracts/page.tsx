@@ -10,6 +10,7 @@ export default function ContractsPage() {
       title="Contracts"
       description="The terms agreed with each customer: price, volumes, delivery and payment."
       step="6.2"
+      permission="contract.read"
     />
   );
 }

@@ -10,6 +10,7 @@ export default function ExpensesPage() {
       title="Expenses"
       description="Every naira spent, with a category, a receipt and, where it belongs, a batch."
       step="4.2"
+      permission="expense.read"
     />
   );
 }

@@ -10,6 +10,7 @@ export default function LogPage() {
       title="Daily log"
       description="Today's deaths, culls, feed and water for each batch, from a phone."
       step="2.3"
+      permission="log.write"
     />
   );
 }

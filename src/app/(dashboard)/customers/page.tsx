@@ -10,6 +10,7 @@ export default function CustomersPage() {
       title="Customers"
       description="Restaurants, lounges and hotels you sell to: contacts, credit and statements."
       step="6.1"
+      permission="customer.read"
     />
   );
 }

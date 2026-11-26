@@ -10,6 +10,7 @@ export default function SuppliersPage() {
       title="Suppliers"
       description="Who you buy chicks, feed and drugs from, what you bought and what you owe."
       step="3.3"
+      permission="supplier.read"
     />
   );
 }
