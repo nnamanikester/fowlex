@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { watchErrors } from "./helpers";
+import { E2E_BATCHES } from "./users";
 
 const PAGES = [
   ["Overview", "/"],
@@ -72,14 +73,17 @@ test.describe("desktop", () => {
     await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
   });
 
-  test("the batch switcher changes batch and remembers it", async ({ page }) => {
+  test("the batch switcher lists the real batches, changes batch and remembers it", async ({ page }) => {
     const errors = watchErrors(page);
+    const [older] = E2E_BATCHES;
     await page.goto("/batches");
-    await page.getByRole("button", { name: "Batch: B-2026-07. Switch batch" }).click();
-    await page.getByRole("menuitem", { name: /B-2026-06/ }).click();
-    await expect(page.getByRole("button", { name: "Batch: B-2026-06. Switch batch" })).toBeVisible();
+    // The newest placement is chosen first; other tests may have placed newer ones, so open it as it is.
+    await page.getByRole("button", { name: /^Batch: B-\d{4}-\d{2}\. Switch batch$/ }).click();
+    await page.getByRole("menuitem", { name: new RegExp(older.code) }).click();
+    await expect(page.getByRole("button", { name: `Batch: ${older.code}. Switch batch` })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Sidebar" })).toContainText(`Day ${older.day}`);
     await page.reload();
-    await expect(page.getByRole("button", { name: "Batch: B-2026-06. Switch batch" })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Batch: ${older.code}. Switch batch` })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

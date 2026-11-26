@@ -10,6 +10,7 @@ import { type BatchSummary, useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<BatchSummary["status"], { label: string; dot: string }> = {
+  planned: { label: "Planned", dot: "bg-info" },
   active: { label: "Growing", dot: "bg-success" },
   selling: { label: "Selling", dot: "bg-warning" },
 };
@@ -27,7 +28,10 @@ export function BatchTile({ code, size = 36 }: { code: string; size?: number }) 
   );
 }
 
-const describe = (b: BatchSummary) => `Day ${b.day} · ${b.liveBirds.toLocaleString("en-NG")} birds`;
+const describe = (b: BatchSummary) =>
+  b.day < 0
+    ? `Arrives in ${-b.day} day${b.day === -1 ? "" : "s"} · ${b.liveBirds.toLocaleString("en-NG")} chicks`
+    : `Day ${b.day} · ${b.liveBirds.toLocaleString("en-NG")} birds`;
 
 /** The batch the farm pages look at, how it's doing, and the way to move to another one. */
 export function BatchSwitcher({ rail = false }: { rail?: boolean }) {
