@@ -1,10 +1,7 @@
 import { type HydratedDocument, type InferSchemaType, model, models, Schema, type Model } from "mongoose";
 
 import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
-
-export const HOUSE_STATUSES = ["active", "maintenance", "retired"] as const;
-export const HOUSE_SYSTEMS = ["deep-litter", "slatted", "cage"] as const;
-export const HOUSE_VENTILATION = ["open-sided", "closed"] as const;
+import { HOUSE_STATUSES, HOUSE_SYSTEMS, HOUSE_VENTILATION } from "@/lib/houses/rules";
 
 /**
  * A poultry house (pen): where batches are placed. Capacity is in birds. `nameKey` is the name

@@ -1,4 +1,7 @@
-import { HOUSE_STATUSES, HOUSE_SYSTEMS, HOUSE_VENTILATION } from "@/models/house";
+// Safe for the browser: no model or database imports here (the model imports these, not the reverse).
+export const HOUSE_STATUSES = ["active", "maintenance", "retired"] as const;
+export const HOUSE_SYSTEMS = ["deep-litter", "slatted", "cage"] as const;
+export const HOUSE_VENTILATION = ["open-sided", "closed"] as const;
 
 /** What a house form holds; shared by the form and the server. */
 export type HouseInput = {

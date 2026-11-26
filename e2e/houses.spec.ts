@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 import { watchErrors } from "./helpers";
 
 test("add a house with a suggested capacity, refuse a duplicate name, edit and delete it", async ({ page }) => {
-  const errors = watchErrors(page);
+  // The duplicate name is refused on purpose (409).
+  const errors = watchErrors(page, [/status of 409/]);
   const name = `Test house ${test.info().project.name}`;
   const isMobile = test.info().project.use.isMobile;
 
