@@ -3,8 +3,6 @@
 Management dashboard for Fowlex Farms: batches, inventory, expenses, payroll, customers and contracts,
 Paystack invoicing, profit/loss and forecasts.
 
-Build plan: https://claude.ai/artifact/84v6MKD7imtWBoMPtacRJY
-
 ## Stack
 
 - Next.js 16 (App Router, React 19) · TypeScript · Tailwind CSS 3
