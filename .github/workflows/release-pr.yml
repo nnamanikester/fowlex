@@ -1,0 +1,71 @@
+# Keeps one release PR (dev → main) open whenever dev is ahead of main.
+#
+# Every push to dev (a merged PR) opens the release PR if there isn't one, or refreshes its
+# description with the PRs it will ship. Merging it deploys to production.
+#
+# Needs: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
+name: Release PR
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Two merges in quick succession: only the latest run matters.
+concurrency:
+  group: release-pr
+  cancel-in-progress: true
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Open or update the release PR
+        run: |
+          set -euo pipefail
+
+          compare=$(gh api "repos/$GH_REPO/compare/main...dev")
+          if [ "$(jq '.ahead_by' <<<"$compare")" = "0" ]; then
+            echo "dev has nothing that main doesn't. No release PR needed."
+            exit 0
+          fi
+          shas=$(jq -c '[.commits[].sha]' <<<"$compare")
+
+          # The PRs merged into dev whose merge commit hasn't reached main yet.
+          changes=$(gh pr list --base dev --state merged --limit 200 --json number,title,author,mergeCommit |
+            jq -r --argjson shas "$shas" '
+              [.[] | select(.mergeCommit.oid as $s | $shas | index($s))]
+              | sort_by(.number)
+              | .[] | "- \(.title) (#\(.number)) by @\(.author.login)"')
+          # Pushed straight to dev, not through a PR: list the commits instead.
+          if [ -z "$changes" ]; then
+            changes=$(jq -r '.commits[] | "- \(.commit.message | split("\n")[0]) (\(.sha[0:7]))"' <<<"$compare")
+          fi
+
+          {
+            echo "## Release: dev → main"
+            echo
+            echo "Merging this PR deploys to production."
+            echo
+            echo "### What ships"
+            echo
+            echo "$changes"
+            echo
+            echo "---"
+            echo "_Kept up to date by \`.github/workflows/release-pr.yml\` on every push to dev (last: ${GITHUB_SHA::7})._"
+          } > body.md
+
+          existing=$(gh pr list --base main --head dev --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file body.md
+            echo "Updated release PR #$existing"
+          else
+            gh pr create --base main --head dev --title "Release $(date -u +%Y-%m-%d)" --body-file body.md
+          fi

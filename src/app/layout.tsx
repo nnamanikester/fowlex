@@ -1,26 +1,33 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist_Mono, Inter, Jost } from "next/font/google";
+
+import { Providers } from "@/providers";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+/** Inter for the interface (its tabular figures line up naira columns), Jost for headings (the
+ * free cousin of the wordmark's Futura), Geist Mono for codes: invoice numbers, batch codes, references. */
+const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
+const jost = Jost({ subsets: ["latin"], display: "swap", variable: "--font-jost" });
+const geistMono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
   title: { default: "Fowlex", template: "%s · Fowlex" },
   description: "Fowlex Farms management dashboard",
 };
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f4ed" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a1317" },
+  ],
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="bg-fowlex-cream font-sans text-fowlex-charcoal antialiased">{children}</body>
+    <html lang="en" className={`${inter.variable} ${jost.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

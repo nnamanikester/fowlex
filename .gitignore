@@ -49,3 +49,12 @@ next-env.d.ts
 /playwright/.cache/
 /playwright/.auth/
 /test-results/
+
+# local MongoDB data (yarn db)
+/.data/
+
+# Playwright sign-in state
+/playwright/.auth/
+
+# unit test coverage
+/coverage/
