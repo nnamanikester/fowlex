@@ -7,6 +7,7 @@ import { batchSummaries, getBatch, listBatches } from "@/lib/batches/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { listHouses } from "@/lib/houses/service";
 import { listItems } from "@/lib/inventory/items";
+import { listMovements } from "@/lib/inventory/movements";
 import { listLogs } from "@/lib/logs/service";
 import { listHealth } from "@/lib/health/service";
 import { readSettings } from "@/lib/settings/service";
@@ -84,6 +85,15 @@ async function itemsCached(farmId: string) {
   return listItems(farmId);
 }
 
+async function movementsCached(farmId: string, itemId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listMovements(farmId, itemId);
+}
+
+export const loadMovements = PRODUCTION
+  ? movementsCached
+  : (farmId: string, itemId: string) => listMovements(farmId, itemId);
 export const loadItems = PRODUCTION ? itemsCached : (farmId: string) => listItems(farmId);
 export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;

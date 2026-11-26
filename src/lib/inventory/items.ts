@@ -1,15 +1,27 @@
 import "server-only";
 
+import { stockLevels } from "./movements";
 import { type ItemInput, nameKey, tidyName, validateItem } from "./rules";
+import { isLow, type StockLevel } from "./stock";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { connectDb } from "@/lib/db";
 import { InventoryItemModel } from "@/models/inventory-item";
+import { StockMovementModel } from "@/models/stock-movement";
 
-export type ItemView = ItemInput & { id: string; version: number; archived: boolean };
+export type ItemView = ItemInput &
+  StockLevel & {
+    id: string;
+    version: number;
+    archived: boolean;
+    /** At or under its reorder level. */
+    low: boolean;
+  };
+
+const NONE: StockLevel = { onHand: 0, valueKobo: 0, avgCostKobo: null };
 
 type Doc = ItemInput & { _id: unknown; __v?: number; archived?: boolean };
-const view = (i: Doc): ItemView => ({
+const view = (i: Doc, level: StockLevel = NONE): ItemView => ({
   id: String(i._id),
   version: i.__v ?? 0,
   name: i.name,
@@ -19,16 +31,21 @@ const view = (i: Doc): ItemView => ({
   reorderLevel: i.reorderLevel ?? null,
   notes: i.notes ?? "",
   archived: i.archived ?? false,
+  ...level,
+  low: !i.archived && isLow(level.onHand, i.reorderLevel ?? null),
 });
 
 /** The farm's stock items, by category then name. */
 export async function listItems(farmId: string): Promise<ItemView[]> {
   await connectDb();
-  const items = await InventoryItemModel.find({ farmId })
-    .collation({ locale: "en", numericOrdering: true })
-    .sort({ category: 1, name: 1 })
-    .lean();
-  return items.map((i) => view(i as unknown as Doc));
+  const [items, levels] = await Promise.all([
+    InventoryItemModel.find({ farmId })
+      .collation({ locale: "en", numericOrdering: true })
+      .sort({ category: 1, name: 1 })
+      .lean(),
+    stockLevels(farmId),
+  ]);
+  return items.map((i) => view(i as unknown as Doc, levels.get(String(i._id))));
 }
 
 function clean(input: Record<string, unknown>): ItemInput {
@@ -92,11 +109,13 @@ export async function updateItem(actor: CurrentUser, id: string, input: Record<s
     if ((error as { name?: string }).name === "VersionError") throw stale();
     throw error;
   }
-  return view(item.toObject() as unknown as Doc);
+  return view(item.toObject() as unknown as Doc, (await stockLevels(actor.farmId)).get(id));
 }
 
-/** Removes an item. Once it has stock history (step 3.2) it's archived instead. */
+/** Removes an item with no stock history. One with history is archived instead, keeping it. */
 export async function deleteItem(actor: CurrentUser, id: string) {
   const item = await load(actor, id);
+  if (await StockMovementModel.exists({ farmId: actor.farmId, itemId: item._id }))
+    throw new HttpError(409, "has_history", `${item.name} has stock history. Archive it instead.`);
   await item.softDelete();
 }

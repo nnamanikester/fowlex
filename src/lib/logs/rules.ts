@@ -16,6 +16,8 @@ export type LogInput = {
   sold: number;
   feedKg: number;
   feedType: string;
+  /** The feed item the kg came out of, so stock goes down; null when not tracked. */
+  feedItemId: string | null;
   waterLitres: number | null;
   avgWeightGrams: number | null;
   notes: string;
@@ -54,6 +56,9 @@ export function validateLog(
   else if (Math.round((input.feedKg as number) * 10) !== (input.feedKg as number) * 10)
     errors.feedKg = "Use one decimal place at most.";
   if (typeof input.feedType !== "string" || input.feedType.length > 40) errors.feedType = "Use at most 40 characters.";
+  const item = input.feedItemId;
+  if (item !== null && item !== undefined && (typeof item !== "string" || !/^[a-f\d]{24}$/i.test(item)))
+    errors.feedItemId = "Choose a feed from your stock.";
   if (input.waterLitres !== null && input.waterLitres !== undefined && !amount(input.waterLitres, 1_000_000))
     errors.waterLitres = "Enter litres, or leave it empty.";
   const weight = input.avgWeightGrams;

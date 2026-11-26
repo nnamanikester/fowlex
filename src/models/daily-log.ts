@@ -16,6 +16,7 @@ const schema = new Schema(
     sold: { type: Number, default: 0, min: 0 },
     feedKg: { type: Number, default: 0, min: 0 },
     feedType: { type: String, trim: true, default: "" },
+    feedItemId: { type: Schema.Types.ObjectId, ref: "InventoryItem", default: null },
     waterLitres: { type: Number, default: null, min: 0 },
     avgWeightGrams: { type: Number, default: null, min: 0 },
     notes: { type: String, trim: true, default: "" },
