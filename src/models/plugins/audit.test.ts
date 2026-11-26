@@ -115,4 +115,18 @@ describe("audit log", () => {
     ).rejects.toThrow();
     expect(await AuditLogModel.countDocuments()).toBe(0);
   });
+
+  it("logs insertMany as one create per document", async () => {
+    await runAs(ada, () =>
+      Expense.insertMany([
+        { farmId, payee: "Chicks", amountKobo: 10 },
+        { farmId, payee: "Vaccines", amountKobo: 20 },
+      ]),
+    );
+    const rows = await logs();
+    expect(rows.map((r) => [r.action, r.label, r.actorName])).toEqual([
+      ["create", "Chicks", "Ada Owner"],
+      ["create", "Vaccines", "Ada Owner"],
+    ]);
+  });
 });

@@ -121,3 +121,13 @@ describe("session token", () => {
     expect(await verifySession(undefined)).toBeNull();
   });
 });
+
+describe("JWT_SECRET", () => {
+  it("must be set and long enough to sign; without it no token verifies", async () => {
+    const secret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = "too-short";
+    await expect(signSession({ userId: "u", sessionVersion: 0, role: "staff" })).rejects.toThrow("JWT_SECRET");
+    expect(await verifySession("a.b.c")).toBeNull();
+    process.env.JWT_SECRET = secret;
+  });
+});

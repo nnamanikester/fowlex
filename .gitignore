@@ -55,3 +55,6 @@ next-env.d.ts
 
 # Playwright sign-in state
 /playwright/.auth/
+
+# unit test coverage
+/coverage/

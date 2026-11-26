@@ -19,4 +19,10 @@ describe("audit formatting", () => {
       "Amount: ₦15,000.00 → ₦18,000.00",
     );
   });
+
+  it("shows other values as they are", () => {
+    expect(fieldValue("tags", ["a", "b"])).toBe('["a","b"]');
+    expect(fieldValue("count", 12)).toBe("12");
+    expect(fieldValue("note", "")).toBe("–");
+  });
 });
