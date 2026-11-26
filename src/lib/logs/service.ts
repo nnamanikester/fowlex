@@ -155,7 +155,11 @@ export async function createLog(
   const log = check(values, { today, placedOn: batch.placedOn, aliveBefore: placedCount(batch) - removed });
 
   const existing = await DailyLogModel.findOne({ farmId: actor.farmId, batchId: batch._id, date: log.date }).lean();
-  if (existing) throw alreadyLogged(log.date, String(existing._id));
+  if (existing) {
+    // The same log, sent again while the first copy was being saved.
+    if (id && existing.clientRequestId === id) return { log: view(existing as unknown as Doc), created: false };
+    throw alreadyLogged(log.date, String(existing._id));
+  }
   try {
     const doc = await DailyLogModel.create({ ...log, farmId: actor.farmId, createdBy: actor.id, clientRequestId: id });
     return { log: view(doc.toObject() as unknown as Doc), created: true };

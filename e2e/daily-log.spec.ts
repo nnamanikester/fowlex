@@ -71,7 +71,16 @@ async function batchId(page: import("@playwright/test").Page, code: string) {
 test("many batches scroll sideways without widening the page", async ({ page, isMobile }) => {
   test.skip(!isMobile, "The daily log is for phones");
   await signInAs(page, E2E_USERS.staff.email);
-  const widths = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-  expect(widths[0]).toBeLessThanOrEqual(widths[1]);
-  expect(await page.evaluate(() => window.innerWidth)).toBe(page.viewportSize()!.width);
+  await expect(page.getByRole("radiogroup", { name: "Batch" })).toBeVisible();
+  const width = page.viewportSize()!.width;
+  // Anything poking out past the screen (the batch chips scroll inside their own row).
+  const sticking = await page.evaluate(
+    (w) =>
+      [...document.querySelectorAll<HTMLElement>("body *")]
+        .filter((e) => e.getBoundingClientRect().right > w + 0.5 && !e.closest("[role=radiogroup]"))
+        .map((e) => `${e.tagName}.${String(e.className).slice(0, 80)}`),
+    width,
+  );
+  expect(sticking).toEqual([]);
+  expect(await page.evaluate(() => window.innerWidth)).toBe(width);
 });
