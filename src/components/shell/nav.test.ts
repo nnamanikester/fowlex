@@ -49,6 +49,10 @@ describe("nav", () => {
     expect(pageFor("/")).toEqual({ item: expect.objectContaining({ label: "Overview" }), child: undefined });
     expect(pageFor("/batches").item?.label).toBe("Batches");
     expect(pageFor("/batches/new")).toEqual({ item: expect.objectContaining({ label: "Batches" }), child: "New" });
+    expect(pageFor("/settings/users")).toEqual({
+      item: expect.objectContaining({ label: "Settings" }),
+      child: "Users",
+    });
     expect(pageFor("/invoices/abc")).toEqual({
       item: expect.objectContaining({ label: "Invoices" }),
       child: "Details",
