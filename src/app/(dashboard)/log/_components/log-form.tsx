@@ -6,6 +6,7 @@ import { CircleCheck, CloudOff, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field, FormAlert } from "@/components/auth";
+import { HealthAlerts } from "@/components/health-alerts";
 import { EmptyState, Panel } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -16,6 +17,8 @@ import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { ageOn } from "@/lib/batches/rules";
 import type { BatchView } from "@/lib/batches/service";
 import { addDays, formatRange } from "@/lib/dates";
+import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
+import type { HealthView } from "@/lib/health/service";
 import { useLogOutbox } from "@/lib/logs/outbox";
 import { bags, FEED_TYPES, type LogInput, suggestedFeed, validateLog } from "@/lib/logs/rules";
 import type { LogView } from "@/lib/logs/service";
@@ -55,7 +58,17 @@ const day = (d: string) => formatRange({ from: d, to: d });
  * counts, enter feed, save. An existing log for that day opens for editing. With no signal, the
  * log waits on the phone and sends itself later.
  */
-export function LogForm({ batches, recent, today }: { batches: BatchView[]; recent: LogView[]; today: string }) {
+export function LogForm({
+  batches,
+  recent,
+  health = [],
+  today,
+}: {
+  batches: BatchView[];
+  recent: LogView[];
+  health?: HealthView[];
+  today: string;
+}) {
   const router = useRouter();
   const { batch: chosen } = useWorkspace();
   const asked = useSearchParams().get("batch");
@@ -231,6 +244,24 @@ export function LogForm({ batches, recent, today }: { batches: BatchView[]; rece
           })}
         </div>
       </fieldset>
+      {batch && (
+        <HealthAlerts
+          attention={needsAttention(
+            vaccinationPlan(
+              batch,
+              new Map(
+                health.filter((e) => e.batchId === batch.id && e.scheduleKey).map((e) => [e.scheduleKey!, e.date]),
+              ),
+              today,
+            ),
+          )}
+          withdrawal={withdrawalUntil(
+            health.filter((e) => e.batchId === batch.id),
+            today,
+          )}
+          href={`/batches/${batch.id}?tab=health`}
+        />
+      )}
 
       <div className="space-y-2">
         <span className="text-sm font-semibold text-fg">Day</span>

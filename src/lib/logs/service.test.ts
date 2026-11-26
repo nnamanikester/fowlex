@@ -140,6 +140,8 @@ describe("daily logs", () => {
 
     await deleteLog(actor, a.id);
     expect((await listLogs(actor.farmId, batch.id)).map((l) => l.date)).toEqual([TODAY]);
+    // The day can be logged again once its log is deleted.
+    expect((await createLog(actor, log({ date: "2026-11-25" }), {}, TODAY)).created).toBe(true);
     expect(await refusal(deleteLog(actor, a.id))).toMatchObject({ status: 404 });
     expect(await refusal(updateLog(actor, "nope", log(), 0, TODAY))).toMatchObject({ status: 404 });
   });

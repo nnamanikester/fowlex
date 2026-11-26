@@ -6,7 +6,7 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { addDays, today } from "@/lib/dates";
-import { loadBatches, loadLogs } from "@/lib/page-data";
+import { loadBatches, loadHealth, loadLogs } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Daily log" };
 
@@ -29,5 +29,6 @@ async function Log() {
   const recent = (await Promise.all(batches.map((b) => loadLogs(user.farmId, b.id))))
     .flat()
     .filter((l) => l.date >= addDays(on, -1));
-  return <LogForm batches={batches} recent={recent} today={on} />;
+  const health = (await Promise.all(batches.map((b) => loadHealth(user.farmId, b.id)))).flat();
+  return <LogForm batches={batches} recent={recent} health={health} today={on} />;
 }
