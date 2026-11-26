@@ -30,18 +30,32 @@ yarn db    # prints the MONGODB_URI line for .env.local; data stays in .data/mon
 It is a single-node replica set, like Atlas, so transactions work. Unit tests start their own
 in-memory MongoDB and need nothing running.
 
+### Signing in
+
+Set `JWT_SECRET` in `.env.local` (`openssl rand -base64 48`), then create someone to sign in as:
+
+```bash
+yarn user:create --email you@fowlex.com --name "Your Name"   # owner; prints a password once
+```
+
+Without `RESEND_API_KEY`, emails (password resets) are printed in the `yarn dev` terminal.
+
+The e2e tests start their own in-memory MongoDB with one owner, manager and staff member
+(`e2e/users.ts`) and need nothing running.
+
 ## Scripts
 
-| Script           | What it does                              |
-| ---------------- | ----------------------------------------- |
-| `yarn dev`       | Dev server                                |
-| `yarn build`     | Production build                          |
-| `yarn lint`      | ESLint                                    |
-| `yarn typecheck` | Generate route types, then `tsc --noEmit` |
-| `yarn test`      | Unit tests (Vitest)                       |
-| `yarn e2e`       | End-to-end tests (Playwright)             |
-| `yarn format`    | Prettier over the repo                    |
-| `yarn db`        | Local MongoDB for development             |
+| Script             | What it does                              |
+| ------------------ | ----------------------------------------- |
+| `yarn dev`         | Dev server                                |
+| `yarn build`       | Production build                          |
+| `yarn lint`        | ESLint                                    |
+| `yarn typecheck`   | Generate route types, then `tsc --noEmit` |
+| `yarn test`        | Unit tests (Vitest)                       |
+| `yarn e2e`         | End-to-end tests (Playwright)             |
+| `yarn format`      | Prettier over the repo                    |
+| `yarn db`          | Local MongoDB for development             |
+| `yarn user:create` | Create someone who can sign in            |
 
 The pre-commit hook runs ESLint, Prettier and related unit tests on staged files.
 
