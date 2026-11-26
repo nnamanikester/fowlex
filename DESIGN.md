@@ -109,16 +109,27 @@ Source files and rules are in `brand/`. The app uses:
 
 ## Components
 
-Copied from Pickriders in step 1.3 and listed here as they land.
+Ported from the Pickriders dashboard (step 1.3). Import kit pieces from `@/components/kit`.
 
-**Now:** `ThemeToggle` (kit: light, system, dark), `Toaster` (ui: Sonner, restyled).
+**Primitives** (`components/ui`): `Button` and `LinkButton` (primary, secondary, ghost, danger,
+link; sm, md, lg, icon; `loading`, `fullWidth`), `Input` and `Textarea`, `Badge` (tones, `dot`),
+`Card`, `Skeleton`, `ToggleSwitch`, `Avatar` (people round with two initials, customers square with
+one), `Segmented` (two to four exclusive choices, arrow keys move), `Modal` (native `<dialog>`: focus
+trap and Escape for free; a bottom sheet on phones), `Sheet` (one row up close: a right-hand panel
+from md, a bottom sheet on phones), `Menu` / `MenuItem` / `MenuLabel` / `MenuSeparator` (arrow
+keys, Escape, focus back to the trigger; portalled and placed against the viewport, flipping up near
+the bottom), `Popover` (a short explanation under its trigger), `Toaster` (Sonner, restyled).
 
-**Coming in 1.3:** primitives (`Button`, `LinkButton`, `Input`, `Textarea`, `Badge`, `Card`,
-`Skeleton`, `ToggleSwitch`, `Modal`, `Menu`, `Avatar`, `Segmented`, `Popover`, `Sheet`) and kit
-(`PageHeader`, `Panel`, `StatCard`, `MetricCard`, `Sparkline`, `EmptyState`, `FilterMenu`,
-`ConfirmDialog`). **In 1.4:** the shell (charcoal sidebar with a comb-red edge on the selected page,
-batch switcher, ⌘K palette, bottom tab bar on phones). **In 1.5:** `DataTable`, `MoneyInput`,
-`DateRangePicker`, `FileDrop` and the chart wrappers.
+**Kit** (`components/kit`): `PageHeader`, `Panel`, `StatCard`, `MetricCard` (a linked headline
+number with its change and a `Sparkline`; `invert` when down is good, like feed cost or deaths),
+`ProgressRing` (weeks to sale), `EmptyState`, `FilterMenu` (one filter as a pill),
+`ConfirmDialog` (`typeToConfirm` for the most destructive actions, such as deleting a batch),
+`IdText` and `CopyButton` (invoice numbers, batch codes, Paystack references), `TestModeBanner`
+(Paystack test keys), `Kbd`, `ThemeToggle`.
+
+**Next:** the shell in 1.4 (charcoal sidebar with a comb-red edge on the selected page, batch
+switcher, ⌘K palette, bottom tab bar on phones); `DataTable`, `MoneyInput`, `DateRangePicker`,
+`FileDrop` and the chart wrappers in 1.5; `Field` and the sign-in pieces in 1.7.
 
 Build pages from these first; add to the kit when a pattern repeats, and show it on `/design`.
 
