@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronsUpDown, Keyboard, Settings } from "lucide-react";
+import { ChevronsUpDown, Keyboard, LogOut, Settings } from "lucide-react";
 
 import { RailTip } from "./rail-tip";
 import { useShell } from "./shell-context";
+import { useSignOut } from "./use-sign-out";
 import { ThemeToggle } from "@/components/kit/theme-toggle";
 import { Avatar } from "@/components/ui/avatar";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
@@ -12,11 +13,12 @@ import { ROLE_LABELS } from "@/lib/auth/permissions";
 import { useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
-/** The signed-in person at the foot of the sidebar: theme, settings and shortcuts. Sign out joins in 1.7. */
+/** The signed-in person at the foot of the sidebar: theme, settings, shortcuts and sign out. */
 export function AccountMenu({ rail = false }: { rail?: boolean }) {
   const { me, can } = useWorkspace();
   const { openPalette } = useShell();
   const router = useRouter();
+  const signOut = useSignOut();
 
   return (
     <Menu
@@ -63,6 +65,10 @@ export function AccountMenu({ rail = false }: { rail?: boolean }) {
       )}
       <MenuItem icon={<Keyboard />} hint="⌘K" onSelect={openPalette}>
         Search and shortcuts
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<LogOut />} onSelect={() => void signOut()}>
+        Sign out
       </MenuItem>
     </Menu>
   );

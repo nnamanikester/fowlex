@@ -1,6 +1,6 @@
 import { type HydratedDocument, type InferSchemaType, model, models, Schema, type Model } from "mongoose";
 
-import { basePlugin, type SoftDeleteMethods } from "./plugins/base";
+import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
 
 /**
  * A farm: the owner of every other document (they all carry `farmId`). Fowlex runs one farm today;
@@ -11,7 +11,7 @@ const schema = new Schema({
 });
 schema.plugin(basePlugin, { farm: false });
 
-export type Farm = InferSchemaType<typeof schema>;
+export type Farm = InferSchemaType<typeof schema> & Omit<Base, "farmId">;
 export type FarmDocument = HydratedDocument<Farm, SoftDeleteMethods>;
 
 // Reuse the compiled model across hot reloads.

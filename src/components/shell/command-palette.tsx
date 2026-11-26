@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ClipboardPen,
+  LogOut,
   CornerDownLeft,
   Monitor,
   Moon,
@@ -18,12 +19,13 @@ import { useTheme } from "next-themes";
 
 import { BatchTile } from "./batch-switcher";
 import { navFor } from "./nav";
+import { useSignOut } from "./use-sign-out";
 import { useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 type Command = {
   id: string;
-  group: "Go to" | "Actions" | "Batches" | "Preferences";
+  group: "Go to" | "Actions" | "Batches" | "Preferences" | "Account";
   label: string;
   hint?: string;
   icon: React.ReactNode;
@@ -218,6 +220,7 @@ function useCommands(close: () => void): Command[] {
   const router = useRouter();
   const { me, can, batches, batch, setBatch } = useWorkspace();
   const { setTheme } = useTheme();
+  const signOut = useSignOut();
 
   const go = (href: string) => () => {
     close();
@@ -317,6 +320,14 @@ function useCommands(close: () => void): Command[] {
       icon: icon(Monitor),
       keywords: "appearance theme",
       run: act(() => setTheme("system")),
+    },
+    {
+      id: "sign-out",
+      group: "Account",
+      label: "Sign out",
+      icon: icon(LogOut),
+      keywords: "log out leave",
+      run: act(() => void signOut()),
     },
   );
   return commands;
