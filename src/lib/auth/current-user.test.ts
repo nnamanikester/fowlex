@@ -11,6 +11,8 @@ const jar = vi.hoisted(() => new Map<string, string>());
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: (name: string) => (jar.has(name) ? { name, value: jar.get(name) } : undefined) }),
 }));
+const cacheLife = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ cacheLife }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`REDIRECT ${url}`);
@@ -75,5 +77,17 @@ describe("requireUser", () => {
     await expect(requireUser()).rejects.toThrow("REDIRECT /api/auth/session/expired");
     await signedIn();
     expect((await requireUser()).name).toBe("Ada");
+  });
+});
+
+describe("in production", () => {
+  it("uses the private-cached lookup with the session profile, with the same answer", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.resetModules();
+    const { getCurrentUser: production } = await import("./current-user");
+    const user = await signedIn();
+    expect((await production())?.id).toBe(user.id);
+    expect(cacheLife).toHaveBeenCalledWith("session");
+    vi.unstubAllEnvs();
   });
 });

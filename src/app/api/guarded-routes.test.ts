@@ -16,7 +16,10 @@ import { UserModel } from "@/models/user";
 import { setupTestDb } from "@/test/db";
 
 const session = vi.hoisted(() => ({ user: null as CurrentUser | null }));
-vi.mock("@/lib/auth/current-user", () => ({ getCurrentUser: async () => session.user }));
+vi.mock("@/lib/auth/current-user", () => ({
+  getSessionUser: async () => session.user,
+  getCurrentUser: async () => session.user,
+}));
 vi.mock("next/server", async (original) => ({
   ...(await original<typeof import("next/server")>()),
   connection: async () => undefined,

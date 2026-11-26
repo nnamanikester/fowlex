@@ -43,7 +43,10 @@ export async function getSettings(farmId: string) {
 
 /** The settings as the form edits them. */
 export async function readSettings(farmId: string): Promise<SettingsInput & { overheadMethod: string }> {
-  const s = await getSettings(farmId);
+  return toForm(await getSettings(farmId));
+}
+
+function toForm(s: Awaited<ReturnType<typeof getSettings>>): SettingsInput & { overheadMethod: string } {
   return {
     ...(Object.fromEntries(FIELDS.map((f) => [f, s[f] ?? null])) as unknown as SettingsInput),
     overheadMethod: s.overheadMethod,
@@ -63,7 +66,7 @@ export async function updateSettings(actor: CurrentUser, input: Record<string, u
   const settings = await getSettings(actor.farmId);
   settings.set(values);
   await settings.save();
-  return readSettings(actor.farmId);
+  return toForm(settings); // The saved document, without reading it back.
 }
 
 /**

@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-import { type CurrentUser, getCurrentUser } from "./current-user";
+import { type CurrentUser, getSessionUser } from "./current-user";
 import { setActor, withAuditContext } from "@/lib/audit/context";
 import { can, type Permission, type Role } from "./permissions";
 
@@ -21,7 +21,7 @@ export class HttpError extends Error {
 
 /** The signed-in person, or a 401. */
 export async function requireSession(): Promise<CurrentUser> {
-  const user = await getCurrentUser();
+  const user = await getSessionUser();
   if (!user) throw new HttpError(401, "unauthenticated", "Sign in first.");
   // Every change for the rest of this request is logged as theirs.
   setActor({ id: user.id, name: user.name });

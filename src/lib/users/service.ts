@@ -33,9 +33,10 @@ export async function listTeam(actor: CurrentUser) {
       .lean(),
     InviteModel.find({ farmId: actor.farmId, acceptedAt: null, revokedAt: null, role: { $in: TEAM_ROLES } })
       .sort({ createdAt: -1 })
-      .populate<{ createdBy: { name: string } | null }>("createdBy", "name")
       .lean(),
   ]);
+  // Inviters are owners on this team: name them from the list above rather than a second query.
+  const names = new Map(users.map((u) => [String(u._id), u.name]));
   return {
     users: users.map((u) => ({
       id: String(u._id),
@@ -50,7 +51,7 @@ export async function listTeam(actor: CurrentUser) {
       id: String(i._id),
       email: i.email,
       role: i.role as TeamRole,
-      invitedBy: i.createdBy?.name ?? null,
+      invitedBy: (i.createdBy && names.get(String(i.createdBy))) ?? null,
       sentAt: i.createdAt.toISOString(),
       expired: i.expiresAt < new Date(),
     })),

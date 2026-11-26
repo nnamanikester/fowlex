@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 import { AuditTable } from "./_components/audit-table";
 import { PageSkeleton } from "../../_components/require-permission";
-import { listAudit } from "@/lib/audit/service";
+import { loadAudit } from "@/lib/page-data";
 import { requireUser } from "@/lib/auth/current-user";
 
 export const metadata: Metadata = { title: "Audit log" };
@@ -18,5 +18,5 @@ export default function AuditPage() {
 
 async function Audit() {
   const actor = await requireUser();
-  return <AuditTable rows={await listAudit(actor)} />;
+  return <AuditTable rows={await loadAudit(actor)} />;
 }
