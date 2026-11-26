@@ -4,6 +4,7 @@ import { cacheLife } from "next/cache";
 
 import { listAudit } from "@/lib/audit/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
+import { listHouses } from "@/lib/houses/service";
 import { readSettings } from "@/lib/settings/service";
 import { listTeam } from "@/lib/users/service";
 
@@ -33,6 +34,13 @@ async function auditCached(actor: CurrentUser) {
   return listAudit(actor);
 }
 
+async function housesCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listHouses(farmId);
+}
+
+export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;
 export const loadSettings: typeof readSettings = PRODUCTION ? settingsCached : readSettings;
 export const loadTeam: typeof listTeam = PRODUCTION ? teamCached : listTeam;
 export const loadAudit: (actor: CurrentUser) => ReturnType<typeof listAudit> = PRODUCTION

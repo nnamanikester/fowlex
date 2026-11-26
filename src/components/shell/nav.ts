@@ -203,4 +203,8 @@ export function pageFor(pathname: string): { item?: NavItem; child?: string } {
 }
 
 /** Deeper pages with names of their own. */
-const CHILD_NAMES: Record<string, string> = { "/settings/users": "Users", "/settings/audit": "Audit log" };
+const CHILD_NAMES: Record<string, string> = {
+  "/settings/houses": "Houses",
+  "/settings/users": "Users",
+  "/settings/audit": "Audit log",
+};
