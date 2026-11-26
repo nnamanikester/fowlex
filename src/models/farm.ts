@@ -9,7 +9,7 @@ import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
 const schema = new Schema({
   name: { type: String, required: true, trim: true },
 });
-schema.plugin(basePlugin, { farm: false });
+schema.plugin(basePlugin, { farm: false, audit: { label: (f) => String(f.name) } });
 
 export type Farm = InferSchemaType<typeof schema> & Omit<Base, "farmId">;
 export type FarmDocument = HydratedDocument<Farm, SoftDeleteMethods>;

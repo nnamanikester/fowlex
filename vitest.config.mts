@@ -1,10 +1,10 @@
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [tsconfigPaths(), react()],
+  plugins: [react()],
   resolve: {
+    tsconfigPaths: true,
     // "server-only" throws outside React Server Components; in tests every module is server-side.
     alias: { "server-only": new URL("./src/test/empty.ts", import.meta.url).pathname },
   },
