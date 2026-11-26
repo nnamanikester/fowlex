@@ -99,6 +99,14 @@ describe("health events", () => {
     expect(await HealthEventModel.countDocuments()).toBe(1);
   });
 
+  it("returns the saved record when its resend arrives while the first copy is being saved", async () => {
+    const { actor, vaccine } = await farm();
+    const requestId = "health-0002-abcd";
+    const { event } = await createHealthEvent(actor, vaccine(), { requestId }, TODAY);
+    vi.spyOn(HealthEventModel, "findOne").mockReturnValueOnce({ lean: async () => null } as never);
+    expect(await createHealthEvent(actor, vaccine(), { requestId }, TODAY)).toEqual({ event, created: false });
+  });
+
   it("refuses two different requests for one dose at once", async () => {
     const { actor, vaccine } = await farm();
     const results = await Promise.allSettled([
