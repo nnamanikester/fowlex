@@ -4,6 +4,8 @@ import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/rout
 import { POST as batchStatus } from "./batches/[id]/status/route";
 import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
+import { POST as closeBatch } from "./batches/[id]/close/route";
+import { POST as reopenBatch } from "./batches/[id]/reopen/route";
 import { DELETE as deleteHealth, PATCH as updateHealth } from "./health/[id]/route";
 import { GET as listHealth, POST as createHealth } from "./health/route";
 import { DELETE as deleteLog, PATCH as updateLog } from "./logs/[id]/route";
@@ -327,5 +329,54 @@ describe("health routes", () => {
 
     await signInAs("customer");
     expect((await createHealth(req("POST", "/api/health", body))).status).toBe(403);
+  });
+});
+
+describe("close and reopen routes", () => {
+  it("refuse while birds are unaccounted for, then close and reopen; staff can't", async () => {
+    const owner = await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: "2026-11-01",
+          breed: "Ross 308",
+          delivered: 10,
+          pricePerChickKobo: 85_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    const close = () =>
+      closeBatch(req("POST", `/api/batches/${batch.id}/close`, { version: batch.version }), ctx(batch.id));
+    const refused = await close();
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toMatchObject({
+      code: "birds_unaccounted",
+      details: { tally: { unaccounted: 10 } },
+    });
+
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    await createLog(req("POST", "/api/logs", { batchId: batch.id, date: today, deaths: 2, sold: 8 }));
+    const closed = await close();
+    expect(closed.status).toBe(200);
+    expect((await closed.json()).status).toBe("closed");
+    expect(
+      (
+        await closeBatch(
+          new Request(`${BASE}/api/batches/${batch.id}/close`, { method: "POST", body: "{oops" }),
+          ctx(batch.id),
+        )
+      ).status,
+    ).toBe(409);
+
+    session.user = { ...owner, role: "staff" };
+    expect((await reopenBatch(req("POST", `/api/batches/${batch.id}/reopen`), ctx(batch.id))).status).toBe(403);
+    session.user = owner;
+    const reopened = await reopenBatch(req("POST", `/api/batches/${batch.id}/reopen`), ctx(batch.id));
+    expect((await reopened.json()).status).toBe("selling");
   });
 });

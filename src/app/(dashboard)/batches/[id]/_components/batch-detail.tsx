@@ -3,9 +3,21 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ClipboardPen, Hammer, MoreHorizontal, Pencil, ShoppingCart, Sprout, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArrowLeft,
+  ClipboardPen,
+  Hammer,
+  MoreHorizontal,
+  Pencil,
+  RotateCcw,
+  ShoppingCart,
+  Sprout,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { CloseSheet } from "./close-sheet";
 import { HealthTab } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
@@ -65,6 +77,8 @@ export function BatchDetail({
   const router = useRouter();
   const [editing, setEditing] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [reopening, setReopening] = React.useState(false);
   const open = b.phase !== "closed";
 
   const setStatus = async (status: "active" | "selling") => {
@@ -104,7 +118,7 @@ export function BatchDetail({
               {b.houseName} · {b.breed} · placed {day(b.placedOn)}
             </p>
           </div>
-          {canWrite && open && (
+          {canWrite && (
             <Menu
               label={`${b.code} actions`}
               align="end"
@@ -114,9 +128,16 @@ export function BatchDetail({
                 </Button>
               )}
             >
-              <MenuItem icon={<Pencil />} onSelect={() => setEditing(true)}>
-                Edit batch
-              </MenuItem>
+              {!open && (
+                <MenuItem icon={<RotateCcw />} onSelect={() => setReopening(true)}>
+                  Reopen batch
+                </MenuItem>
+              )}
+              {open && (
+                <MenuItem icon={<Pencil />} onSelect={() => setEditing(true)}>
+                  Edit batch
+                </MenuItem>
+              )}
               {b.phase === "active" && (
                 <MenuItem icon={<ShoppingCart />} onSelect={() => void setStatus("selling")}>
                   Start selling
@@ -127,10 +148,17 @@ export function BatchDetail({
                   Back to growing
                 </MenuItem>
               )}
-              <MenuSeparator />
-              <MenuItem icon={<Trash2 />} tone="danger" onSelect={() => setDeleting(true)}>
-                Delete batch
-              </MenuItem>
+              {open && b.phase !== "planned" && (
+                <MenuItem icon={<Archive />} onSelect={() => setClosing(true)}>
+                  Close batch
+                </MenuItem>
+              )}
+              {open && <MenuSeparator />}
+              {open && (
+                <MenuItem icon={<Trash2 />} tone="danger" onSelect={() => setDeleting(true)}>
+                  Delete batch
+                </MenuItem>
+              )}
             </Menu>
           )}
         </div>
@@ -155,6 +183,29 @@ export function BatchDetail({
           </Link>
         ))}
       </nav>
+
+      {!open && b.closedOn && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-line bg-surface-muted px-4 py-3 text-sm text-fg"
+        >
+          <Archive className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
+          <span>
+            Closed on <strong>{day(b.closedOn)}</strong>. Its daily logs and health record are locked.
+          </span>
+        </div>
+      )}
+      {open && b.phase !== "planned" && b.liveBirds === 0 && canWrite && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-success-line bg-success-subtle px-4 py-3 text-sm"
+        >
+          <span className="flex-1 text-fg">Every bird is accounted for. Close the batch to lock its records.</span>
+          <Button size="sm" onClick={() => setClosing(true)}>
+            Close batch
+          </Button>
+        </div>
+      )}
 
       {tab === "overview" ? (
         <>
@@ -250,6 +301,32 @@ export function BatchDetail({
         />
       )}
 
+      {closing && (
+        <CloseSheet
+          batch={b}
+          lastRecord={[b.placedOn, ...logs.map((l) => l.date), ...health.map((e) => e.date)].sort().at(-1)!}
+          today={today}
+          canLog={canLog}
+          onClose={() => setClosing(false)}
+        />
+      )}
+      <ConfirmDialog
+        open={reopening}
+        onOpenChange={setReopening}
+        title={`Reopen ${b.code}?`}
+        description="Its logs and health record unlock, and it shows as selling again. Do this only if it was closed by mistake."
+        confirmLabel="Reopen batch"
+        destructive={false}
+        onConfirm={async () => {
+          try {
+            await apiRequest(`/api/batches/${b.id}/reopen`, "POST");
+            toast.success(`${b.code} is open again.`);
+            router.refresh();
+          } catch (e) {
+            toast.error((e as AuthError).message);
+          }
+        }}
+      />
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

@@ -16,11 +16,13 @@ import {
 import { liveBirds, removedBirds } from "./bird-count";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
-import { addDays, today as lagosToday } from "@/lib/dates";
+import { addDays, isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
 import { type LogTotals, logTotals, NO_TOTALS } from "@/lib/logs/service";
 import { getSettings } from "@/lib/settings/service";
 import { BatchModel } from "@/models/batch";
+import { DailyLogModel } from "@/models/daily-log";
+import { HealthEventModel } from "@/models/health-event";
 import { nextSequence } from "@/models/counter";
 import { HouseModel } from "@/models/house";
 import { WITH_DELETED } from "@/models/plugins/base";
@@ -338,7 +340,7 @@ export async function updateBatch(
   return (await getBatch(actor.farmId, id, today))!;
 }
 
-/** Starts selling, or goes back to growing. Closing a batch is step 2.7. */
+/** Starts selling, or goes back to growing. Closing is `closeBatch`, once every bird is accounted for. */
 export async function setBatchStatus(actor: CurrentUser, id: string, status: unknown, today = lagosToday()) {
   if (status !== "active" && status !== "selling")
     throw new HttpError(400, "invalid_status", "Choose growing or selling.");
@@ -362,4 +364,78 @@ export async function deleteBatch(actor: CurrentUser, id: string) {
       `${batch.code} has ${days} day${days === 1 ? "" : "s"} of logs. Delete those first, or close the batch instead.`,
     );
   await batch.softDelete();
+}
+
+export type CloseTally = { placed: number; deaths: number; culls: number; sold: number; unaccounted: number };
+
+/**
+ * Closes a batch once every bird placed is accounted for as dead, culled or sold. Refused with the
+ * number still unaccounted for (in `details.tally`) otherwise. The close date can't be before the
+ * batch's last record or in the future; from then its logs and health record are locked, and its
+ * house's rest starts.
+ */
+export async function closeBatch(
+  actor: CurrentUser,
+  id: string,
+  input: { closedOn?: unknown; version?: unknown },
+  today = lagosToday(),
+) {
+  const batch = await load(actor, id);
+  if (batch.status === "closed") throw new HttpError(409, "closed", `${batch.code} is already closed.`);
+  if (typeof input.version !== "number" || input.version !== batch.__v) throw stale();
+  if (batch.placedOn > today) throw new HttpError(409, "not_placed", "These chicks haven't been placed yet.");
+
+  const totals = (await logTotals(actor.farmId, [id])).get(id) ?? NO_TOTALS;
+  const tally: CloseTally = {
+    placed: placedCount(batch),
+    deaths: totals.deaths,
+    culls: totals.culls,
+    sold: totals.sold,
+    unaccounted: liveBirds({ placed: placedCount(batch), ...totals }),
+  };
+  if (tally.unaccounted)
+    throw new HttpError(
+      409,
+      "birds_unaccounted",
+      `${n(tally.unaccounted)} bird${tally.unaccounted === 1 ? " isn't" : "s aren't"} accounted for. Log ${
+        tally.unaccounted === 1 ? "it" : "them"
+      } as dead, culled or sold before closing.`,
+      undefined,
+      { tally },
+    );
+
+  const closedOn = input.closedOn === undefined || input.closedOn === "" ? today : input.closedOn;
+  const [lastLog, lastHealth] = await Promise.all([
+    DailyLogModel.findOne({ farmId: actor.farmId, batchId: id }, { date: 1 }).sort({ date: -1 }).lean(),
+    HealthEventModel.findOne({ farmId: actor.farmId, batchId: id }, { date: 1 }).sort({ date: -1 }).lean(),
+  ]);
+  const last = [batch.placedOn, lastLog?.date, lastHealth?.date].filter(Boolean).sort().at(-1)!;
+  if (typeof closedOn !== "string" || !isISODate(closedOn))
+    throw new HttpError(400, "invalid_close", "Choose the day the house was emptied.", "closedOn");
+  if (closedOn > today) throw new HttpError(400, "invalid_close", "That's in the future.", "closedOn");
+  if (closedOn < last)
+    throw new HttpError(
+      400,
+      "invalid_close",
+      `The batch has records up to ${last}; close it on or after that.`,
+      "closedOn",
+    );
+
+  batch.set({ status: "closed", closedOn });
+  try {
+    await batch.save();
+  } catch (error) {
+    if ((error as { name?: string }).name === "VersionError") throw stale();
+    throw error;
+  }
+  return (await getBatch(actor.farmId, id, today))!;
+}
+
+/** Undoes a close made by mistake: the batch goes back to selling, and its records unlock. */
+export async function reopenBatch(actor: CurrentUser, id: string, today = lagosToday()) {
+  const batch = await load(actor, id);
+  if (batch.status !== "closed") throw new HttpError(409, "not_closed", `${batch.code} isn't closed.`);
+  batch.set({ status: "selling", closedOn: null });
+  await batch.save();
+  return (await getBatch(actor.farmId, id, today))!;
 }

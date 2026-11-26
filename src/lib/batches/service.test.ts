@@ -2,16 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   batchSummaries,
+  closeBatch,
   createBatch,
   deleteBatch,
   getBatch,
   listBatches,
+  reopenBatch,
   setBatchStatus,
   updateBatch,
 } from "./service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { createHouse, deleteHouse, listHouses, updateHouse } from "@/lib/houses/service";
-import { createLog } from "@/lib/logs/service";
+import { createHealthEvent } from "@/lib/health/service";
+import { createLog, updateLog } from "@/lib/logs/service";
 import { BatchModel } from "@/models/batch";
 import { oid, setupTestDb } from "@/test/db";
 
@@ -328,5 +331,103 @@ describe("live birds from the logs", () => {
     });
     expect((await updateBatch(actor, batch.id, input({ delivered: 80 }), { version: 0 }, TODAY)).liveBirds).toBe(0);
     expect(await refusal(deleteBatch(actor, batch.id))).toMatchObject({ status: 409, code: "has_logs" });
+  });
+});
+
+describe("closing a batch", () => {
+  const closing = async (delivered = 100) => {
+    const f = await farm();
+    const { batch } = await createBatch(f.actor, f.input({ delivered }), {}, TODAY);
+    return { ...f, batch };
+  };
+
+  it("refuses while 5 birds are unaccounted for, saying how many", async () => {
+    const { actor, batch } = await closing(100);
+    await createLog(actor, { batchId: batch.id, date: "2026-11-20", deaths: 3, culls: 2, sold: 90 }, {}, TODAY);
+    const refused = await closeBatch(actor, batch.id, { version: 0 }, TODAY).catch((e) => e);
+    expect(refused).toMatchObject({
+      status: 409,
+      code: "birds_unaccounted",
+      message: "5 birds aren't accounted for. Log them as dead, culled or sold before closing.",
+      details: { tally: { placed: 100, deaths: 3, culls: 2, sold: 90, unaccounted: 5 } },
+    });
+    expect((await getBatch(actor.farmId, batch.id, TODAY))?.status).toBe("active");
+  });
+
+  it("closes when every bird is accounted for, then locks logs, health records and edits", async () => {
+    const { actor, batch, input } = await closing(100);
+    const { log } = await createLog(actor, { batchId: batch.id, date: "2026-11-20", deaths: 1, sold: 98 }, {}, TODAY);
+    expect((await refusal(closeBatch(actor, batch.id, { version: 0 }, TODAY)))?.code).toBe("birds_unaccounted");
+    await createLog(actor, { batchId: batch.id, date: "2026-11-21", culls: 1 }, {}, TODAY);
+
+    const closed = await closeBatch(actor, batch.id, { version: 0, closedOn: "2026-11-22" }, TODAY);
+    expect(closed).toMatchObject({ status: "closed", phase: "closed", closedOn: "2026-11-22", liveBirds: 0 });
+    expect(await refusal(createLog(actor, { batchId: batch.id, date: TODAY }, {}, TODAY))).toMatchObject({
+      code: "closed",
+    });
+    expect(await refusal(updateLog(actor, log.id, { date: "2026-11-20" }, 0, TODAY))).toMatchObject({ code: "closed" });
+    expect(
+      await refusal(
+        createHealthEvent(actor, { batchId: batch.id, date: TODAY, kind: "vet-visit", notes: "Late" }, {}, TODAY),
+      ),
+    ).toMatchObject({ code: "closed" });
+    expect(await refusal(updateBatch(actor, batch.id, input(), { version: closed.version }, TODAY))).toMatchObject({
+      code: "closed",
+    });
+    expect(await refusal(closeBatch(actor, batch.id, { version: closed.version }, TODAY))).toMatchObject({
+      code: "closed",
+    });
+    // Out of the switcher, and out of its house.
+    expect(await batchSummaries(actor.farmId, TODAY)).toEqual([]);
+    expect((await listHouses(actor.farmId))[0]).toMatchObject({ occupied: 0, batchCount: 0 });
+  });
+
+  it("closes on a day after the last record and not in the future, today by default", async () => {
+    const { actor, batch } = await closing(10);
+    await createLog(actor, { batchId: batch.id, date: "2026-11-24", sold: 10 }, {}, TODAY);
+    await createHealthEvent(
+      actor,
+      { batchId: batch.id, date: "2026-11-25", kind: "vet-visit", notes: "Clearance" },
+      {},
+      TODAY,
+    );
+    for (const closedOn of ["2026-11-24", "2026-11-27", "someday", 5])
+      expect(await refusal(closeBatch(actor, batch.id, { version: 0, closedOn }, TODAY))).toMatchObject({
+        status: 400,
+        field: "closedOn",
+      });
+    expect((await closeBatch(actor, batch.id, { version: 0, closedOn: "" }, TODAY)).closedOn).toBe(TODAY);
+  });
+
+  it("refuses a stale form or a batch not yet placed, and reopens a batch closed by mistake", async () => {
+    const { actor, batch, input } = await closing(10);
+    expect(await refusal(closeBatch(actor, batch.id, {}, TODAY))).toMatchObject({ code: "stale" });
+    const planned = await createBatch(
+      actor,
+      input({ placedOn: "2026-11-30", delivered: 10 }),
+      { confirm: true },
+      TODAY,
+    );
+    expect(await refusal(closeBatch(actor, planned.batch.id, { version: 0 }, TODAY))).toMatchObject({
+      code: "not_placed",
+    });
+
+    await createLog(actor, { batchId: batch.id, date: TODAY, sold: 10 }, {}, TODAY);
+    const closed = await closeBatch(actor, batch.id, { version: 0 }, TODAY);
+    expect(await refusal(reopenBatch(actor, planned.batch.id, TODAY))).toMatchObject({ code: "not_closed" });
+    const reopened = await reopenBatch(actor, batch.id, TODAY);
+    expect(reopened).toMatchObject({ status: "selling", closedOn: null, phase: "selling" });
+    expect(reopened.version).toBeGreaterThan(closed.version);
+    expect((await createLog(actor, { batchId: batch.id, date: "2026-11-25" }, {}, TODAY)).created).toBe(true);
+  });
+
+  it("refuses a close that loses a race", async () => {
+    const { actor, batch } = await closing(10);
+    await createLog(actor, { batchId: batch.id, date: TODAY, sold: 10 }, {}, TODAY);
+    const lost = Object.assign(new Error("No matching document"), { name: "VersionError" });
+    const save = vi.spyOn(BatchModel.prototype, "save").mockRejectedValueOnce(lost);
+    expect(await refusal(closeBatch(actor, batch.id, { version: 0 }, TODAY))).toMatchObject({ code: "stale" });
+    save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(closeBatch(actor, batch.id, { version: 0 }, TODAY)).rejects.toThrow("disk full");
   });
 });
