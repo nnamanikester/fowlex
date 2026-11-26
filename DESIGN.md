@@ -127,9 +127,30 @@ number with its change and a `Sparkline`; `invert` when down is good, like feed 
 `IdText` and `CopyButton` (invoice numbers, batch codes, Paystack references), `TestModeBanner`
 (Paystack test keys), `Kbd`, `ThemeToggle`.
 
-**Next:** the shell in 1.4 (charcoal sidebar with a comb-red edge on the selected page, batch
-switcher, ⌘K palette, bottom tab bar on phones); `DataTable`, `MoneyInput`, `DateRangePicker`,
-`FileDrop` and the chart wrappers in 1.5; `Field` and the sign-in pieces in 1.7.
+**Shell** (`components/shell`, step 1.4): the frame every signed-in page sits in, under
+`src/app/(dashboard)`.
+
+- **The sidebar is Fowlex charcoal** (`nav` tokens, the same in both themes) with a comb-red glow in
+  the top corner. From the top: the cream logo; the **batch switcher** (the batch the farm pages
+  look at: its number on a comb-to-charcoal tile, day and live birds, Growing or Selling; remembered
+  per browser); **Search or jump to… ⌘K**; the pages in groups (Overview, Farm, Sales, Money, Team);
+  you.
+- **The highlight slides** to the page you open: a soft pill with a lit light-comb-red edge
+  (`nav-accent`). Hovering a page shows its shortcut (`G` `B`).
+- **It folds to a rail** of icons (the round handle on its edge, or `[`), remembered per browser.
+  Folded, each icon shows its name beside it on hover or focus.
+- **The header** says where you are (Fowlex Farms › page › deeper page) and holds the page's tools.
+- **Phones and tablets** get a tab bar along the bottom (the first four pages the role can open,
+  then More, which opens the full sidebar as a drawer) and a search button in the header.
+- **The command palette** (⌘K or Ctrl K, `/`, or the search buttons): pages, the daily actions (log
+  today's numbers, new batch, record an expense, new invoice), other batches and the theme.
+- **Roles decide the nav** (`navFor` in `nav.ts`, from `lib/auth/permissions.ts`): owners see
+  everything, managers everything but Settings, staff only Batches, Daily log and Inventory (no
+  money), customers nothing (they use the portal).
+- Until sign-in (1.7) and batches (2.2) exist, the layout uses `lib/workspace-preview.ts`.
+
+**Next:** `DataTable`, `MoneyInput`, `DateRangePicker`, `FileDrop` and the chart wrappers in 1.5;
+`Field` and the sign-in pieces in 1.7.
 
 Build pages from these first; add to the kit when a pattern repeats, and show it on `/design`.
 
