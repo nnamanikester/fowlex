@@ -5,6 +5,7 @@ import { DailyLogModel } from "./daily-log";
 import { FarmModel } from "./farm";
 import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
+import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
 import { SettingsModel } from "./settings";
@@ -19,6 +20,7 @@ export const ALL_MODELS = [
   FarmModel,
   HealthEventModel,
   HouseModel,
+  InventoryItemModel,
   InviteModel,
   PasswordResetModel,
   SettingsModel,

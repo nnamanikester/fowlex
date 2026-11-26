@@ -5,6 +5,8 @@ import { POST as batchStatus } from "./batches/[id]/status/route";
 import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
+import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
+import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as reopenBatch } from "./batches/[id]/reopen/route";
 import { DELETE as deleteHealth, PATCH as updateHealth } from "./health/[id]/route";
 import { GET as listHealth, POST as createHealth } from "./health/route";
@@ -378,5 +380,38 @@ describe("close and reopen routes", () => {
     session.user = owner;
     const reopened = await reopenBatch(req("POST", `/api/batches/${batch.id}/reopen`), ctx(batch.id));
     expect((await reopened.json()).status).toBe("selling");
+  });
+});
+
+describe("inventory item routes", () => {
+  it("add, list, edit and delete; staff can read but not change", async () => {
+    const manager = await signInAs("manager");
+    const body = { name: "Starter feed", category: "feed", unit: "bag", unitKg: 25, reorderLevel: 10 };
+    const created = await createItem(req("POST", "/api/inventory/items", body));
+    expect(created.status).toBe(201);
+    const item = await created.json();
+    expect(await (await listItems()).json()).toHaveLength(1);
+    const saved = await updateItem(
+      req("PATCH", `/api/inventory/items/${item.id}`, { ...body, reorderLevel: 12, version: item.version }),
+      ctx(item.id),
+    );
+    expect((await saved.json()).reorderLevel).toBe(12);
+    expect(
+      (await createItem(new Request(`${BASE}/api/inventory/items`, { method: "POST", body: "{oops" }))).status,
+    ).toBe(400);
+    expect(
+      (
+        await updateItem(
+          new Request(`${BASE}/api/inventory/items/${item.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(item.id),
+        )
+      ).status,
+    ).toBe(400);
+
+    session.user = { ...manager, role: "staff" };
+    expect((await listItems()).status).toBe(200);
+    expect((await createItem(req("POST", "/api/inventory/items", body))).status).toBe(403);
+    session.user = manager;
+    expect((await deleteItem(req("DELETE", `/api/inventory/items/${item.id}`), ctx(item.id))).status).toBe(204);
   });
 });
