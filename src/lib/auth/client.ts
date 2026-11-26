@@ -1,7 +1,11 @@
-/** Calls the auth API from the browser. Errors come back as { code, message, field? }. */
+/** Calls the app's API from the browser. Errors come back as { status, code, message, field? }. */
 export type AuthError = { status: number; code: string; message: string; field?: string };
 
-export async function authRequest<T>(path: string, method: "POST" | "DELETE", body?: unknown): Promise<T> {
+export async function authRequest<T>(
+  path: string,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -23,3 +27,6 @@ export async function authRequest<T>(path: string, method: "POST" | "DELETE", bo
     } satisfies AuthError;
   return data as T;
 }
+
+/** The same call, for any API. */
+export const apiRequest = authRequest;

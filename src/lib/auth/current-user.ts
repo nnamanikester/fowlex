@@ -32,9 +32,12 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   };
 });
 
-/** The signed-in person, or off to sign in. For pages; API routes answer 401 instead (step 1.8). */
+/**
+ * The signed-in person, or off to sign in, through a route that clears the ended session's cookie
+ * first. For pages; API routes answer 401 instead.
+ */
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/auth/login?reason=expired");
+  if (!user) redirect("/api/auth/session/expired");
   return user;
 }

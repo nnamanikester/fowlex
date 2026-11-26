@@ -196,6 +196,11 @@ export const isActive = (pathname: string, href: string) =>
 export function pageFor(pathname: string): { item?: NavItem; child?: string } {
   const item = [...ALL_ITEMS].sort((a, b) => b.href.length - a.href.length).find((i) => isActive(pathname, i.href));
   const child =
-    item && pathname !== item.href && item.href !== "/" ? (pathname.endsWith("/new") ? "New" : "Details") : undefined;
+    item && pathname !== item.href && item.href !== "/"
+      ? (CHILD_NAMES[pathname] ?? (pathname.endsWith("/new") ? "New" : "Details"))
+      : undefined;
   return { item, child };
 }
+
+/** Deeper pages with names of their own. */
+const CHILD_NAMES: Record<string, string> = { "/settings/users": "Users" };
