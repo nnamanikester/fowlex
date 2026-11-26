@@ -99,6 +99,8 @@ export async function createHealthEvent(
   const event = check(values, batch, today);
   if (event.scheduleKey) {
     const given = await HealthEventModel.findOne({ batchId: batch._id, scheduleKey: event.scheduleKey }).lean();
+    // The same record, sent again while the first copy was being saved.
+    if (given && id && given.clientRequestId === id) return { event: view(given as unknown as Doc), created: false };
     if (given) throw alreadyGiven(String(given._id));
   }
   try {
