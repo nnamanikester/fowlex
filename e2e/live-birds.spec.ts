@@ -29,6 +29,6 @@ test("the live count follows the logs: 1,200 placed, 12 dead, 3 culled, 185 sold
   const main = page.getByRole("main");
   await expect(main.getByText("1,000", { exact: true })).toBeVisible();
   await expect(main.getByText("12 dead, 3 culled, 185 sold")).toBeVisible();
-  await expect(main.getByText("1.3%")).toBeVisible();
+  await expect(main.getByText("1.3%", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
