@@ -1,18 +1,22 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
-import { Hammer } from "lucide-react";
 
-import { EmptyState, Panel } from "@/components/kit";
+import { SettingsForm } from "./_components/settings-form";
+import { PageSkeleton } from "../_components/require-permission";
+import { requireUser } from "@/lib/auth/current-user";
+import { readSettings } from "@/lib/settings/service";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default function SettingsPage() {
   return (
-    <Panel>
-      <EmptyState
-        icon={<Hammer />}
-        title="Not built yet"
-        description="Business details, invoice numbering and approval limits arrive in step 1.11 of the build plan."
-      />
-    </Panel>
+    <Suspense fallback={<PageSkeleton />}>
+      <General />
+    </Suspense>
   );
+}
+
+async function General() {
+  const actor = await requireUser();
+  return <SettingsForm initial={await readSettings(actor.farmId)} />;
 }

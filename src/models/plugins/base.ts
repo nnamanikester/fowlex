@@ -43,9 +43,26 @@ const QUERIES = [
  */
 export function basePlugin(
   schema: Schema,
-  { farm = true, audit = {} }: { farm?: boolean; audit?: AuditOptions | false } = {},
+  {
+    farm = true,
+    uniquePerFarm = false,
+    audit = {},
+  }: {
+    farm?: boolean;
+    /** One document per farm (Settings): the farmId index is unique. */
+    uniquePerFarm?: boolean;
+    audit?: AuditOptions | false;
+  } = {},
 ) {
-  if (farm) schema.add({ farmId: { type: Schema.Types.ObjectId, ref: "Farm", required: true, index: true } });
+  if (farm)
+    schema.add({
+      farmId: {
+        type: Schema.Types.ObjectId,
+        ref: "Farm",
+        required: true,
+        index: uniquePerFarm ? { unique: true } : true,
+      },
+    });
   schema.add({
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
     deletedAt: { type: Date, default: null, index: true },

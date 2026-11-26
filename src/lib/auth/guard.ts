@@ -12,6 +12,8 @@ export class HttpError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** The form field the problem is about, so the form can show it there. */
+    readonly field?: string,
   ) {
     super(message);
   }
@@ -52,7 +54,10 @@ export function apiRoute<Args extends unknown[]>(handler: (...args: Args) => Pro
         return await handler(...args);
       } catch (error) {
         if (error instanceof HttpError)
-          return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+          return NextResponse.json(
+            { error: { code: error.code, message: error.message, field: error.field } },
+            { status: error.status },
+          );
         throw error;
       }
     });

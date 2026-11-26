@@ -18,6 +18,12 @@ type Action = "create" | "update" | "delete" | "restore";
 const ALWAYS_EXCLUDED = ["_id", "__v", "createdAt", "updatedAt", "farmId", "createdBy"];
 export const REDACTED = "•••";
 
+/**
+ * Query option for counters the system moves on its own (the invoice number taken for each
+ * invoice): `{ skipAudit: true }`. The same field changed by a person is still logged.
+ */
+export const SKIP_AUDIT = { skipAudit: true } as const;
+
 /** Values as the log stores them: ids and dates as strings, everything else as JSON allows. */
 const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value ?? null));
 
@@ -112,6 +118,7 @@ export function auditPlugin(schema: Schema, options: AuditOptions = {}) {
 
   for (const op of ["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "findOneAndReplace"] as const) {
     schema.pre(op, async function (this: Q) {
+      if (this.getOptions().skipAudit) return;
       const filter = this.getFilter();
       const found = op === "updateMany" ? this.model.find(filter) : this.model.find(filter).limit(1);
       before.set(this, (await found.setOptions({ withDeleted: true }).session(session(this)).lean()) as Plain[]);
