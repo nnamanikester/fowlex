@@ -3,26 +3,28 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Hammer, MoreHorizontal, Pencil, ShoppingCart, Sprout, Trash2 } from "lucide-react";
+import { ArrowLeft, ClipboardPen, Hammer, MoreHorizontal, Pencil, ShoppingCart, Sprout, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
 import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
-import { formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
+import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
 import type { BatchView } from "@/lib/batches/service";
 import { formatRange } from "@/lib/dates";
 import type { HouseView } from "@/lib/houses/service";
+import { bags } from "@/lib/logs/rules";
+import type { LogView } from "@/lib/logs/service";
 import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   ["overview", "Overview", null],
-  ["logs", "Daily logs", "2.3"],
+  ["logs", "Daily logs", null],
   ["health", "Health", "2.5"],
   ["costs", "Costs", "8.1"],
   ["sales", "Sales", "6.3"],
@@ -36,13 +38,17 @@ const day = (d: string) => formatRange({ from: d, to: d });
 export function BatchDetail({
   batch: b,
   houses,
+  logs,
   today,
   tab,
   canWrite,
+  canLog,
   canManageHouses,
 }: {
   batch: BatchView;
   houses: HouseView[];
+  logs: LogView[];
+  canLog: boolean;
   today: string;
   tab: Tab;
   canWrite: boolean;
@@ -189,6 +195,8 @@ export function BatchDetail({
             </Panel>
           </div>
         </>
+      ) : tab === "logs" ? (
+        <DailyLogs logs={logs} batch={b} canLog={canLog && open} />
       ) : (
         <Panel>
           <EmptyState
@@ -243,5 +251,66 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-xs text-fg-subtle">{label}</dt>
       <dd className="num truncate font-medium text-fg">{value}</dd>
     </div>
+  );
+}
+
+/** The batch's days, newest first: a card per day on phones. */
+function DailyLogs({ logs, batch, canLog }: { logs: LogView[]; batch: BatchView; canLog: boolean }) {
+  const action = canLog ? (
+    <LinkButton href={`/log?batch=${batch.id}`} size="sm">
+      <ClipboardPen /> Log a day
+    </LinkButton>
+  ) : undefined;
+  if (!logs.length)
+    return (
+      <Panel>
+        <EmptyState
+          icon={<ClipboardPen />}
+          title="No days logged yet"
+          description="Each day's deaths, culls, feed and water, logged from a phone in the house."
+          action={action}
+        />
+      </Panel>
+    );
+  return (
+    <Panel title={`${logs.length} day${logs.length === 1 ? "" : "s"} logged`} actions={action} flush>
+      <ul className="divide-y divide-line">
+        {logs.map((l) => (
+          <li key={l.id} className="grid gap-1 px-5 py-3.5 sm:grid-cols-[8rem_1fr] sm:gap-4">
+            <span className="font-semibold text-fg">
+              {day(l.date)}
+              <span className="block text-xs font-normal text-fg-subtle">Day {Math.max(0, ageOn(batch, l.date))}</span>
+            </span>
+            <span className="num flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+              <span>
+                <strong className="text-fg">{l.deaths}</strong> dead
+              </span>
+              <span>
+                <strong className="text-fg">{l.culls}</strong> culled
+              </span>
+              {l.sold > 0 && (
+                <span>
+                  <strong className="text-fg">{n(l.sold)}</strong> taken for sale
+                </span>
+              )}
+              <span>
+                <strong className="text-fg">{l.feedKg}</strong> kg {l.feedType.toLowerCase()} ({bags(l.feedKg)})
+              </span>
+              {l.waterLitres !== null && (
+                <span>
+                  <strong className="text-fg">{n(l.waterLitres)}</strong> L water
+                </span>
+              )}
+              {l.avgWeightGrams !== null && (
+                <span>
+                  <strong className="text-fg">{(l.avgWeightGrams / 1000).toFixed(2)}</strong> kg average
+                </span>
+              )}
+              {l.notes && <span className="basis-full text-fg-subtle">{l.notes}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }

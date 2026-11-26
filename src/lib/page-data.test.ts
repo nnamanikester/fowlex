@@ -25,7 +25,7 @@ async function owner(): Promise<CurrentUser> {
 describe.each(["production", "development"])("page data in %s", (env) => {
   it("loads settings, the team and the audit log", async () => {
     vi.stubEnv("NODE_ENV", env);
-    const { loadAudit, loadBatch, loadBatches, loadBatchSummaries, loadHouses, loadSettings, loadTeam } =
+    const { loadAudit, loadBatch, loadBatches, loadBatchSummaries, loadHouses, loadLogs, loadSettings, loadTeam } =
       await import("./page-data");
     const actor = await owner();
     await AuditLogModel.create({ farmId: actor.farmId, action: "create", model: "User", docId: actor.id });
@@ -37,7 +37,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadBatches(actor.farmId)).toEqual([]);
     expect(await loadBatchSummaries(actor.farmId)).toEqual([]);
     expect(await loadBatch(actor.farmId, actor.id)).toBeNull();
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 7 : 0);
+    expect(await loadLogs(actor.farmId, actor.id)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 8 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });

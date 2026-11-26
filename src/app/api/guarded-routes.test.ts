@@ -4,6 +4,8 @@ import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/rout
 import { POST as batchStatus } from "./batches/[id]/status/route";
 import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
+import { DELETE as deleteLog, PATCH as updateLog } from "./logs/[id]/route";
+import { GET as listLogs, POST as createLog } from "./logs/route";
 import { DELETE as deleteHouse, PATCH as updateHouse } from "./houses/[id]/route";
 import { POST as createHouse } from "./houses/route";
 import { GET as summary } from "./reports/summary/route";
@@ -215,5 +217,56 @@ describe("batch routes", () => {
 
     await signInAs("staff");
     expect((await createBatch(req("POST", "/api/batches", body))).status).toBe(403);
+  });
+});
+
+describe("log routes", () => {
+  it("record a day (201, resent 200, same day 409), list, edit and delete; customers can't", async () => {
+    const owner = await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: "2026-11-01",
+          breed: "Arbor Acres",
+          delivered: 1000,
+          pricePerChickKobo: 85_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const body = { batchId: batch.id, date: today, deaths: 3, feedKg: 90, requestId: "route-log-0001" };
+
+    const created = await createLog(req("POST", "/api/logs", body));
+    expect(created.status).toBe(201);
+    const log = await created.json();
+    expect((await createLog(req("POST", "/api/logs", body))).status).toBe(200);
+    const again = await createLog(req("POST", "/api/logs", { ...body, requestId: undefined }));
+    expect(again.status).toBe(409);
+    expect((await again.json()).error).toMatchObject({ code: "already_logged", details: { id: log.id } });
+
+    const listed = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${today}`));
+    expect((await listed.json()).map((l: { id: string }) => l.id)).toEqual([log.id]);
+    expect(await (await listLogs(req("GET", `/api/logs?batchId=${batch.id}`))).json()).toHaveLength(1);
+
+    const saved = await updateLog(
+      req("PATCH", `/api/logs/${log.id}`, { ...body, deaths: 4, version: log.version }),
+      ctx(log.id),
+    );
+    expect((await saved.json()).deaths).toBe(4);
+    expect(
+      (await updateLog(new Request(`${BASE}/api/logs/${log.id}`, { method: "PATCH", body: "{oops" }), ctx(log.id)))
+        .status,
+    ).toBe(409); // No version, so refused as stale before anything else.
+    expect((await createLog(new Request(`${BASE}/api/logs`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    expect((await deleteLog(req("DELETE", `/api/logs/${log.id}`), ctx(log.id))).status).toBe(204);
+    void owner;
+
+    await signInAs("customer");
+    expect((await createLog(req("POST", "/api/logs", body))).status).toBe(403);
   });
 });

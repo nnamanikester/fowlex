@@ -6,6 +6,7 @@ import { listAudit } from "@/lib/audit/service";
 import { batchSummaries, getBatch, listBatches } from "@/lib/batches/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { listHouses } from "@/lib/houses/service";
+import { listLogs } from "@/lib/logs/service";
 import { readSettings } from "@/lib/settings/service";
 import { listTeam } from "@/lib/users/service";
 
@@ -62,6 +63,13 @@ async function summariesCached(farmId: string) {
 export const loadBatches = PRODUCTION ? batchesCached : (farmId: string) => listBatches(farmId);
 export const loadBatch = PRODUCTION ? batchCached : (farmId: string, id: string) => getBatch(farmId, id);
 export const loadBatchSummaries = PRODUCTION ? summariesCached : (farmId: string) => batchSummaries(farmId);
+async function logsCached(farmId: string, batchId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listLogs(farmId, batchId);
+}
+
+export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;
 export const loadSettings: typeof readSettings = PRODUCTION ? settingsCached : readSettings;
 export const loadTeam: typeof listTeam = PRODUCTION ? teamCached : listTeam;

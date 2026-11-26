@@ -1,6 +1,7 @@
 import { AuditLogModel } from "./audit-log";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
+import { DailyLogModel } from "./daily-log";
 import { FarmModel } from "./farm";
 import { HouseModel } from "./house";
 import { InviteModel } from "./invite";
@@ -13,6 +14,7 @@ export const ALL_MODELS = [
   AuditLogModel,
   BatchModel,
   CounterModel,
+  DailyLogModel,
   FarmModel,
   HouseModel,
   InviteModel,
