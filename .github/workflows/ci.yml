@@ -40,8 +40,12 @@ jobs:
           key: mongodb-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
       - run: yarn lint
       - run: yarn typecheck
-      - name: Unit tests
-        run: yarn test
+      # Fails if coverage drops below the thresholds in vitest.config.mts.
+      - name: Unit tests with coverage
+        run: yarn test --coverage
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: node scripts/coverage-summary.mjs >> "$GITHUB_STEP_SUMMARY"
       - run: yarn build
 
   e2e:
