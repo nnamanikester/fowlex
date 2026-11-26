@@ -149,8 +149,43 @@ number with its change and a `Sparkline`; `invert` when down is good, like feed 
   money), customers nothing (they use the portal).
 - Until sign-in (1.7) and batches (2.2) exist, the layout uses `lib/workspace-preview.ts`.
 
-**Next:** `DataTable`, `MoneyInput`, `DateRangePicker`, `FileDrop` and the chart wrappers in 1.5;
-`Field` and the sign-in pieces in 1.7.
+**Data and money** (step 1.5):
+
+- `formatNaira(kobo)` (`lib/money.ts`) is the only way money reaches the screen: `₦1,234.56`, or
+  `{ compact: true }` for axes (`₦1.3M`). `nairaToKobo` parses what people type, and gives whole kobo
+  or null, never a rounded guess.
+- `MoneyInput` (ui): naira in, kobo out. Keys that would make it invalid are ignored; commas and two
+  decimals fill in on blur.
+- `DateRangePicker` (kit): preset rows (today, last 7 or 30 days, this or last month, this year)
+  and a custom range. Dates are Lagos calendar days (`lib/dates.ts`). It reads today through
+  `useToday()`, which is null while prerendering, so it's safe on any page.
+- `FileDrop` (ui): receipts and contracts. Drop or tap (a phone offers the camera); type and size
+  are checked; previews with remove. Uploading is the form's job.
+- `DataTable` (`components/tables`): sortable headers, search over the CSV columns, a toolbar slot
+  for filters, pages, an empty state, Export CSV (`lib/csv.ts`: byte-order mark for Excel, formulas
+  neutralised, money as naira numbers) and row clicks. Put a link in the first cell so rows work
+  from the keyboard too. `hideBelow` drops less important columns on phones.
+
+**Charts** (`components/charts`, Recharts): `TrendChart` (one to six lines over time; a single series
+gets a wash), `ForecastChart` (actual, a dashed forecast in the same colour, the 80% range as a band,
+and a "Today" rule) and `BreakdownBar` (part of a whole as one stacked bar with a legend of values
+and shares; past six parts the smallest fold into a gray "Other"). The plan said donut; a stacked
+bar is easier to read.
+
+- **Series colours** run blue, orange, violet, magenta, yellow, aqua (`chart-kit.tsx`): the
+  reference data-viz palette re-ordered so green and red, which mean profit and loss here, are never
+  a series. Validated in both modes against the card surfaces (adjacent CVD ΔE ≥ 8.4, normal-vision
+  ΔE ≥ 19.3). Assign in order, never cycled, and pass categories in a fixed order so each keeps its
+  colour.
+- **Marks:** 2px lines, 8px hover dots with a surface ring, solid 1px gridlines, one y-axis (never
+  two scales on one chart).
+- **Reading without colour or hover:** a legend for two or more series, names at line ends when four
+  or fewer don't collide, a crosshair tooltip listing every series (value first), and **View as
+  table** under every chart. Slots 4–6 are under 3:1 on white, which is why the table is not optional.
+- Charts draw after hydration (theme colours are known only in the browser) behind a same-height
+  placeholder.
+
+**Next:** `Field` and the sign-in pieces in 1.7.
 
 Build pages from these first; add to the kit when a pattern repeats, and show it on `/design`.
 

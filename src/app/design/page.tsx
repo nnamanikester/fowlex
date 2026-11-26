@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
+import { DataShowcase } from "./_components/data-showcase";
 import { Section, Showcase } from "./_components/showcase";
 import { PageHeader, ThemeToggle } from "@/components/kit";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,8 @@ const SECTIONS = [
   ["forms", "Forms"],
   ["data", "Data"],
   ["overlays", "Overlays and feedback"],
+  ["tables", "Tables and inputs"],
+  ["charts", "Charts"],
 ] as const;
 
 /**
@@ -73,6 +76,7 @@ export default function DesignPage() {
           <div className="space-y-12">
             <Tokens />
             <Showcase />
+            <DataShowcase />
           </div>
         </main>
       </div>

@@ -11,7 +11,7 @@ export function IdText({ value, full = false, className }: { value: string; full
   const shown = full || value.length <= 18 ? value : `${value.slice(0, 10)}…${value.slice(-6)}`;
   return (
     <span className={cn("group inline-flex items-center gap-0.5", className)}>
-      <code className="text-xs text-fg-muted" title={value}>
+      <code className="whitespace-nowrap text-xs text-fg-muted" title={value}>
         {shown}
       </code>
       <CopyButton
