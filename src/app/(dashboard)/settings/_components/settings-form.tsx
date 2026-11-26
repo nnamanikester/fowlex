@@ -31,6 +31,8 @@ const ORDER = [
   "accountName",
   "expenseApprovalLimitKobo",
   "defaultPricePerKgKobo",
+  "stockingDensity",
+  "houseRestDays",
 ] as const;
 
 /** The farm's settings, in the sections they matter in. One Save for all of them. */
@@ -62,7 +64,7 @@ export function SettingsForm({ initial }: { initial: Values }) {
       ? form.errors[name]
       : undefined;
   const text = (name: keyof SettingsInput) => form.getFieldProps(name);
-  const number = (name: "nextInvoiceNumber" | "paymentTermsDays") => ({
+  const number = (name: "nextInvoiceNumber" | "paymentTermsDays" | "houseRestDays") => ({
     name,
     value: Number.isFinite(form.values[name]) ? String(form.values[name]) : "",
     onBlur: form.handleBlur,
@@ -207,6 +209,42 @@ export function SettingsForm({ initial }: { initial: Values }) {
                 placeholder="0.00"
               />
             )}
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel title="Houses and biosecurity" description="Used when adding houses and placing batches.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field
+            id="stockingDensity"
+            label="Stocking density (birds per m²)"
+            error={error("stockingDensity")}
+            hint="House capacity is suggested from floor area at this density. 10–12 suits open-sided houses; less in the hot season."
+          >
+            {(a11y) => (
+              <Input
+                {...a11y}
+                name="stockingDensity"
+                inputMode="decimal"
+                className="num"
+                value={Number.isFinite(form.values.stockingDensity) ? String(form.values.stockingDensity) : ""}
+                onBlur={form.handleBlur}
+                onChange={(e) =>
+                  void form.setFieldValue(
+                    "stockingDensity",
+                    e.target.value === "" ? Number.NaN : Number(e.target.value),
+                  )
+                }
+              />
+            )}
+          </Field>
+          <Field
+            id="houseRestDays"
+            label="Rest between batches (days)"
+            error={error("houseRestDays")}
+            hint="Cleaning, disinfection and downtime after a batch leaves. Placing sooner asks you to confirm. At least 7 is advised."
+          >
+            {(a11y) => <Input {...a11y} {...number("houseRestDays")} inputMode="numeric" className="num" />}
           </Field>
         </div>
       </Panel>

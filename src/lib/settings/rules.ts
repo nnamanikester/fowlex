@@ -24,6 +24,8 @@ export type SettingsInput = {
   accountName: string;
   expenseApprovalLimitKobo: number;
   defaultPricePerKgKobo: number | null;
+  stockingDensity: number;
+  houseRestDays: number;
 };
 
 const int = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v);
@@ -68,5 +70,16 @@ export function validateSettings(input: Partial<Record<keyof SettingsInput, unkn
     (!int(input.defaultPricePerKgKobo) || (input.defaultPricePerKgKobo as number) < 0)
   )
     errors.defaultPricePerKgKobo = "Enter an amount, or leave it empty.";
+  const density = input.stockingDensity as number;
+  if (
+    typeof density !== "number" ||
+    !Number.isFinite(density) ||
+    density < 1 ||
+    density > 40 ||
+    Math.round(density * 10) !== density * 10
+  )
+    errors.stockingDensity = "Use 1 to 40 birds per m², to one decimal place.";
+  if (!int(input.houseRestDays) || (input.houseRestDays as number) < 0 || (input.houseRestDays as number) > 120)
+    errors.houseRestDays = "Use 0 to 120 days.";
   return errors;
 }

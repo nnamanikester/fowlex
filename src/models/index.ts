@@ -1,12 +1,21 @@
 import { AuditLogModel } from "./audit-log";
 import { FarmModel } from "./farm";
+import { HouseModel } from "./house";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
 import { SettingsModel } from "./settings";
 import { UserModel } from "./user";
 
 /** Every model. A new model joins this list so its indexes are built at deploy time. */
-export const ALL_MODELS = [AuditLogModel, FarmModel, InviteModel, PasswordResetModel, SettingsModel, UserModel];
+export const ALL_MODELS = [
+  AuditLogModel,
+  FarmModel,
+  HouseModel,
+  InviteModel,
+  PasswordResetModel,
+  SettingsModel,
+  UserModel,
+];
 
 /**
  * Makes every model's collection and indexes (unique emails, one settings per farm, expiring reset

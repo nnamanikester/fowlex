@@ -25,6 +25,8 @@ const FIELDS = [
   "accountName",
   "expenseApprovalLimitKobo",
   "defaultPricePerKgKobo",
+  "stockingDensity",
+  "houseRestDays",
 ] as const satisfies readonly (keyof SettingsInput)[];
 
 /** The farm's settings, created with the defaults the first time. */

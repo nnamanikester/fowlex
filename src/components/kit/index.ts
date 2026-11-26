@@ -2,6 +2,7 @@ export * from "./confirm-dialog";
 export * from "./date-range-picker";
 export * from "./copy-button";
 export * from "./empty-state";
+export * from "./fab";
 export * from "./filter-menu";
 export * from "./id-text";
 export * from "./kbd";

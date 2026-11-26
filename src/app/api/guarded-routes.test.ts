@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as outbox } from "./dev/outbox/route";
+import { DELETE as deleteHouse, PATCH as updateHouse } from "./houses/[id]/route";
+import { POST as createHouse } from "./houses/route";
 import { GET as summary } from "./reports/summary/route";
 import { PATCH as saveSettings } from "./settings/route";
 import { PATCH as updateMember } from "./users/[id]/route";
@@ -129,5 +131,37 @@ describe("bodies that aren't JSON", () => {
     expect((await (await saveSettings(raw("PATCH", "/api/settings"))).json()).error.code).toBe("invalid_settings");
     const member = await updateMember(raw("PATCH", `/api/users/${owner.id}`), ctx(owner.id));
     expect(member.status).toBe(204); // No change asked for: nothing changes but the session version.
+  });
+});
+
+describe("house routes", () => {
+  it("are for owners, and add, edit (refusing stale forms) and delete houses", async () => {
+    await signInAs("manager");
+    expect((await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 500 }))).status).toBe(403);
+
+    await signInAs("owner");
+    const created = await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 500 }));
+    expect(created.status).toBe(201);
+    const house = await created.json();
+
+    const saved = await updateHouse(
+      req("PATCH", `/api/houses/${house.id}`, { ...house, capacity: 800 }),
+      ctx(house.id),
+    );
+    expect(await saved.json()).toMatchObject({ capacity: 800, version: 1 });
+    const stale = await updateHouse(
+      req("PATCH", `/api/houses/${house.id}`, { ...house, capacity: 900 }),
+      ctx(house.id),
+    );
+    expect(stale.status).toBe(409);
+
+    const dup = await createHouse(req("POST", "/api/houses", { name: "house 1", capacity: 5 }));
+    expect((await dup.json()).error).toMatchObject({ code: "duplicate_name", field: "name" });
+
+    expect((await deleteHouse(req("DELETE", `/api/houses/${house.id}`), ctx(house.id))).status).toBe(204);
+    const raw = new Request(`${BASE}/api/houses`, { method: "POST", body: "{oops" });
+    expect((await (await createHouse(raw)).json()).error.field).toBe("name");
+    const rawPatch = new Request(`${BASE}/api/houses/${house.id}`, { method: "PATCH", body: "{oops" });
+    expect((await updateHouse(rawPatch, ctx(house.id))).status).toBe(400);
   });
 });
