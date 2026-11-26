@@ -9,12 +9,14 @@ import { toast } from "sonner";
 import { HealthTab } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
+import { TrendChart } from "@/components/charts/trend-chart";
 import { HealthAlerts } from "@/components/health-alerts";
 import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { batchKpis, growthRows, vsStandard } from "@/lib/batches/kpis";
 import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
 import type { BatchView } from "@/lib/batches/service";
 import { formatRange } from "@/lib/dates";
@@ -182,6 +184,8 @@ export function BatchDetail({
             />
           </div>
 
+          {b.phase !== "planned" && <Performance batch={b} logs={logs} today={today} />}
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Placement">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -335,5 +339,58 @@ function DailyLogs({ logs, batch, canLog }: { logs: LogView[]; batch: BatchView;
         ))}
       </ul>
     </Panel>
+  );
+}
+
+/** How the flock is doing: the standard broiler numbers, and growth against the breed standard. */
+function Performance({ batch, logs, today }: { batch: BatchView; logs: LogView[]; today: string }) {
+  const k = batchKpis(batch, logs);
+  const gap = vsStandard(k.weighed);
+  const rows = growthRows(batch, logs, today);
+  const fmt = (v: number | null, suffix = "") => (v === null ? "–" : `${v.toLocaleString("en-NG")}${suffix}`);
+  const needsWeight = k.weighed ? `At day ${k.weighed.age}` : "Weigh birds to see this";
+  const needsFeed = k.feedGaps ? `Feed missing for ${k.feedGaps} day${k.feedGaps === 1 ? "" : "s"}` : needsWeight;
+  return (
+    <Panel
+      title="Performance"
+      description={
+        k.weighed
+          ? `Weights from ${day(k.weighed.date)} (day ${k.weighed.age}), ${(k.weighed.grams / 1000).toFixed(2)} kg average${
+              gap === null ? "" : `, ${gap >= 0 ? `${gap}% above` : `${Math.abs(gap)}% below`} the Ross 308 standard`
+            }.`
+          : "Log an average weight to see FCR, daily gain and EPEF."
+      }
+    >
+      <div className="space-y-5">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
+          <Kpi label="Livability" value={fmt(k.livability, "%")} hint={`Mortality ${fmt(k.mortality, "%")}`} />
+          <Kpi label="Feed per bird" value={fmt(k.feedPerBirdKg, " kg")} hint={`${fmt(k.feedKg)} kg in all`} />
+          <Kpi label="FCR" value={fmt(k.fcr)} hint={k.fcr === null ? needsFeed : "kg feed per kg gained"} />
+          <Kpi label="Daily gain" value={fmt(k.adg, " g")} hint={needsWeight} />
+          <Kpi label="EPEF" value={fmt(k.epef)} hint={k.epef === null ? needsFeed : "Above 400 is very good"} />
+          <Kpi label="Days logged" value={fmt(batch.totals.days)} hint={`Day ${batch.ageDays} of age`} />
+        </dl>
+        <TrendChart
+          title={`Average weight (kg) of this ${batch.breed} batch against the Ross 308 standard`}
+          unit="count"
+          height={220}
+          data={rows}
+          series={[
+            { key: "standard", label: "Standard" },
+            { key: "actual", label: "Actual", dots: true },
+          ]}
+        />
+      </div>
+    </Panel>
+  );
+}
+
+function Kpi({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold text-fg-muted">{label}</dt>
+      <dd className="num text-xl font-semibold text-fg">{value}</dd>
+      <dd className="text-xs text-fg-subtle">{hint}</dd>
+    </div>
   );
 }
