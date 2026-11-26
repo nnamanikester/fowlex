@@ -1,46 +1,112 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 
-import { ThemeToggle } from "@/components/kit/theme-toggle";
+import { Section, Showcase } from "./_components/showcase";
+import { PageHeader, ThemeToggle } from "@/components/kit";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Design system" };
 
-/** Every token in the current theme. Components join this page as they are added (step 1.3). */
+const SECTIONS = [
+  ["brand", "Brand"],
+  ["colour", "Colour"],
+  ["type", "Type"],
+  ["shape", "Shadows and radius"],
+  ["buttons", "Buttons"],
+  ["status", "Status"],
+  ["forms", "Forms"],
+  ["data", "Data"],
+  ["overlays", "Overlays and feedback"],
+] as const;
+
+/**
+ * The design system, live: every token and component in the current theme. The reference for
+ * building pages (with DESIGN.md), and what a reviewer opens on a Vercel preview.
+ */
 export default function DesignPage() {
   return (
-    <div className="mx-auto grid max-w-5xl gap-12 px-4 py-10 sm:px-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="grid gap-1">
-          <p className="font-mono text-xs uppercase tracking-widest text-comb-fg">Fowlex</p>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-fg-heading">Design system</h1>
-          <p className="max-w-prose text-[15px] leading-6 text-fg-muted">
-            Tokens live in <code>globals.css</code>, rules in <code>DESIGN.md</code>. Switch the theme to check both.
-          </p>
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/80 backdrop-blur">
+        <div className="mx-auto flex h-header max-w-6xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" prefetch={false} className="focus-ring rounded-lg">
+            <Image
+              src="/brand/fowlex-logo-horizontal-color.svg"
+              alt="Fowlex"
+              width={113}
+              height={40}
+              loading="eager"
+              className="dark:hidden"
+            />
+            <Image
+              src="/brand/fowlex-logo-horizontal-reverse.svg"
+              alt="Fowlex"
+              width={113}
+              height={40}
+              loading="eager"
+              className="hidden dark:block"
+            />
+          </Link>
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
       </header>
+      <div className="mx-auto flex max-w-6xl gap-12 px-4 py-10 sm:px-6">
+        <nav aria-label="Sections" className="sticky top-24 hidden h-fit w-44 shrink-0 lg:block">
+          <ul className="space-y-0.5 text-sm">
+            {SECTIONS.map(([id, label]) => (
+              <li key={id}>
+                <a
+                  href={`#${id}`}
+                  className="focus-ring block rounded-lg px-3 py-2 font-medium text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+                >
+                  {label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <main className="min-w-0 flex-1">
+          <PageHeader
+            title="Design system"
+            description="Every part the Fowlex dashboard is built from. Tokens live in globals.css, rules in DESIGN.md. Switch the theme to check both."
+          />
+          <div className="space-y-12">
+            <Tokens />
+            <Showcase />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
 
-      <Section title="Brand">
+function Tokens() {
+  return (
+    <>
+      <Section id="brand" title="Brand">
         <div className="flex flex-wrap items-center gap-6">
           <Image
             src="/brand/fowlex-logo-horizontal-color.svg"
-            alt="Fowlex"
+            alt="Fowlex logo"
             width={240}
             height={85}
-            loading="eager"
             className="dark:hidden"
           />
           <Image
             src="/brand/fowlex-logo-horizontal-reverse.svg"
-            alt=""
+            alt="Fowlex logo"
             width={240}
             height={85}
-            loading="eager"
             className="hidden dark:block"
           />
           <Image src="/brand/fowlex-icon-color.svg" alt="Fowlex icon" width={72} height={72} className="dark:hidden" />
-          <Image src="/brand/fowlex-icon-reverse.svg" alt="" width={72} height={72} className="hidden dark:block" />
+          <Image
+            src="/brand/fowlex-icon-reverse.svg"
+            alt="Fowlex icon"
+            width={72}
+            height={72}
+            className="hidden dark:block"
+          />
         </div>
         <Swatches
           items={[
@@ -54,77 +120,7 @@ export default function DesignPage() {
           <p className="font-display text-2xl font-bold text-white">The auth brand panel</p>
           <p className="text-sm text-white/75">from-charcoal via-charcoal-mid to-comb</p>
         </div>
-      </Section>
-
-      <Section title="Surfaces and lines">
-        <Swatches
-          items={[
-            ["canvas", "bg-canvas", "The page"],
-            ["surface", "bg-surface", "Cards, inputs"],
-            ["surface-raised", "bg-surface-raised", "Menus, dialogs"],
-            ["surface-subtle", "bg-surface-subtle", "Hover, table header"],
-            ["surface-muted", "bg-surface-muted", "Selected, skeletons"],
-            ["line", "bg-line", "Dividers"],
-            ["line-strong", "bg-line-strong", "Input borders"],
-          ]}
-        />
-      </Section>
-
-      <Section title="Text">
-        <div className="grid gap-2 rounded-xl border bg-surface p-5 shadow-card">
-          <p className="font-display text-xl font-bold text-fg-heading">fg-heading: Batch B-2026-07</p>
-          <p className="text-fg">fg: 1,000 birds placed on 3 Nov, 785 alive today.</p>
-          <p className="text-fg-muted">fg-muted: Starter feed, 25 kg bags</p>
-          <p className="text-xs text-fg-subtle">fg-subtle: Logged by Musa · 2 hours ago</p>
-          <p>
-            <a href="#" className="focus-ring rounded font-semibold text-brand-fg underline-offset-4 hover:underline">
-              brand-fg: View invoice
-            </a>
-          </p>
-        </div>
-      </Section>
-
-      <Section title="Actions">
-        <div className="flex flex-wrap items-center gap-3">
-          <button className="focus-ring min-h-11 rounded-xl bg-brand-solid px-5 font-semibold text-brand-ink shadow-button transition-colors hover:bg-brand-solid-hover">
-            Record expense
-          </button>
-          <button className="focus-ring min-h-11 rounded-xl border border-line-strong bg-surface px-5 font-semibold text-fg shadow-button hover:bg-surface-subtle">
-            Export CSV
-          </button>
-          <button className="focus-ring min-h-11 rounded-xl bg-danger px-5 font-semibold text-white shadow-button">
-            Delete batch
-          </button>
-          <span className="inline-flex size-11 items-center justify-center rounded-xl bg-brand-subtle text-brand">
-            ●
-          </span>
-        </div>
-        <p className="text-xs text-fg-subtle">
-          Final buttons come with the component library in step 1.3. These show the colours only.
-        </p>
-      </Section>
-
-      <Section title="Status">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(
-            [
-              ["success", "Profit", "bg-success", "bg-success-subtle text-success-fg border-success-line"],
-              ["warning", "Low stock", "bg-warning", "bg-warning-subtle text-warning-fg border-warning-line"],
-              ["danger", "Overdue", "bg-danger", "bg-danger-subtle text-danger-fg border-danger-line"],
-              ["info", "Vaccination due", "bg-info", "bg-info-subtle text-info-fg border-info-line"],
-            ] as const
-          ).map(([name, label, solid, tint]) => (
-            <div key={name} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3", tint)}>
-              <span className={cn("size-2.5 rounded-full", solid)} />
-              <span className="font-semibold">{label}</span>
-              <span className="ml-auto font-mono text-xs opacity-80">{name}</span>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Sidebar">
-        <nav className="grid max-w-xs gap-1 rounded-xl bg-nav p-3 text-sm">
+        <nav aria-label="Sidebar sample" className="grid max-w-xs gap-1 rounded-xl bg-nav p-3 text-sm">
           <p className="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-nav-subtle">Farm</p>
           <span className="relative rounded-lg bg-white/[0.07] px-3 py-2 font-semibold text-nav-accent">
             <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-comb" />
@@ -136,7 +132,42 @@ export default function DesignPage() {
         </nav>
       </Section>
 
-      <Section title="Type">
+      <Section id="colour" title="Colour">
+        <Swatches
+          items={[
+            ["canvas", "bg-canvas", "The page"],
+            ["surface", "bg-surface", "Cards, inputs"],
+            ["surface-raised", "bg-surface-raised", "Menus, dialogs"],
+            ["surface-subtle", "bg-surface-subtle", "Hover, table header"],
+            ["surface-muted", "bg-surface-muted", "Selected, skeletons"],
+            ["line", "bg-line", "Dividers"],
+            ["line-strong", "bg-line-strong", "Input borders"],
+            ["brand", "bg-brand", "Focus, icons, selected"],
+            ["brand-solid", "bg-brand-solid", "Primary buttons"],
+            ["brand-subtle", "bg-brand-subtle", "Icon tiles, tints"],
+            ["success", "bg-success", "Profit, paid"],
+            ["warning", "bg-warning", "Low stock, test mode"],
+            ["danger", "bg-danger", "Loss, overdue, delete"],
+            ["info", "bg-info", "Scheduled: vaccinations"],
+          ]}
+        />
+        <div className="grid gap-2 rounded-xl border bg-surface p-5 shadow-card">
+          <p className="font-display text-xl font-bold text-fg-heading">fg-heading: Batch B-2026-07</p>
+          <p className="text-fg">fg: 1,000 birds placed on 3 Nov, 785 alive today.</p>
+          <p className="text-fg-muted">fg-muted: Starter feed, 25 kg bags</p>
+          <p className="text-xs text-fg-subtle">fg-subtle: Logged by Musa · 2 hours ago</p>
+          <p>
+            <a
+              href="#colour"
+              className="focus-ring rounded font-semibold text-brand-fg underline-offset-4 hover:underline"
+            >
+              brand-fg: View invoice
+            </a>
+          </p>
+        </div>
+      </Section>
+
+      <Section id="type" title="Type">
         <div className="grid gap-3 rounded-xl border bg-surface p-5 shadow-card">
           <p className="font-display text-[2.5rem] font-bold leading-tight tracking-tight text-fg-heading">
             Display, Jost
@@ -149,7 +180,7 @@ export default function DesignPage() {
         </div>
       </Section>
 
-      <Section title="Shadows and radius">
+      <Section id="shape" title="Shadows and radius">
         <div className="flex flex-wrap gap-4">
           {(
             [
@@ -164,18 +195,7 @@ export default function DesignPage() {
           ))}
         </div>
       </Section>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="grid gap-4" aria-labelledby={`s-${title}`}>
-      <h2 id={`s-${title}`} className="text-lg font-bold text-fg-heading">
-        {title}
-      </h2>
-      {children}
-    </section>
+    </>
   );
 }
 
