@@ -29,6 +29,7 @@ export function InvoicesList({
   vatRateBps,
   today,
   canWrite,
+  canPay = false,
   start,
   title = "Invoices",
   description,
@@ -42,6 +43,7 @@ export function InvoicesList({
   vatRateBps: number | null;
   today: string;
   canWrite: boolean;
+  canPay?: boolean;
   /** Open "New invoice" at once, for a customer and orders (from an order's "Make an invoice"). */
   start?: { customerId?: string; orderIds?: string[] };
   title?: string;
@@ -149,7 +151,16 @@ export function InvoicesList({
           }}
         />
       ) : (
-        open && <InvoiceSheet invoice={open} canWrite={canWrite} onClose={() => setOpen(null)} onSaved={done} />
+        open && (
+          <InvoiceSheet
+            invoice={open}
+            canWrite={canWrite}
+            canPay={canPay}
+            today={today}
+            onClose={() => setOpen(null)}
+            onSaved={done}
+          />
+        )
       )}
     </>
   );

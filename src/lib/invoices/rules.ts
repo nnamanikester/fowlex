@@ -31,7 +31,8 @@ export function invoiceStatus(
 ): InvoiceStatus {
   if (i.state === "void") return "void";
   if (i.totalKobo > 0 && i.paidKobo >= i.totalKobo) return "paid";
-  if (i.state === "draft") return "draft";
+  // Money paid on a draft means the customer has it: it's part paid, not just a draft.
+  if (i.state === "draft") return i.paidKobo > 0 ? "part-paid" : "draft";
   if (i.dueDate < today) return "overdue";
   return i.paidKobo > 0 ? "part-paid" : "sent";
 }

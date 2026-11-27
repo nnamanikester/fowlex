@@ -86,6 +86,8 @@ import { GET as getInvoice, PATCH as updateInvoice } from "./invoices/[id]/route
 import { POST as sendInvoice } from "./invoices/[id]/send/route";
 import { POST as voidInvoice } from "./invoices/[id]/void/route";
 import { GET as listInvoices, POST as createInvoice } from "./invoices/route";
+import { GET as listInvoicePayments, POST as recordPayment } from "./invoices/[id]/payments/route";
+import { DELETE as removePayment } from "./payments/[id]/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1310,6 +1312,13 @@ describe("invoice routes", () => {
     expect((await (await sendInvoice(req("POST", "/x"), ctx(inv.id))).json()).state).toBe("sent");
     const pdf = await invoicePdf(req("GET", "/x"), ctx(inv.id));
     expect(pdf.headers.get("Content-Type")).toBe("application/pdf");
+    const paid = await recordPayment(req("POST", "/x", { amountKobo: 100_000, method: "cash" }), ctx(inv.id));
+    expect(paid.status).toBe(201);
+    expect(await (await listInvoicePayments(req("GET", "/x"), ctx(inv.id))).json()).toHaveLength(1);
+    expect((await removePayment(req("DELETE", "/x"), ctx((await paid.json()).id))).status).toBe(204);
+    expect((await recordPayment(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }), ctx(inv.id))).status).toBe(
+      400,
+    );
     expect((await (await voidInvoice(req("POST", "/x", { reason: "Mistake" }), ctx(inv.id))).json()).state).toBe(
       "void",
     );
@@ -1319,8 +1328,12 @@ describe("invoice routes", () => {
     await signInAs("finance");
     expect((await listInvoices(req("GET", "/api/invoices"))).status).toBe(200);
     expect((await createInvoice(req("POST", "/x", {}))).status).toBe(403);
+    // Finance can record payments: refused here only because the invoice is on another farm.
+    expect((await recordPayment(req("POST", "/x", { amountKobo: 1, method: "cash" }), ctx(inv.id))).status).toBe(404);
     await signInAs("staff");
     expect((await listInvoices(req("GET", "/api/invoices"))).status).toBe(403);
     expect((await invoicePdf(req("GET", "/x"), ctx("x"))).status).toBe(403);
+    expect((await recordPayment(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
+    expect((await removePayment(req("DELETE", "/x"), ctx("x"))).status).toBe(403);
   });
 });

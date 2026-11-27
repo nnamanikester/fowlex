@@ -18,6 +18,7 @@ import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
 import { InvoiceModel } from "./invoice";
 import { PasswordResetModel } from "./password-reset";
+import { PaymentModel } from "./payment";
 import { PaystackAccountModel } from "./paystack-account";
 import { PayoutModel } from "./payout";
 import { PayrollRunModel } from "./payroll-run";
@@ -52,6 +53,7 @@ export const ALL_MODELS = [
   InviteModel,
   InvoiceModel,
   PasswordResetModel,
+  PaymentModel,
   PaystackAccountModel,
   PayoutModel,
   PayrollRunModel,

@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Ban, FileDown, Send } from "lucide-react";
+import { Ban, FileDown, HandCoins, Send } from "lucide-react";
+
+import { PaymentSheet, PaymentsList } from "./payments-panel";
 
 import { Field } from "@/components/auth";
 import { ConfirmDialog } from "@/components/kit";
@@ -25,22 +27,25 @@ const day = (d: string) => formatRange({ from: d, to: d });
 export function InvoiceSheet({
   invoice: i,
   canWrite,
+  canPay,
+  today,
   onClose,
   onSaved,
-  children,
 }: {
   invoice: InvoiceView;
   canWrite: boolean;
+  /** Can record the customer's payments. */
+  canPay: boolean;
+  today: string;
   onClose: () => void;
   onSaved: (message: string) => void;
-  /** Extra actions for the invoice (recording a payment, in step 6.5). */
-  children?: React.ReactNode;
 }) {
   const [discount, setDiscount] = React.useState<number | null>(i.discountKobo);
   const [dueDate, setDueDate] = React.useState(i.dueDate);
   const [notes, setNotes] = React.useState(i.notes);
   const [voiding, setVoiding] = React.useState(false);
   const [why, setWhy] = React.useState("");
+  const [paying, setPaying] = React.useState(false);
   const action = useAction();
   const draft = i.state === "draft";
   const changed = draft && (discount !== i.discountKobo || dueDate !== i.dueDate || notes !== i.notes);
@@ -60,7 +65,11 @@ export function InvoiceSheet({
         footer={
           <div className="space-y-2">
             <ActionFeedback action={action} />
-            {children}
+            {canPay && i.state !== "void" && i.balanceKobo > 0 && (
+              <Button size="lg" fullWidth disabled={action.busy} onClick={() => setPaying(true)}>
+                <HandCoins /> Record a payment
+              </Button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <a
                 href={`/api/invoices/${i.id}/pdf`}
@@ -206,9 +215,11 @@ export function InvoiceSheet({
               </Field>
             </fieldset>
           )}
+          <PaymentsList invoice={i} canPay={canPay} onChanged={onSaved} />
           {!draft && i.notes && <p className="text-sm text-fg-muted">{i.notes}</p>}
         </div>
       </Sheet>
+      {paying && <PaymentSheet invoice={i} today={today} onClose={() => setPaying(false)} onSaved={onSaved} />}
       <ConfirmDialog
         open={voiding}
         onOpenChange={setVoiding}
