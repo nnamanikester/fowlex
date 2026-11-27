@@ -66,6 +66,9 @@ import { POST as syncBalanceRoute } from "./balance/sync/route";
 import { POST as testMoney } from "./balance/test-money/route";
 import { PATCH as saveTopUpRoute } from "./balance/top-up/route";
 import { GET as balanceCron } from "./cron/balance/route";
+import { DELETE as deleteCustomer, GET as getCustomer, PATCH as updateCustomer } from "./customers/[id]/route";
+import { POST as customerStatus } from "./customers/[id]/status/route";
+import { GET as listCustomers, POST as createCustomer } from "./customers/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1099,5 +1102,35 @@ describe("Paystack balance routes", () => {
     );
     expect(await cron.json()).toEqual({ synced: 1 });
     vi.unstubAllEnvs();
+  });
+});
+
+describe("customer routes", () => {
+  it("add, read, edit, archive and delete a customer; staff can't, finance only reads", async () => {
+    await signInAs("sales");
+    const created = await createCustomer(req("POST", "/api/customers", { name: "Grill", type: "lounge" }));
+    expect(created.status).toBe(201);
+    const c = await created.json();
+    expect((await (await listCustomers()).json()).map((x: { id: string }) => x.id)).toEqual([c.id]);
+    expect((await (await getCustomer(req("GET", "/x"), ctx(c.id))).json()).name).toBe("Grill");
+    expect((await getCustomer(req("GET", "/x"), ctx("nope"))).status).toBe(404);
+    const saved = await updateCustomer(
+      req("PATCH", "/x", { name: "Grill", type: "lounge", termsDays: 30, version: c.version }),
+      ctx(c.id),
+    );
+    expect((await saved.json()).termsDays).toBe(30);
+    expect((await (await customerStatus(req("POST", "/x", { status: "archived" }), ctx(c.id))).json()).status).toBe(
+      "archived",
+    );
+    expect((await createCustomer(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    expect((await deleteCustomer(req("DELETE", "/x"), ctx(c.id))).status).toBe(204);
+
+    await signInAs("finance");
+    expect((await listCustomers()).status).toBe(200);
+    expect((await createCustomer(req("POST", "/x", {}))).status).toBe(403);
+    await signInAs("staff");
+    expect((await listCustomers()).status).toBe(403);
+    expect((await updateCustomer(req("PATCH", "/x", {}), ctx("x"))).status).toBe(403);
+    expect((await customerStatus(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
   });
 });

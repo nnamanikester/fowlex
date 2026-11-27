@@ -22,6 +22,14 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
   const run = await page.request.post("/api/payroll", {
     data: { period: `19${String(10 + (Date.now() % 90))}-${String(1 + (Date.now() % 12)).padStart(2, "0")}` },
   });
+  const customer = await page.request.post("/api/customers", {
+    data: {
+      name: `The Extremely Long Name Grill Lounge and Suites ${Date.now().toString(36)}`,
+      type: "hotel",
+      creditLimitKobo: 999_999_999_00,
+      email: "a-very-long-address-for-invoices@the-extremely-long-name-grill-lounge.com.ng",
+    },
+  });
   const width = page.viewportSize()!.width;
   for (const path of [
     "/",
@@ -37,6 +45,8 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     `/people/${(await person.json()).id}`,
     "/payroll",
     "/balance",
+    "/customers",
+    `/customers/${(await customer.json()).id}`,
     ...(run.ok() ? [`/payroll/${(await run.json()).id}`] : []),
   ]) {
     await page.goto(path);
