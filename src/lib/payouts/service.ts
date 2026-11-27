@@ -95,6 +95,10 @@ async function payable(actor: CurrentUser, expenseId: string) {
   if (expense.paymentStatus === "paid") throw new HttpError(409, "paid", `${expense.number} is already paid.`);
   if (expense.paymentStatus === "paying" || expense.paymentStatus === "otp")
     throw new HttpError(409, "paying", `A transfer for ${expense.number} is already on its way.`);
+  if (expense.approval === "pending")
+    throw new HttpError(409, "not_approved", `${expense.number} is waiting for approval. Approve it, then pay.`);
+  if (expense.approval === "rejected")
+    throw new HttpError(409, "rejected", `${expense.number} was rejected, so it isn't owed.`);
   if (!expense.supplierId && !expense.payeeBank)
     throw new HttpError(409, "no_bank", "Add the bank account to pay before sending money through Paystack.");
   return expense;

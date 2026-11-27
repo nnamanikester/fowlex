@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/shell";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { loadBatchSummaries, loadItems } from "@/lib/page-data";
+import { pendingApprovals } from "@/lib/expenses/service";
 import { paystackMode } from "@/lib/paystack/client";
 import { WorkspaceProvider } from "@/lib/workspace";
 
@@ -24,13 +25,15 @@ export default function DashboardLayout({ children }: LayoutProps<"/">) {
 async function SignedIn({ children }: { children: React.ReactNode }) {
   const { id, name, email, role, farmId } = await requireUser();
   // The batches the switcher offers; roles that can't see batches get none.
-  const [batches, items] = await Promise.all([
+  const [batches, items, waiting] = await Promise.all([
     can(role, "batch.read") ? loadBatchSummaries(farmId) : [],
     can(role, "inventory.read") ? loadItems(farmId) : [],
+    can(role, "expense.approve") ? pendingApprovals(farmId) : 0,
   ]);
-  // Items at or under their reorder level, on the Inventory menu item.
+  // Items at or under their reorder level on Inventory; expenses waiting for an owner on Expenses.
   const low = items.filter((i) => i.low).length;
-  const badges = low ? { "/inventory": low } : undefined;
+  const badges =
+    low || waiting ? { ...(low && { "/inventory": low }), ...(waiting && { "/expenses": waiting }) } : undefined;
   // Anyone who sees money is told when it isn't real.
   const mode = paystackMode();
   const banner =

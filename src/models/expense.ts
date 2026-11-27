@@ -1,7 +1,7 @@
 import { type InferSchemaType, model, models, Schema, type Model } from "mongoose";
 
 import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
-import { PAY_METHODS, PAYMENT_STATUSES } from "@/lib/expenses/rules";
+import { APPROVALS, PAY_METHODS, PAYMENT_STATUSES } from "@/lib/expenses/rules";
 
 /**
  * Money the farm spent or owes: a purchase of stock (with its lines, which raise stock), or any
@@ -50,6 +50,11 @@ const schema = new Schema(
     method: { type: String, enum: PAY_METHODS, required: true },
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, required: true },
     paidOn: { type: String, default: null },
+    /** Only approved expenses count. Above the approval limit, a manager's starts pending. */
+    approval: { type: String, enum: APPROVALS, default: "approved" },
+    approvalNote: { type: String, trim: true, default: "" },
+    decidedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    decidedAt: { type: Date, default: null },
     notes: { type: String, trim: true, default: "" },
     /** Bought equipment: its cost is spread over its life (depreciation), not counted at once. */
     capital: { type: Boolean, default: false },

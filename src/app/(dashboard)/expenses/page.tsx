@@ -47,6 +47,7 @@ async function Expenses() {
       today={today()}
       canWrite={can(user.role, "expense.write")}
       canPay={can(user.role, "payout.send")}
+      canApprove={can(user.role, "expense.approve")}
     />
   );
 }
