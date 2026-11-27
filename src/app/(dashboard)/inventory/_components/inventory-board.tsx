@@ -256,7 +256,15 @@ export function InventoryBoard({
   );
 }
 
-const EMPTY_SPEND: SpendProps = { suppliers: [], items: [], batches: [], today: "", canWrite: false, canPay: false };
+const EMPTY_SPEND: SpendProps = {
+  categories: [],
+  suppliers: [],
+  items: [],
+  batches: [],
+  today: "",
+  canWrite: false,
+  canPay: false,
+};
 
 const BLANK: ItemInput = {
   name: "",

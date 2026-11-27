@@ -51,7 +51,7 @@ export function ItemDetail({
   const router = useRouter();
   const [action, setAction] = React.useState<Action | null>(null);
   const buying = useSpending(
-    spending ?? { suppliers: [], items: [], batches: [], today, canWrite: false, canPay: false },
+    spending ?? { categories: [], suppliers: [], items: [], batches: [], today, canWrite: false, canPay: false },
   );
   const [editing, setEditing] = React.useState(false);
   const [removing, setRemoving] = React.useState<MovementView | null>(null);

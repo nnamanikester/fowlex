@@ -1,7 +1,7 @@
 import { type InferSchemaType, model, models, Schema, type Model } from "mongoose";
 
 import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
-import { EXPENSE_CATEGORIES, PAY_METHODS, PAYMENT_STATUSES } from "@/lib/expenses/rules";
+import { PAY_METHODS, PAYMENT_STATUSES } from "@/lib/expenses/rules";
 
 /**
  * Money the farm spent or owes: a purchase of stock (with its lines, which raise stock), or any
@@ -12,7 +12,8 @@ const schema = new Schema(
   {
     number: { type: String, required: true },
     date: { type: String, required: true },
-    category: { type: String, enum: EXPENSE_CATEGORIES, required: true },
+    /** A built-in category key ("transport") or one of the farm's own ("c-1a2b3c4d"). */
+    category: { type: String, required: true },
     description: { type: String, trim: true, default: "" },
     supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", default: null },
     payeeName: { type: String, trim: true, default: "" },

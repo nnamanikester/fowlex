@@ -12,6 +12,7 @@ import {
   validateExpense,
 } from "./rules";
 import { checkAssetFromExpense, createAssetFromExpense } from "@/lib/assets/service";
+import { assertCategory } from "./categories-service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
@@ -49,7 +50,7 @@ type Doc = {
   __v?: number;
   number: string;
   date: string;
-  category: ExpenseCategory;
+  category: string;
   description?: string;
   supplierId?: unknown;
   payeeName?: string;
@@ -280,6 +281,7 @@ export async function createExpense(
       "Only the owners send money. Save it as not paid yet, and an owner can pay it.",
       "method",
     );
+  if (!values.lines.length) await assertCategory(actor.farmId, values.category);
   const newItems: NewItem[] = [];
   let supplier = await resolve(actor.farmId, values, newItems);
   // Paying someone who isn't a saved supplier: their account is checked with the bank here, and

@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { formatRange } from "@/lib/dates";
-import { EXPENSE_CATEGORY_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
+import { PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
+import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { formatNaira } from "@/lib/money";
@@ -23,6 +24,8 @@ const day = (d: string) => formatRange({ from: d, to: d });
 
 /** Shared by the Expenses, Inventory and supplier pages: spending and paying, with the same sheets. */
 export type SpendProps = {
+  /** The farm's expense categories, with their names. */
+  categories: CategoryView[];
   suppliers: SupplierView[];
   items: ItemView[];
   batches: { id: string; code: string }[];
@@ -56,6 +59,7 @@ export function useSpending(props: SpendProps) {
         <ExpenseSheet
           key={open.expense.id}
           expense={open.expense}
+          categories={props.categories}
           suppliers={props.suppliers}
           items={props.items}
           batches={props.allBatches ?? props.batches}
@@ -73,6 +77,7 @@ export function useSpending(props: SpendProps) {
 /** Every expense, newest first, with what's owed and spent this month. */
 export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: ExpenseView[] }) {
   const [filter, setFilter] = React.useState<Filter>("all");
+  const { categories } = props;
   const { spend, show, sheets } = useSpending(props);
   const month = props.today.slice(0, 7);
   const owed = expenses.filter((e) => e.paymentStatus === "unpaid" || e.paymentStatus === "failed");
@@ -127,12 +132,12 @@ export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: E
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-fg">
-                      {e.description || EXPENSE_CATEGORY_LABELS[e.category]}
+                      {e.description || categoryName(categories, e.category)}
                     </span>
                     <span className="block truncate text-xs text-fg-muted">
                       {[
                         day(e.date),
-                        EXPENSE_CATEGORY_LABELS[e.category],
+                        categoryName(categories, e.category),
                         e.supplierId ? suppliers.get(e.supplierId) : e.payeeName,
                         e.receipt && "receipt",
                       ]
