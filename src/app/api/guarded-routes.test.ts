@@ -7,6 +7,9 @@ import { GET as outbox } from "./dev/outbox/route";
 import { POST as recordChicks } from "./batches/[id]/chicks/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
 import { POST as pickUp } from "./batches/[id]/pickup/route";
+import { DELETE as deleteEmployee, PATCH as updateEmployee } from "./employees/[id]/route";
+import { POST as employeeStatus } from "./employees/[id]/status/route";
+import { GET as listEmployees, POST as createEmployee } from "./employees/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -852,5 +855,55 @@ describe("pickup route", () => {
       ctx(batch.id),
     );
     expect(await placed.json()).toMatchObject({ phase: "active", shortfall: 2 });
+  });
+});
+
+describe("employee routes", () => {
+  it("add, edit, mark as left and remove someone; staff can't", async () => {
+    await signInAs("manager");
+    const created = await createEmployee(
+      req("POST", "/api/employees", { name: "Musa", payType: "daily", rateKobo: 400_000 }),
+    );
+    expect(created.status).toBe(201);
+    const musa = await created.json();
+    expect((await createEmployee(new Request(`${BASE}/api/employees`, { method: "POST", body: "{oops" }))).status).toBe(
+      400,
+    );
+    const edited = await updateEmployee(
+      req("PATCH", `/api/employees/${musa.id}`, {
+        name: "Musa Bello",
+        payType: "daily",
+        rateKobo: 450_000,
+        version: 0,
+      }),
+      ctx(musa.id),
+    );
+    expect(await edited.json()).toMatchObject({ name: "Musa Bello", rateKobo: 450_000 });
+    expect(
+      (
+        await updateEmployee(
+          new Request(`${BASE}/api/employees/${musa.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(musa.id),
+        )
+      ).status,
+    ).toBe(400);
+    const left = await employeeStatus(
+      req("POST", `/api/employees/${musa.id}/status`, { status: "left" }),
+      ctx(musa.id),
+    );
+    expect((await left.json()).status).toBe("left");
+    expect(
+      (
+        await employeeStatus(
+          new Request(`${BASE}/api/employees/${musa.id}/status`, { method: "POST", body: "{oops" }),
+          ctx(musa.id),
+        )
+      ).status,
+    ).toBe(400);
+    expect(await (await listEmployees()).json()).toMatchObject([{ id: musa.id }]);
+    expect((await deleteEmployee(req("DELETE", `/api/employees/${musa.id}`), ctx(musa.id))).status).toBe(204);
+    await signInAs("staff");
+    expect((await listEmployees()).status).toBe(403);
+    expect((await createEmployee(req("POST", "/api/employees", {}))).status).toBe(403);
   });
 });

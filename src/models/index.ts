@@ -3,6 +3,7 @@ import { AuditLogModel } from "./audit-log";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { DailyLogModel } from "./daily-log";
+import { EmployeeModel } from "./employee";
 import { ExpenseModel } from "./expense";
 import { ExpenseCategoryModel } from "./expense-category";
 import { FarmModel } from "./farm";
@@ -26,6 +27,7 @@ export const ALL_MODELS = [
   BatchModel,
   CounterModel,
   DailyLogModel,
+  EmployeeModel,
   ExpenseCategoryModel,
   ExpenseModel,
   FarmModel,

@@ -13,6 +13,7 @@ import { listHouses } from "@/lib/houses/service";
 import { listItems } from "@/lib/inventory/items";
 import { listMovements } from "@/lib/inventory/movements";
 import { listLogs } from "@/lib/logs/service";
+import { listEmployees } from "@/lib/people/service";
 import { listRecurring } from "@/lib/recurring/service";
 import { listSuppliers } from "@/lib/suppliers/service";
 import { listHealth } from "@/lib/health/service";
@@ -155,6 +156,13 @@ async function costsCached(farmId: string, batchId: string) {
 export const loadBatchCosts = PRODUCTION
   ? costsCached
   : (farmId: string, batchId: string) => batchCosts(farmId, batchId);
+async function employeesCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listEmployees(farmId);
+}
+
+export const loadEmployees = PRODUCTION ? employeesCached : (farmId: string) => listEmployees(farmId);
 export const loadItems = PRODUCTION ? itemsCached : (farmId: string) => listItems(farmId);
 export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;

@@ -6,7 +6,8 @@ import { type BankAccount, nameKey, normalisePhone, type SupplierInput, tidyName
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { connectDb } from "@/lib/db";
-import { createRecipient, resolveAccount } from "@/lib/paystack/banks";
+import { checkedBank, type SavedAccount } from "@/lib/paystack/accounts";
+import { createRecipient } from "@/lib/paystack/banks";
 import { SupplierModel } from "@/models/supplier";
 
 export type SupplierView = Omit<SupplierInput, "bank"> & {
@@ -77,31 +78,6 @@ function clean(input: Record<string, unknown>) {
   return { ...v, phone: v.phone ? normalisePhone(v.phone)! : "", supplies: [...new Set(v.supplies)] };
 }
 
-/**
- * The bank account to keep: checked with the bank (the name is the bank's, whatever the form
- * said), with a Paystack recipient to pay it. An unchanged account is kept as it was. If Paystack
- * can't make the recipient right now, the account is kept and the recipient made when first paid.
- */
-async function checkedBank(bank: BankAccount | null, before?: Doc["bank"]) {
-  if (!bank) return null;
-  if (before && before.bankCode === bank.bankCode && before.accountNumber === bank.accountNumber) return before;
-  const account = await resolveAccount(bank.accountNumber, bank.bankCode).catch((error: HttpError) => {
-    throw error.status === 503
-      ? new HttpError(
-          503,
-          error.code,
-          "We couldn't check the bank account just now. Try saving again in a moment.",
-          "bank",
-        )
-      : new HttpError(400, error.code, error.message, "bank");
-  });
-  const recipientCode = await createRecipient(account).catch((error: HttpError) => {
-    if (error.status === 503) return null;
-    throw new HttpError(400, error.code, error.message, "bank");
-  });
-  return { ...account, recipientCode, verifiedAt: new Date() };
-}
-
 const duplicate = (name: string) =>
   new HttpError(409, "duplicate_name", `There's already a supplier called ${name}.`, "name");
 const stale = () => new HttpError(409, "stale", "Someone changed this supplier while you were editing. Open it again.");
@@ -139,7 +115,7 @@ export async function updateSupplier(actor: CurrentUser, id: string, input: Reco
   const doc = await load(actor, id);
   if (typeof version !== "number" || version !== doc.__v) throw stale();
   const before = doc.toObject() as unknown as Doc;
-  const bank = await checkedBank(values.bank, before.bank);
+  const bank = await checkedBank(values.bank, before.bank as SavedAccount | null | undefined);
   doc.set({
     ...values,
     bank,
