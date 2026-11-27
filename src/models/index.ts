@@ -5,6 +5,7 @@ import { AuditLogModel } from "./audit-log";
 import { BalanceEntryModel } from "./balance-entry";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
+import { CustomerModel } from "./customer";
 import { DailyLogModel } from "./daily-log";
 import { EmployeeModel } from "./employee";
 import { ExpenseModel } from "./expense";
@@ -34,6 +35,7 @@ export const ALL_MODELS = [
   BalanceEntryModel,
   BatchModel,
   CounterModel,
+  CustomerModel,
   DailyLogModel,
   EmployeeModel,
   ExpenseCategoryModel,
