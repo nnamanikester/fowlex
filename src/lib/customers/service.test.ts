@@ -97,7 +97,7 @@ describe("customers", () => {
     expect(await refusal(setCustomerStatus(owner, c.id, "gone"))).toMatchObject({ field: "status" });
     await deleteCustomer(owner, twin.id);
     expect((await setCustomerStatus(owner, c.id, "active")).status).toBe("active");
-    expect((await listCustomers(owner.farmId)).map((x) => x.id)).toEqual([c.id]);
+    expect((await listCustomers(owner.farmId)).filter((x) => !x.walkIn).map((x) => x.id)).toEqual([c.id]);
     expect(await refusal(deleteCustomer(owner, "nope"))).toMatchObject({ status: 404 });
   });
 
@@ -107,7 +107,13 @@ describe("customers", () => {
     await createCustomer(owner, { ...grill, name: "abuja suya" });
     await setCustomerStatus(owner, zed.id, "archived");
     await createCustomer(owner, { ...grill, name: "Bukka Hut" });
-    expect((await listCustomers(owner.farmId)).map((c) => c.name)).toEqual(["abuja suya", "Bukka Hut", "Zed Hotel"]);
+    // The walk-in account first, then the active ones A to Z, then archived ones.
+    expect((await listCustomers(owner.farmId)).map((c) => c.name)).toEqual([
+      "Walk-in customers",
+      "abuja suya",
+      "Bukka Hut",
+      "Zed Hotel",
+    ]);
   });
 });
 

@@ -48,6 +48,7 @@ export function CustomerDetail({
             {c.status === "archived" && <Badge>Archived</Badge>}
             {c.hasLogin && <Badge tone="info">Uses the portal</Badge>}
             {c.invited && <Badge>Invited to the portal</Badge>}
+            {c.walkIn && <Badge tone="brand">No details needed</Badge>}
           </h1>
           <p className="text-sm text-fg-muted">
             {CUSTOMER_TYPE_LABELS[c.type]}
@@ -59,7 +60,7 @@ export function CustomerDetail({
             <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setEditing(true)}>
               <Pencil /> Edit details
             </Button>
-            {!c.hasLogin && c.status === "active" && (
+            {!c.hasLogin && c.status === "active" && !c.walkIn && (
               <Button
                 className="flex-1 sm:flex-none"
                 loading={invite.busy}

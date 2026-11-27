@@ -41,7 +41,7 @@ async function Contracts({ searchParams }: Pick<PageProps<"/contracts">, "search
     <div className="space-y-5">
       <ContractsList
         contracts={contracts}
-        customers={customers.filter((c) => c.status === "active")}
+        customers={customers.filter((c) => c.status === "active" && !c.walkIn)}
         templates={templates}
         today={now}
         canWrite={canWrite}

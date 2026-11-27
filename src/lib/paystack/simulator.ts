@@ -59,7 +59,10 @@ export type LedgerRow = {
   model_row: number;
   createdAt: string;
 };
+/** A one-off transfer account for a payment, and whether the money has come in. */
+type Charge = { reference: string; amount: number; email: string; paid: boolean; expiresAt: string };
 type State = {
+  charges: Map<string, Charge>;
   balance: number;
   recipients: Map<string, string>;
   transfers: Map<string, Transfer>;
@@ -68,6 +71,7 @@ type State = {
 };
 const g = globalThis as typeof globalThis & { __fowlexPaystack?: State };
 const fresh = (balance: number, otp: boolean): State => ({
+  charges: new Map(),
   balance,
   recipients: new Map(),
   transfers: new Map(),
@@ -96,6 +100,14 @@ function move(difference: number, reason: string, model: string, row: number) {
 /** Any other change to the balance, as Paystack would list it (tests: charges, refunds, payments). */
 export function simulateLedger(difference: number, reason: string, model: string) {
   move(difference, reason, model, state().ledger.length + 1);
+}
+
+/** The customer pays into a one-off transfer account (in the simulator, at once). */
+export function payCharge(reference: string) {
+  const c = state().charges.get(reference);
+  if (!c) return false;
+  c.paid = true;
+  return true;
 }
 
 /** Test money into the balance, as a top-up to the account the Paystack Dashboard shows. */
@@ -197,6 +209,40 @@ export function simulate<T>(
       debit(t);
       settle(t);
       return ok({ ...t, status: "pending" }, "Transfer has been queued");
+    }
+    if (method === "POST" && path === "/charge") {
+      const reference = String(b.reference ?? "");
+      const amount = Number(b.amount);
+      if (!reference || !(amount > 0) || !b.email) return no(400, "Invalid charge");
+      if (s.charges.has(reference)) return no(400, "Duplicate Transaction Reference");
+      const expiresAt = String(
+        (b.bank_transfer as { account_expires_at?: string } | undefined)?.account_expires_at ?? "",
+      );
+      s.charges.set(reference, { reference, amount, email: String(b.email), paid: false, expiresAt });
+      return ok(
+        {
+          status: "pending_bank_transfer",
+          display_text: "Please make a transfer to the account specified",
+          reference,
+          amount,
+          account_name: "PAYSTACK-TITAN FOWLEX",
+          account_number: `99${String(s.charges.size).padStart(8, "0")}`,
+          bank: { slug: "paystack-titan", name: "Paystack-Titan", id: 171 },
+          account_expires_at: expiresAt,
+        },
+        "Charge attempted",
+      );
+    }
+    const charge = /^\/transaction\/verify\/(.+)$/.exec(path);
+    if (method === "GET" && charge) {
+      const c = s.charges.get(decodeURIComponent(charge[1]));
+      if (!c) return no(404, "Transaction reference not found");
+      return ok({
+        status: c.paid ? "success" : "ongoing",
+        amount: c.amount,
+        paid_at: c.paid ? new Date().toISOString() : null,
+        reference: c.reference,
+      });
     }
     if (method === "GET" && path === "/balance/ledger") {
       // Newest first, like Paystack; `from` keeps rows at or after it.

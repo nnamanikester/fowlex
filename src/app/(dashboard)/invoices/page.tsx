@@ -6,6 +6,7 @@ import { InvoicesList } from "./_components/invoices-list";
 import { PageSkeleton, RequirePermission } from "../_components/require-permission";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
+import { paystackMode } from "@/lib/paystack/client";
 import { can } from "@/lib/auth/permissions";
 import { listCustomers } from "@/lib/customers/service";
 import { listInvoices } from "@/lib/invoices/service";
@@ -54,6 +55,7 @@ async function Invoices({ searchParams }: Pick<PageProps<"/invoices">, "searchPa
         today={now}
         canWrite={canWrite}
         canPay={can(user.role, "payment.write")}
+        simulated={paystackMode() === "simulated"}
         start={canWrite && forCustomer ? { customerId: forCustomer, orderIds: orders } : undefined}
         filters
         fab

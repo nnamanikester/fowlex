@@ -22,12 +22,15 @@ const schema = new Schema(
     status: { type: String, enum: ["active", "archived"], default: "active" },
     /** The customer's portal login, once they've been invited. */
     userId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    /** The farm's one account for buyers who give no details: sales and invoices never wait for a customer. */
+    walkIn: { type: Boolean, default: false },
   },
   { optimisticConcurrency: true },
 );
 
 schema.plugin(basePlugin, { audit: { label: (c) => String(c.name) } });
 schema.index({ farmId: 1, status: 1, name: 1 });
+schema.index({ farmId: 1, walkIn: 1 }, { unique: true, partialFilterExpression: { walkIn: true } });
 schema.index({ userId: 1 }, { partialFilterExpression: { userId: { $type: "objectId" } } });
 
 export type Customer = InferSchemaType<typeof schema> & Base;
