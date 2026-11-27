@@ -19,17 +19,19 @@ test("add “Starter feed” in 25 kg bags with a reorder level of 10, then find
   await sheet.getByRole("button", { name: "Add item" }).click();
   await expect(page.getByText(`${name} added.`)).toBeVisible();
 
-  const row = page.getByRole("main").getByRole("button", { name: new RegExp(name) });
+  const row = page.getByRole("main").getByRole("link", { name: new RegExp(name) });
   await expect(row).toContainText("25 kg bag · reorder below 10 bags");
   await page.getByLabel("Search items").fill(info.project.name);
   await expect(row).toBeVisible();
 
   await row.click();
+  await expect(page.getByRole("heading", { name })).toBeVisible();
+  await page.getByRole("button", { name: "Edit" }).click();
   const edit = page.getByRole("dialog", { name });
   await edit.getByLabel(/Reorder below/).fill("12");
   await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(`${name} saved.`)).toBeVisible();
-  await expect(row).toContainText("reorder below 12 bags");
+  await expect(page.getByText("Reorder below 12 bags")).toBeVisible();
   expect(errors).toEqual([]);
 });
 

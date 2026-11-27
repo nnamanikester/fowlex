@@ -7,6 +7,8 @@ import { GET as outbox } from "./dev/outbox/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
+import { DELETE as deleteMovement } from "./inventory/movements/[id]/route";
+import { POST as recordMovement } from "./inventory/movements/route";
 import { POST as reopenBatch } from "./batches/[id]/reopen/route";
 import { DELETE as deleteHealth, PATCH as updateHealth } from "./health/[id]/route";
 import { GET as listHealth, POST as createHealth } from "./health/route";
@@ -413,5 +415,39 @@ describe("inventory item routes", () => {
     expect((await createItem(req("POST", "/api/inventory/items", body))).status).toBe(403);
     session.user = manager;
     expect((await deleteItem(req("DELETE", `/api/inventory/items/${item.id}`), ctx(item.id))).status).toBe(204);
+  });
+});
+
+describe("stock movement routes", () => {
+  it("record opening stock (201), a matching count (204) and delete; staff can't", async () => {
+    const manager = await signInAs("manager");
+    const item = await (
+      await createItem(req("POST", "/api/inventory/items", { name: "Diesel", category: "fuel", unit: "litre" }))
+    ).json();
+    const opening = await recordMovement(
+      req("POST", "/api/inventory/movements", {
+        itemId: item.id,
+        type: "opening",
+        quantity: 50,
+        unitCostKobo: 120_000,
+      }),
+    );
+    expect(opening.status).toBe(201);
+    const movement = await opening.json();
+    expect(
+      (await recordMovement(req("POST", "/api/inventory/movements", { itemId: item.id, type: "count", counted: 50 })))
+        .status,
+    ).toBe(204);
+    expect(
+      (await recordMovement(new Request(`${BASE}/api/inventory/movements`, { method: "POST", body: "{oops" }))).status,
+    ).toBe(400);
+    session.user = { ...manager, role: "staff" };
+    expect(
+      (await deleteMovement(req("DELETE", `/api/inventory/movements/${movement.id}`), ctx(movement.id))).status,
+    ).toBe(403);
+    session.user = manager;
+    expect(
+      (await deleteMovement(req("DELETE", `/api/inventory/movements/${movement.id}`), ctx(movement.id))).status,
+    ).toBe(204);
   });
 });

@@ -7,13 +7,20 @@ import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { placedCount } from "@/lib/batches/rules";
 import { today as lagosToday } from "@/lib/dates";
-import { connectDb } from "@/lib/db";
+import { connectDb, withTransaction } from "@/lib/db";
+import { dropLogFeed, syncLogFeed } from "@/lib/inventory/movements";
+import { InventoryItemModel } from "@/models/inventory-item";
 import { BatchModel } from "@/models/batch";
 import { DailyLogModel } from "@/models/daily-log";
 
 export type LogView = LogInput & { id: string; version: number };
 
-type Doc = Omit<LogInput, "batchId"> & { _id: unknown; __v?: number; batchId: unknown };
+type Doc = Omit<LogInput, "batchId" | "feedItemId"> & {
+  _id: unknown;
+  __v?: number;
+  batchId: unknown;
+  feedItemId?: unknown;
+};
 const view = (l: Doc): LogView => ({
   id: String(l._id),
   version: l.__v ?? 0,
@@ -24,6 +31,7 @@ const view = (l: Doc): LogView => ({
   sold: l.sold,
   feedKg: l.feedKg,
   feedType: l.feedType ?? "",
+  feedItemId: l.feedItemId ? String(l.feedItemId) : null,
   waterLitres: l.waterLitres ?? null,
   avgWeightGrams: l.avgWeightGrams ?? null,
   notes: l.notes ?? "",
@@ -102,6 +110,7 @@ function clean(input: Record<string, unknown>) {
     sold: num(input.sold, 0),
     feedKg: num(input.feedKg, 0),
     feedType: typeof input.feedType === "string" ? input.feedType.trim() : (input.feedType ?? ""),
+    feedItemId: input.feedItemId === "" || input.feedItemId === undefined ? null : input.feedItemId,
     waterLitres: num(input.waterLitres, null),
     avgWeightGrams: num(input.avgWeightGrams, null),
     notes: typeof input.notes === "string" ? input.notes.trim() : (input.notes ?? ""),
@@ -160,9 +169,17 @@ export async function createLog(
     if (id && existing.clientRequestId === id) return { log: view(existing as unknown as Doc), created: false };
     throw alreadyLogged(log.date, String(existing._id));
   }
+  await withFeed(actor.farmId, log);
   try {
-    const doc = await DailyLogModel.create({ ...log, farmId: actor.farmId, createdBy: actor.id, clientRequestId: id });
-    return { log: view(doc.toObject() as unknown as Doc), created: true };
+    const saved = await withTransaction(async (session) => {
+      const [doc] = await DailyLogModel.create(
+        [{ ...log, farmId: actor.farmId, createdBy: actor.id, clientRequestId: id }],
+        { session },
+      );
+      await syncLogFeed(session, actor, { ...log, id: String(doc._id) });
+      return doc;
+    });
+    return { log: view(saved.toObject() as unknown as Doc), created: true };
   } catch (error) {
     if ((error as { code?: number }).code !== 11000) throw error;
     // Sent twice at once, or another phone logged the same day a moment earlier.
@@ -201,9 +218,14 @@ export async function updateLog(
     const clash = await DailyLogModel.findOne({ farmId: actor.farmId, batchId: batch._id, date: log.date }).lean();
     if (clash) throw alreadyLogged(log.date, String(clash._id));
   }
+  await withFeed(actor.farmId, log);
   doc.set({ ...log, batchId: batch._id });
   try {
-    await doc.save();
+    await withTransaction(async (session) => {
+      doc.$session(session);
+      await doc.save();
+      await syncLogFeed(session, actor, { ...log, id });
+    });
   } catch (error) {
     if ((error as { name?: string }).name === "VersionError")
       throw new HttpError(409, "stale", "Someone changed this log while you were editing. Open it again.");
@@ -216,5 +238,17 @@ export async function updateLog(
 export async function deleteLog(actor: CurrentUser, id: string) {
   const doc = await load(actor, id);
   await openBatch(actor.farmId, String(doc.batchId));
-  await doc.softDelete();
+  await withTransaction(async (session) => {
+    doc.$session(session);
+    await doc.softDelete();
+    await dropLogFeed(session, actor, id);
+  });
+}
+
+/** Checks the chosen feed is a feed item on the farm, and names the log's feed after it. */
+async function withFeed(farmId: string, log: LogInput) {
+  if (!log.feedItemId) return;
+  const item = await InventoryItemModel.findOne({ _id: log.feedItemId, farmId, category: "feed" }).lean();
+  if (!item) throw new HttpError(400, "invalid_log", "Choose a feed from your stock.", "feedItemId");
+  log.feedType = item.name.slice(0, 40);
 }

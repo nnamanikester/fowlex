@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
 import { Archive, Boxes, Plus, Search, Trash2 } from "lucide-react";
@@ -26,6 +27,7 @@ import {
   UNITS,
   validateItem,
 } from "@/lib/inventory/rules";
+import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 /** The farm's stock items, searchable and filtered by kind; each opens a sheet to edit it. */
@@ -74,6 +76,18 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
         </Panel>
       ) : (
         <>
+          <p className="text-sm text-fg-muted">
+            Stock worth{" "}
+            <span className="num font-semibold text-fg">
+              {formatNaira(items.reduce((sum, i) => sum + (i.archived ? 0 : i.valueKobo), 0))}
+            </span>
+            {items.some((i) => i.low) && (
+              <>
+                {" · "}
+                <span className="font-semibold text-warning-fg">{items.filter((i) => i.low).length} running low</span>
+              </>
+            )}
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <label className="relative min-w-0 flex-1 basis-56">
               <span className="sr-only">Search items</span>
@@ -124,15 +138,15 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
               <ul className="divide-y divide-line">
                 {shown.map((item) => (
                   <li key={item.id}>
-                    <button
-                      type="button"
-                      disabled={!canWrite}
-                      onClick={() => setEditing(item)}
-                      className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left enabled:hover:bg-surface-subtle"
+                    <Link
+                      href={`/inventory/${item.id}`}
+                      className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
                     >
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-fg">{item.name}</span>
+                          {item.low && <Badge tone="warning">Low</Badge>}
+                          {item.onHand < 0 && <Badge tone="danger">Count needed</Badge>}
                           {item.archived && <Badge>Archived</Badge>}
                         </span>
                         <span className="block text-xs text-fg-muted">
@@ -145,7 +159,11 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
                             .join(" · ")}
                         </span>
                       </span>
-                    </button>
+                      <span className="num shrink-0 text-right">
+                        <span className="block font-semibold text-fg">{quantity(item.onHand, item.unit)}</span>
+                        <span className="block text-xs text-fg-subtle">{formatNaira(item.valueKobo)}</span>
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -226,7 +244,7 @@ const UNIT_LABELS: Record<(typeof UNITS)[number], string> = {
   bird: "Bird",
 };
 
-function ItemSheet({
+export function ItemSheet({
   item,
   onClose,
   onSaved,

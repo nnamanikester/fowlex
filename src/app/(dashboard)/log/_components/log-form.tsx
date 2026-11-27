@@ -20,6 +20,7 @@ import { addDays, formatRange } from "@/lib/dates";
 import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
 import type { HealthView } from "@/lib/health/service";
 import { useLogOutbox } from "@/lib/logs/outbox";
+import { quantity, type Unit } from "@/lib/inventory/rules";
 import { bags, FEED_TYPES, type LogInput, suggestedFeed, validateLog } from "@/lib/logs/rules";
 import type { LogView } from "@/lib/logs/service";
 import { useWorkspace } from "@/lib/workspace";
@@ -31,12 +32,23 @@ const newRequestId = () =>
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 type Values = Omit<LogInput, "batchId" | "date">;
-const blank = (feedType: string): Values => ({
+/** A feed item a log can take from: id, name, kg in a unit, and what's left. */
+export type FeedStock = { id: string; name: string; unit: string; unitKg: number | null; onHand: number };
+
+/** The feed for this age: the stock item named after it (Starter, Finisher…), else the first. */
+function feedFor(age: number, feeds: FeedStock[]) {
+  const type = suggestedFeed(age);
+  const item = feeds.find((f) => f.name.toLowerCase().includes(type.toLowerCase())) ?? feeds[0];
+  return item ? { feedType: item.name, feedItemId: item.id } : { feedType: type, feedItemId: null };
+}
+
+const blank = ({ feedType, feedItemId }: { feedType: string; feedItemId: string | null }): Values => ({
   deaths: 0,
   culls: 0,
   sold: 0,
   feedKg: Number.NaN,
   feedType,
+  feedItemId,
   waterLitres: null,
   avgWeightGrams: null,
   notes: "",
@@ -47,6 +59,7 @@ const fromLog = (l: LogView): Values => ({
   sold: l.sold,
   feedKg: l.feedKg,
   feedType: l.feedType,
+  feedItemId: l.feedItemId,
   waterLitres: l.waterLitres,
   avgWeightGrams: l.avgWeightGrams,
   notes: l.notes,
@@ -62,11 +75,14 @@ export function LogForm({
   batches,
   recent,
   health = [],
+  feeds = [],
   today,
 }: {
   batches: BatchView[];
   recent: LogView[];
   health?: HealthView[];
+  /** Feed items in stock; when there are any, the log takes its feed from one. */
+  feeds?: FeedStock[];
   today: string;
 }) {
   const router = useRouter();
@@ -98,14 +114,18 @@ export function LogForm({
   const known = [...saved, ...fetched, ...recent];
   const existing = known.find((l) => l.batchId === batchId && l.date === date);
   const age = batch ? ageOn(batch, date) : 0;
+  const feedLeft = (id: string | null) => {
+    const item = feeds.find((f) => f.id === id);
+    return item ? `${quantity(item.onHand, item.unit as Unit)} left` : undefined;
+  };
 
-  const [values, setValues] = React.useState<Values>(() => (existing ? fromLog(existing) : blank(suggestedFeed(age))));
+  const [values, setValues] = React.useState<Values>(() => (existing ? fromLog(existing) : blank(feedFor(age, feeds))));
   // Switching batch or day loads that day's log, or a blank one: reset while rendering.
   const key = `${batchId}|${date}|${existing?.id ?? ""}|${existing?.version ?? ""}`;
   const [shownKey, setShownKey] = React.useState(key);
   if (key !== shownKey) {
     setShownKey(key);
-    setValues(existing ? fromLog(existing) : blank(suggestedFeed(age)));
+    setValues(existing ? fromLog(existing) : blank(feedFor(age, feeds)));
     setFailure(null);
     setSubmitted(false);
   }
@@ -160,7 +180,7 @@ export function LogForm({
       if (error.status === 0 && !existing) {
         outbox.enqueue({ requestId, body, label: `${batch!.code}, ${day(date)}`, savedAt: new Date().toISOString() });
         setRequestId(newRequestId());
-        setValues(blank(suggestedFeed(age)));
+        setValues(blank(feedFor(age, feeds)));
         setSubmitted(false);
         toast.message("No signal: saved on this phone. It sends by itself when you're back online.");
       } else if (error.code === "already_logged") {
@@ -342,22 +362,49 @@ export function LogForm({
             />
           )}
         </Field>
-        <Field id="feedType" label="Feed" error={show("feedType")}>
-          {(a11y) => (
-            <Select
-              {...a11y}
-              className="h-14"
-              value={values.feedType}
-              onChange={(e) => set("feedType", e.target.value)}
-            >
-              {[...new Set([...FEED_TYPES, values.feedType].filter(Boolean))].map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {feeds.length ? (
+          <Field id="feedItemId" label="Feed" error={show("feedItemId")} hint={feedLeft(values.feedItemId)}>
+            {(a11y) => (
+              <Select
+                {...a11y}
+                className="h-14"
+                value={values.feedItemId ?? ""}
+                onChange={(e) => {
+                  const item = feeds.find((f) => f.id === e.target.value);
+                  setValues((v) => ({
+                    ...v,
+                    feedItemId: item?.id ?? null,
+                    feedType: item?.name ?? suggestedFeed(age),
+                  }));
+                }}
+              >
+                {feeds.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+                <option value="">Not from stock</option>
+              </Select>
+            )}
+          </Field>
+        ) : (
+          <Field id="feedType" label="Feed" error={show("feedType")}>
+            {(a11y) => (
+              <Select
+                {...a11y}
+                className="h-14"
+                value={values.feedType}
+                onChange={(e) => set("feedType", e.target.value)}
+              >
+                {[...new Set([...FEED_TYPES, values.feedType].filter(Boolean))].map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
       </div>
 
       <Field id="waterLitres" label="Water (litres)" error={show("waterLitres")} hint="Optional">
