@@ -1461,7 +1461,11 @@ describe("order page routes", () => {
     );
     session.user = { ...session.user!, role: "sales" };
     expect((await (await getShop()).json()).enabled).toBe(false);
-    const on = await (await updateShopRoute(req("PATCH", "/x", { enabled: true, pricePerKgKobo: 320_000 }))).json();
+    const on = await (
+      await updateShopRoute(
+        req("PATCH", "/x", { enabled: true, prices: [{ name: "", pricing: "perKg", priceKobo: 320_000 }] }),
+      )
+    ).json();
     expect(on.slug).toBe("fowlex-farms");
     expect((await updateShopRoute(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }))).status).toBe(200);
 

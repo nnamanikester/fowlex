@@ -86,7 +86,7 @@ test("invite a customer to the portal: they set a password and see only their ow
   await them.getByRole("button", { name: "Pay now by transfer" }).click();
   await expect(them.getByText("Transfer exactly")).toBeVisible();
   await them.getByRole("button", { name: "They've paid (test money)" }).click();
-  await expect(them.getByText("Paid", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(them.getByText(/came in for INV-/)).toBeVisible({ timeout: 15_000 });
   const download = them.waitForEvent("download");
   await them.getByRole("link", { name: "PDF" }).click();
   expect((await download).suggestedFilename()).toBe(`Invoice ${mine.number}.pdf`);

@@ -12,6 +12,7 @@ import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
 import { formatNaira } from "@/lib/money";
 import { readSettings } from "@/lib/settings/service";
+import { farmPrices } from "@/lib/shop/service";
 import { BatchModel } from "@/models/batch";
 import { ContractModel } from "@/models/contract";
 import { nextSequence } from "@/models/counter";
@@ -135,7 +136,7 @@ export type Price = {
   contract: { id: string; number: string } | null;
 };
 
-/** What a customer pays on a day: their running contract's price, or the farm's price per kg. */
+/** What a customer pays on a day: their running contract's price, or the farm's usual price. */
 export async function priceFor(farmId: string, customerId: string, day: string): Promise<Price> {
   const contract = await contractFor(farmId, customerId, day);
   if (contract)
@@ -144,6 +145,9 @@ export async function priceFor(farmId: string, customerId: string, day: string):
       priceKobo: contract.priceKobo,
       contract: { id: contract.id, number: contract.number },
     };
+  // The farm's usual price, the first on its list (or its price per kg, from Settings).
+  const [usual] = await farmPrices(farmId);
+  if (usual) return { pricing: usual.pricing, priceKobo: usual.priceKobo, contract: null };
   return { pricing: "perKg", priceKobo: (await readSettings(farmId)).defaultPricePerKgKobo ?? null, contract: null };
 }
 

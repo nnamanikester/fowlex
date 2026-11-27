@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { dayLabel, estimate, readyOn, slugFrom, validateOnlineOrder } from "./rules";
-import { placeOnlineOrder, shopOffer, shopSettings, updateShop } from "./service";
+import { defaultName, priceEstimate, priceLabel, validatePrices } from "./prices";
+import { dayLabel, readyOn, slugFrom, validateOnlineOrder } from "./rules";
+import { farmPrices, placeOnlineOrder, shopOffer, shopSettings, updateShop } from "./service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { createBatch } from "@/lib/batches/service";
 import { createContract } from "@/lib/contracts/service";
 import { createCustomer, listCustomers } from "@/lib/customers/service";
 import { outbox } from "@/lib/email";
 import { createHouse } from "@/lib/houses/service";
-import { listOrders } from "@/lib/sales/service";
+import { listOrders, priceFor } from "@/lib/sales/service";
+import { getSettings } from "@/lib/settings/service";
 import { UserModel } from "@/models/user";
 import { oid, setupTestDb } from "@/test/db";
 
@@ -48,7 +50,7 @@ async function farm({ on = true } = {}) {
     ).batch;
   const old = await place("2026-10-10", 300); // 48 days: ready
   const young = await place("2026-10-27", 500); // ready from 2 Dec (35 days old)
-  if (on) await updateShop(owner, { enabled: true, pricePerKgKobo: 320_000 });
+  if (on) await updateShop(owner, { enabled: true, prices: [{ name: "", pricing: "perKg", priceKobo: 320_000 }] });
   const slug = (await shopSettings(owner.farmId)).slug!;
   const form = (over: Record<string, unknown> = {}) => ({
     birds: 50,
@@ -68,16 +70,24 @@ async function farm({ on = true } = {}) {
 describe("the order page", () => {
   it("is off until a price is set and it's turned on, then gets an address from the farm's name", async () => {
     const { owner } = await farm({ on: false });
-    expect(await shopSettings(owner.farmId)).toMatchObject({
-      enabled: false,
-      slug: null,
-      delivers: true,
-      pricePerKgKobo: null,
+    expect(await shopSettings(owner.farmId)).toMatchObject({ enabled: false, slug: null, delivers: true, prices: [] });
+    expect(await refusal(updateShop(owner, { enabled: true }))).toMatchObject({ field: "prices" });
+    expect(await refusal(updateShop(owner, { prices: [] }))).toMatchObject({ field: "prices" });
+    expect(
+      await refusal(updateShop(owner, { prices: [{ name: "", pricing: "perBird", priceKobo: 0 }] })),
+    ).toMatchObject({ field: "prices.0.priceKobo" });
+    // Per bird is enough: no price per kg needed.
+    const on = await updateShop(owner, {
+      enabled: true,
+      delivers: false,
+      prices: [{ name: "", pricing: "perBird", priceKobo: 700_000 }],
     });
-    expect(await refusal(updateShop(owner, { enabled: true }))).toMatchObject({ field: "pricePerKgKobo" });
-    expect(await refusal(updateShop(owner, { pricePerKgKobo: 0 }))).toMatchObject({ field: "pricePerKgKobo" });
-    const on = await updateShop(owner, { enabled: true, pricePerKgKobo: 320_000, delivers: false });
-    expect(on).toMatchObject({ enabled: true, slug: "fowlex-farms", delivers: false, pricePerKgKobo: 320_000 });
+    expect(on).toMatchObject({
+      enabled: true,
+      slug: "fowlex-farms",
+      delivers: false,
+      prices: [{ name: "Live bird", pricing: "perBird", priceKobo: 700_000 }],
+    });
     // Another farm with the same name gets its own address.
     const other = await farm();
     expect(other.slug).toBe("fowlex-farms-2");
@@ -89,7 +99,12 @@ describe("the order page", () => {
   it("offers each day's birds: ready batches now, younger ones from a week before their selling age", async () => {
     const { slug } = await farm();
     const offer = (await shopOffer(slug, TODAY))!;
-    expect(offer).toMatchObject({ pricePerKgKobo: 320_000, readyNow: 300, weightGrams: 2000, delivers: true });
+    expect(offer).toMatchObject({
+      prices: [{ name: "By weight", pricing: "perKg", priceKobo: 320_000 }],
+      readyNow: 300,
+      weightGrams: 2000,
+      delivers: true,
+    });
     expect(offer.farm.name).toBe("Fowlex Farms");
     expect(offer.days[0]).toEqual({ date: TODAY, birds: 300 });
     expect(offer.days.find((d) => d.date === "2026-12-01")?.birds).toBe(800);
@@ -109,7 +124,10 @@ describe("the order page", () => {
       delivery: false,
       phone: "+2348031234567",
     });
-    expect(placed.estimateKobo).toBe(estimate(400, 2000, 320_000));
+    expect(placed).toMatchObject({
+      estimateKobo: priceEstimate({ pricing: "perKg", priceKobo: 320_000 }, 400, 2000),
+      exact: false,
+    });
     const [order] = await listOrders(owner.farmId);
     expect(order).toMatchObject({
       source: "online",
@@ -202,7 +220,28 @@ describe("order page rules", () => {
       "Tomorrow",
       "Mon 30 Nov",
     ]);
-    expect(estimate(10, 2200, 320_000)).toBe(7_040_000);
+    expect(priceEstimate({ pricing: "perKg", priceKobo: 320_000 }, 10, 2200)).toBe(7_040_000);
+    expect(priceEstimate({ pricing: "perBird", priceKobo: 700_000 }, 10, 2200)).toBe(7_000_000);
+    expect(priceLabel({ pricing: "perBird", priceKobo: 700_000 })).toBe("₦7,000 a bird");
+    expect(priceLabel({ pricing: "perKg", priceKobo: 320_050 })).toBe("₦3,200.50 a kg");
+    expect([defaultName("perKg"), defaultName("perBird")]).toEqual(["By weight", "Live bird"]);
+    expect(validatePrices(null)).toEqual({ prices: "Add at least one price." });
+    expect(Object.keys(validatePrices(Array.from({ length: 7 }, () => ({}))))).toEqual(["prices"]);
+    expect(
+      validatePrices([
+        { name: "Big", pricing: "perBird", priceKobo: 900_000 },
+        { name: "big", pricing: "x", priceKobo: 1.5 },
+        { name: "x".repeat(41), pricing: "perKg", priceKobo: 1 },
+        null,
+      ]),
+    ).toEqual({
+      "1.pricing": "Choose per bird or per kg.",
+      "1.priceKobo": "Enter the price.",
+      "1.name": "Give each price its own name.",
+      "2.name": "Keep the name short.",
+      "3.pricing": "Choose per bird or per kg.",
+      "3.priceKobo": "Enter the price.",
+    });
     expect(
       Object.keys(
         validateOnlineOrder({
@@ -219,5 +258,46 @@ describe("order page rules", () => {
       ),
     ).toEqual(["birds", "date", "delivery", "name", "phone", "email", "business", "notes"]);
     expect(validateOnlineOrder({ birds: 200_000 }).birds).toMatch(/call us/);
+  });
+});
+
+describe("the farm's prices", () => {
+  it("sells at several prices: customers choose, the order is priced by their choice, and new orders start from the first", async () => {
+    const { owner, form } = await farm({ on: false });
+    // A farm that only set a price per kg in Settings has that one until it saves a list.
+    await (await getSettings(owner.farmId)).set({ defaultPricePerKgKobo: 300_000 }).save();
+    expect(await farmPrices(owner.farmId)).toEqual([
+      { id: "kg", name: "By weight", pricing: "perKg", priceKobo: 300_000 },
+    ]);
+    const { prices } = await updateShop(owner, {
+      enabled: true,
+      prices: [
+        { name: "Live bird", pricing: "perBird", priceKobo: 700_000 },
+        { name: "Big bird", pricing: "perBird", priceKobo: 900_000 },
+        { name: "", pricing: "perKg", priceKobo: 320_000 },
+      ],
+    });
+    expect(prices.map((p) => p.name)).toEqual(["Live bird", "Big bird", "By weight"]);
+    const slug = (await shopSettings(owner.farmId)).slug!;
+    // Settings' price per kg follows the list.
+    expect((await getSettings(owner.farmId)).defaultPricePerKgKobo).toBe(320_000);
+    expect(await priceFor(owner.farmId, String(oid()), TODAY)).toMatchObject({
+      pricing: "perBird",
+      priceKobo: 700_000,
+    });
+
+    // With more than one, the customer must choose.
+    expect(await refusal(placeOnlineOrder(slug, form(), { today: TODAY }))).toMatchObject({ field: "priceId" });
+    const placed = await placeOnlineOrder(slug, form({ birds: 10, priceId: prices[1].id }), { today: TODAY });
+    expect(placed).toMatchObject({ estimateKobo: 9_000_000, exact: true });
+    const [order] = await listOrders(owner.farmId);
+    expect(order).toMatchObject({ totalKobo: 9_000_000, notes: "Big bird. Collecting from the farm" });
+    expect(order.lines[0]).toMatchObject({ pricing: "perBird", priceKobo: 900_000 });
+    expect(outbox().find((m) => m.subject.startsWith("Your order"))!.text).toContain("It comes to ₦90,000.00.");
+
+    // Saving keeps each price's id; dropping to one means nothing to choose.
+    const again = await updateShop(owner, { prices: [{ ...prices[1], priceKobo: 950_000 }] });
+    expect(again.prices).toEqual([{ id: prices[1].id, name: "Big bird", pricing: "perBird", priceKobo: 950_000 }]);
+    expect((await placeOnlineOrder(slug, form({ birds: 1 }), { today: TODAY })).estimateKobo).toBe(950_000);
   });
 });
