@@ -7,9 +7,9 @@ import { Field } from "@/components/auth";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
-import { type BankAccount, isPopular, sortBanks } from "@/lib/suppliers/rules";
+import { type BankAccount, isPopular, sortBanks, TEST_BANK } from "@/lib/suppliers/rules";
 
-type Bank = { code: string; name: string };
+type Bank = { code: string; name: string; test?: true };
 let banksOnce: Promise<Bank[]> | null = null;
 const loadBanks = () => {
   banksOnce ??= apiRequest<Bank[]>("/api/banks", "GET").catch((e) => {
@@ -39,6 +39,7 @@ export function BankAccountField({
 }) {
   const [banks, setBanks] = React.useState<Bank[]>([]);
   const [banksError, setBanksError] = React.useState<string | null>(null);
+  const [banksAttempt, setBanksAttempt] = React.useState(0);
   const [bankCode, setBankCode] = React.useState(value?.bankCode ?? "");
   const [number, setNumber] = React.useState(value?.accountNumber ?? "");
   const [attempt, setAttempt] = React.useState(0);
@@ -75,8 +76,19 @@ export function BankAccountField({
   });
 
   React.useEffect(() => {
-    loadBanks().then(setBanks, (e: AuthError) => setBanksError(e.message));
-  }, []);
+    let live = true;
+    loadBanks().then(
+      (list) => {
+        if (!live) return;
+        setBanks(list);
+        setBanksError(null);
+      },
+      (e: AuthError) => live && setBanksError(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [banksAttempt]);
 
   // Tell the form where the check is, and the account once the bank has named it.
   React.useEffect(() => {
@@ -108,19 +120,40 @@ export function BankAccountField({
     };
   }, [needsCheck, key, number, bankCode]);
 
-  const sorted = sortBanks(banks);
+  const testBanks = banks.filter((b) => b.test);
+  const sorted = sortBanks(banks.filter((b) => !b.test));
   const popular = sorted.filter((b) => isPopular(b.name));
   const rest = sorted.filter((b) => !isPopular(b.name));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-field="bank">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field id="bankCode" label="Bank" error={banksError ?? undefined}>
           {(a11y) => (
-            <Select {...a11y} value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
-              <option value="">{banks.length ? "Choose the bank" : "Loading banks…"}</option>
+            <Select
+              {...a11y}
+              value={bankCode}
+              onChange={(e) => {
+                const code = e.target.value;
+                setBankCode(code);
+                // The test bank comes with its test account, so a check never spends a real lookup.
+                if (code === TEST_BANK.code && !number) setNumber(TEST_BANK.accountNumber);
+              }}
+            >
+              <option value="">
+                {banks.length ? "Choose the bank" : banksError ? "Banks didn't load" : "Loading banks…"}
+              </option>
               {value && !banks.some((b) => b.code === value.bankCode) && (
                 <option value={value.bankCode}>{value.bankName || value.bankCode}</option>
+              )}
+              {testBanks.length > 0 && (
+                <optgroup label="Test mode">
+                  {testBanks.map((b) => (
+                    <option key={b.code} value={b.code}>
+                      {b.name}
+                    </option>
+                  ))}
+                </optgroup>
               )}
               {popular.length > 0 && (
                 <optgroup label="Popular">
@@ -141,7 +174,12 @@ export function BankAccountField({
             </Select>
           )}
         </Field>
-        <Field id="accountNumber" label="Account number" error={state === "not-found" ? message : error}>
+        <Field
+          id="accountNumber"
+          label="Account number"
+          error={state === "not-found" ? message : error}
+          hint={bankCode === TEST_BANK.code ? "Paystack's test account: no real money moves." : undefined}
+        >
           {(a11y) => (
             <Input
               {...a11y}
@@ -157,6 +195,15 @@ export function BankAccountField({
         </Field>
       </div>
       <div ref={status} aria-live="polite" className="scroll-mb-28">
+        {banksError && !banks.length && (
+          <button
+            type="button"
+            onClick={() => setBanksAttempt((a) => a + 1)}
+            className="focus-ring mb-2 inline-flex items-center gap-1 rounded-md text-sm font-semibold text-brand-fg"
+          >
+            <RotateCw className="size-3.5" aria-hidden /> Load the banks again
+          </button>
+        )}
         {state === "checking" && (
           <p className="flex items-center gap-2 text-sm text-fg-muted">
             <LoaderCircle className="size-4 animate-spin" aria-hidden /> Checking with the bank…

@@ -44,6 +44,67 @@ test.describe("signed in as someone else", () => {
     expect((await page.request.get("/api/reports/summary")).status()).toBe(200);
   });
 
+  test("finance keeps the books and sees everything about money, but changes nothing else", async ({ page }) => {
+    const errors = watchErrors(page, [/status of 403/]);
+    await signInAs(page, E2E_USERS.finance.email);
+    await expect(page).toHaveURL("/");
+
+    if (!test.info().project.use.isMobile) {
+      const pages = page.getByRole("complementary", { name: "Sidebar" }).getByRole("navigation", { name: "Pages" });
+      for (const name of [/^Overview/, /^Batches/, /^Suppliers/, /^Invoices/, /^Expenses/, /^Reports/, /^Payroll/])
+        await expect(pages.getByRole("link", { name })).toBeVisible();
+      await expect(pages.getByRole("link", { name: /^Daily log/ })).toHaveCount(0);
+      await expect(pages.getByRole("link", { name: /^Settings/ })).toHaveCount(0);
+    }
+
+    // Spending is theirs to record.
+    await page.goto("/expenses");
+    await expect(page.getByRole("main").getByRole("button", { name: "Spend money" }).first()).toBeVisible();
+    // Suppliers and pay are there to see, not to change.
+    await page.goto("/suppliers");
+    await expect(page.getByRole("heading", { level: 1, name: "Suppliers" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add supplier" })).toHaveCount(0);
+    await page.goto("/payroll");
+    await expect(page.getByRole("heading", { level: 1, name: "Payroll" })).toBeVisible();
+
+    expect((await page.request.get("/api/reports/summary")).status()).toBe(200);
+    expect((await page.request.patch("/api/settings", { data: {} })).status()).toBe(403);
+    expect((await page.request.post("/api/suppliers", { data: { name: "Not mine" } })).status()).toBe(403);
+    expect((await page.request.post("/api/payroll", { data: { period: "2001-01" } })).status()).toBe(403);
+    expect((await page.request.post("/api/batches", { data: {} })).status()).toBe(403);
+    expect(errors).toEqual([]);
+  });
+
+  test("sales land on Sales and see the birds and stock to sell, but no money", async ({ page }) => {
+    const errors = watchErrors(page, [/status of 403/]);
+    await signInAs(page, E2E_USERS.sales.email);
+    await expect(page).toHaveURL("/sales");
+
+    if (!test.info().project.use.isMobile) {
+      const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+      await expect(sidebar.getByRole("navigation", { name: "Pages" }).getByRole("link")).toHaveText([
+        /^Batches/,
+        /^Inventory/,
+        /^Customers/,
+        /^Contracts/,
+        /^Sales/,
+        /^Invoices/,
+      ]);
+    }
+
+    await page.goto("/batches");
+    await expect(page.getByRole("heading", { level: 1, name: "Batches" })).toBeVisible();
+    await page.goto("/expenses");
+    await expect(page.getByText(NO_ACCESS)).toBeVisible();
+    await page.goto("/");
+    await expect(page).toHaveURL("/sales");
+
+    expect((await page.request.get("/api/reports/summary")).status()).toBe(403);
+    expect((await page.request.get("/api/expenses")).status()).toBe(403);
+    expect((await page.request.post("/api/inventory/items", { data: {} })).status()).toBe(403);
+    expect(errors).toEqual([]);
+  });
+
   test("customers only reach their portal", async ({ page }) => {
     await signInAs(page, E2E_USERS.customer.email);
     await expect(page).toHaveURL("/portal");

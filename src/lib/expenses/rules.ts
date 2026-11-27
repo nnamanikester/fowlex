@@ -68,6 +68,15 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   failed: "Transfer failed",
 };
 
+/** Whether an expense counts: approved, waiting for an owner (above the approval limit), or rejected. */
+export const APPROVALS = ["approved", "pending", "rejected"] as const;
+export type Approval = (typeof APPROVALS)[number];
+export const APPROVAL_LABELS: Record<Approval, string> = {
+  approved: "Approved",
+  pending: "Waiting for approval",
+  rejected: "Rejected",
+};
+
 export type Line = {
   itemId: string;
   quantity: number;
@@ -78,7 +87,8 @@ export type Line = {
 
 export type ExpenseInput = {
   date: string;
-  category: ExpenseCategory;
+  /** A built-in key (`ExpenseCategory`) or one of the farm's own. */
+  category: string;
   /** What it was for; filled from the lines for a purchase. */
   description: string;
   supplierId: string | null;
@@ -110,7 +120,9 @@ export function validateExpense(v: Partial<Record<keyof ExpenseInput, unknown>>,
   const errors: Partial<Record<keyof ExpenseInput | `lines.${number}`, string>> = {};
   if (typeof v.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v.date)) errors.date = "Choose the day.";
   else if (v.date > today) errors.date = "That's in the future.";
-  if (!EXPENSE_CATEGORIES.includes(v.category as ExpenseCategory)) errors.category = "Choose what it was for.";
+  // A built-in key or the farm's own; the server checks it's on the farm's list.
+  if (typeof v.category !== "string" || !/^[a-z][\w-]{0,39}$/.test(v.category))
+    errors.category = "Choose what it was for.";
   if (typeof v.description !== "string" || v.description.length > LIMITS.text)
     errors.description = `Use at most ${LIMITS.text} characters.`;
   if (typeof v.payeeName !== "string" || v.payeeName.length > LIMITS.text) errors.payeeName = "Use fewer characters.";

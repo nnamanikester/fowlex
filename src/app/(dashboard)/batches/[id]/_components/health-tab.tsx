@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Pill, Plus, Stethoscope, Syringe, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Panel } from "@/components/kit";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import type { BatchView } from "@/lib/batches/service";
@@ -29,6 +30,7 @@ import {
   withdrawalEnds,
 } from "@/lib/health/rules";
 import type { HealthView } from "@/lib/health/service";
+import { quantity } from "@/lib/inventory/rules";
 import { formatNaira } from "@/lib/money";
 
 const day = (d: string) => formatRange({ from: d, to: d });
@@ -51,6 +53,7 @@ const KIND_ICON: Record<HealthKind, React.ReactNode> = {
 };
 
 type Draft = Omit<HealthInput, "batchId">;
+export type StockChoice = { id: string; name: string; unit: string; onHand: number };
 
 /** The batch's vaccination programme, and every vaccination, drug and vet visit recorded. */
 export function HealthTab({
@@ -60,6 +63,7 @@ export function HealthTab({
   today,
   canLog,
   canWrite,
+  stock = [],
 }: {
   batch: BatchView;
   plan: Dose[];
@@ -67,6 +71,8 @@ export function HealthTab({
   today: string;
   canLog: boolean;
   canWrite: boolean;
+  /** Drugs and vaccines in stock, to take from instead of buying. */
+  stock?: StockChoice[];
 }) {
   const [sheet, setSheet] = React.useState<{ event?: HealthView; draft: Draft } | null>(null);
   const blank = (over: Partial<Draft> = {}): Draft => ({
@@ -82,10 +88,23 @@ export function HealthTab({
     notes: "",
     ...over,
   });
-  const record = (d: Dose) =>
+  const record = (d: Dose) => {
+    // A matching vaccine in stock ("Newcastle", "Lasota", "Gumboro"…) is used from stock.
+    const words = d.vaccine
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter((w) => w.length > 4);
+    const inStock = stock.find((s) => s.onHand > 0 && words.some((w) => s.name.toLowerCase().includes(w)));
     setSheet({
-      draft: blank({ kind: "vaccination", scheduleKey: d.key, product: d.vaccine, route: d.route }),
+      draft: blank({
+        kind: "vaccination",
+        scheduleKey: d.key,
+        product: inStock?.name ?? d.vaccine,
+        route: d.route,
+        ...(inStock && { itemId: inStock.id, quantity: 1 }),
+      }),
     });
+  };
 
   return (
     <div className="space-y-4">
@@ -201,6 +220,7 @@ export function HealthTab({
           plan={plan}
           event={sheet.event}
           initial={sheet.draft}
+          stock={stock}
           today={today}
           canDelete={canWrite}
           onClose={() => setSheet(null)}
@@ -215,10 +235,12 @@ function HealthSheet({
   plan,
   event,
   initial,
+  stock,
   today,
   canDelete,
   onClose,
 }: {
+  stock: StockChoice[];
   batch: BatchView;
   plan: Dose[];
   event?: HealthView;
@@ -234,6 +256,11 @@ function HealthSheet({
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [requestId] = React.useState(newRequestId);
+  // A vaccine or drug from stock, or bought for this (with its cost and how it was paid).
+  const [source, setSource] = React.useState<"stock" | "bought">(initial.itemId ? "stock" : "bought");
+  const [paidBy, setPaidBy] = React.useState<"cash" | "later">("cash");
+  const fromStock = v.kind !== "vet-visit" && source === "stock" && stock.length > 0;
+  const item = stock.find((s) => s.id === v.itemId);
 
   const set = <K extends keyof Draft>(name: K, value: Draft[K]) => setV((d) => ({ ...d, [name]: value }));
   const errors = validateHealth({ ...v, batchId: batch.id }, { today, placedOn: batch.placedOn });
@@ -251,7 +278,14 @@ function HealthSheet({
     }
     setBusy(true);
     try {
-      const body = { ...v, batchId: batch.id };
+      const body = {
+        ...v,
+        batchId: batch.id,
+        itemId: fromStock ? v.itemId : null,
+        quantity: fromStock ? v.quantity : null,
+        costKobo: fromStock ? 0 : v.costKobo,
+        paidBy,
+      };
       if (event) await apiRequest(`/api/health/${event.id}`, "PATCH", { ...body, version: event.version });
       else await apiRequest("/api/health", "POST", { ...body, requestId });
       toast.success(event ? "Health record updated." : `${v.product || KIND_LABELS[v.kind]} recorded.`);
@@ -265,14 +299,10 @@ function HealthSheet({
   };
 
   const remove = async () => {
-    try {
-      await apiRequest(`/api/health/${event!.id}`, "DELETE");
-      toast.success("Health record deleted.");
-      router.refresh();
-      onClose();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
+    await apiRequest(`/api/health/${event!.id}`, "DELETE");
+    toast.success("Health record deleted.");
+    router.refresh();
+    onClose();
   };
 
   return (
@@ -283,6 +313,7 @@ function HealthSheet({
       subtitle={`${batch.code} · ${batch.houseName}`}
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           <Button type="submit" form="health-form" size="lg" fullWidth loading={busy}>
             {event ? "Save changes" : "Save"}
           </Button>
@@ -303,7 +334,6 @@ function HealthSheet({
           void save();
         }}
       >
-        {failure && <FormAlert title={failure.message} />}
         <Segmented
           label="What happened"
           value={v.kind}
@@ -346,6 +376,59 @@ function HealthSheet({
           </Field>
         )}
 
+        {v.kind !== "vet-visit" && stock.length > 0 && (
+          <Segmented
+            label="Where it came from"
+            className="w-full"
+            value={source}
+            onChange={setSource}
+            options={[
+              { value: "bought", label: "Bought for this" },
+              { value: "stock", label: "From your stock" },
+            ]}
+          />
+        )}
+        {fromStock && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field id="health-itemId" label="Item" error={show("itemId")}>
+              {(a11y) => (
+                <Select
+                  {...a11y}
+                  value={v.itemId ?? ""}
+                  onChange={(e) => {
+                    const chosen = stock.find((s) => s.id === e.target.value);
+                    setV((d) => ({ ...d, itemId: chosen?.id ?? null, product: chosen ? chosen.name : d.product }));
+                  }}
+                >
+                  <option value="">Choose…</option>
+                  {stock.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field
+              id="health-quantity"
+              label={item ? `How many ${item.unit}s` : "How many"}
+              error={show("quantity")}
+              hint={item ? `${quantity(item.onHand, item.unit as never)} left` : undefined}
+            >
+              {(a11y) => (
+                <Input
+                  {...a11y}
+                  inputMode="decimal"
+                  className="num"
+                  value={v.quantity === null || v.quantity === undefined ? "" : String(v.quantity)}
+                  onChange={(e) =>
+                    set("quantity", e.target.value === "" ? null : Number(e.target.value.replace(/[^\d.]/g, "")))
+                  }
+                />
+              )}
+            </Field>
+          </div>
+        )}
         <Field
           id="health-product"
           label={v.kind === "vet-visit" ? "Vet or clinic" : v.kind === "vaccination" ? "Vaccine" : "Drug"}
@@ -425,17 +508,36 @@ function HealthSheet({
               />
             )}
           </Field>
-          <Field id="health-costKobo" label="Cost" error={show("costKobo")} hint="Optional">
-            {(a11y) => (
-              <MoneyInput
-                {...a11y}
-                value={v.costKobo || null}
-                onChange={(k) => set("costKobo", k ?? 0)}
-                placeholder="0.00"
-              />
-            )}
-          </Field>
+          {!fromStock && (
+            <Field id="health-costKobo" label="Cost" error={show("costKobo")} hint="Optional">
+              {(a11y) => (
+                <MoneyInput
+                  {...a11y}
+                  value={v.costKobo || null}
+                  onChange={(k) => set("costKobo", k ?? 0)}
+                  placeholder="0.00"
+                />
+              )}
+            </Field>
+          )}
         </div>
+        {!fromStock && v.costKobo > 0 && !event && (
+          <Segmented
+            label="Paid"
+            className="w-full"
+            value={paidBy}
+            onChange={setPaidBy}
+            options={[
+              { value: "cash", label: "Paid already" },
+              { value: "later", label: "Owed" },
+            ]}
+          />
+        )}
+        {!fromStock && v.costKobo > 0 && (
+          <p className="-mt-2 text-xs text-fg-muted">
+            Recorded under Expenses for {batch.code}, so you don&apos;t enter it twice.
+          </p>
+        )}
 
         <Field id="health-givenBy" label="Done by" error={show("givenBy")} hint="Optional">
           {(a11y) => (

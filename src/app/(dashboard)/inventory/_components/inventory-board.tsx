@@ -4,18 +4,20 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
-import { Archive, Boxes, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { Archive, Boxes, LoaderCircle, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { type SpendProps, useSpending } from "../../expenses/_components/expenses-board";
-import { Field, FormAlert, useFocusFirstError } from "@/components/auth";
+import { Field, useFocusFirstError } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import type { ItemView } from "@/lib/inventory/items";
 import {
   type Category,
@@ -61,15 +63,14 @@ export function InventoryBoard({
   const have = new Set(items.map((i) => nameKey(i.name)));
   const suggestions = COMMON_ITEMS.filter((c) => !have.has(nameKey(c.name)));
 
-  const quickAdd = async (item: ItemInput) => {
-    try {
-      await apiRequest("/api/inventory/items", "POST", item);
-      toast.success(`${item.name} added.`);
-      router.refresh();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
-  };
+  const adding = useAction();
+  const quickAdd = (item: ItemInput) =>
+    adding.run(() => apiRequest("/api/inventory/items", "POST", item), {
+      key: item.name,
+      success: `${item.name} added.`,
+      toastError: true,
+      onSuccess: () => router.refresh(),
+    });
 
   return (
     <div className="space-y-4">
@@ -227,10 +228,17 @@ export function InventoryBoard({
               <button
                 key={s.name}
                 type="button"
+                disabled={adding.busy}
+                aria-busy={adding.isPending(s.name) || undefined}
                 onClick={() => void quickAdd(s)}
-                className="focus-ring inline-flex items-center gap-1.5 rounded-full border border-dashed border-line-strong px-3 py-1.5 text-sm text-fg hover:bg-surface-subtle"
+                className="focus-ring inline-flex items-center gap-1.5 rounded-full border border-dashed border-line-strong px-3 py-1.5 text-sm text-fg enabled:hover:bg-surface-subtle disabled:cursor-wait disabled:opacity-60"
               >
-                <Plus className="size-3.5" aria-hidden /> {s.name}
+                {adding.isPending(s.name) ? (
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Plus className="size-3.5" aria-hidden />
+                )}{" "}
+                {s.name}
               </button>
             ))}
           </div>
@@ -256,7 +264,15 @@ export function InventoryBoard({
   );
 }
 
-const EMPTY_SPEND: SpendProps = { suppliers: [], items: [], batches: [], today: "", canWrite: false, canPay: false };
+const EMPTY_SPEND: SpendProps = {
+  categories: [],
+  suppliers: [],
+  items: [],
+  batches: [],
+  today: "",
+  canWrite: false,
+  canPay: false,
+};
 
 const BLANK: ItemInput = {
   name: "",
@@ -339,6 +355,7 @@ export function ItemSheet({
         subtitle={current ? CATEGORY_LABELS[current.category] : "Something you keep in stock"}
         footer={
           <div className="space-y-2">
+            <ActionFeedback action={{ failure }} />
             <Button type="submit" form="item-form" fullWidth loading={form.isSubmitting} size="lg">
               {current ? "Save changes" : "Add item"}
             </Button>
@@ -366,7 +383,6 @@ export function ItemSheet({
         }
       >
         <form id="item-form" noValidate onSubmit={form.handleSubmit} className="space-y-5">
-          {failure && <FormAlert title={failure.message} />}
           <Field id="name" label="Name" error={error("name")}>
             {(a11y) => (
               <Input
@@ -484,12 +500,8 @@ export function ItemSheet({
           description="It leaves your inventory. An item with stock history can't be deleted; archive it instead."
           confirmLabel="Delete item"
           onConfirm={async () => {
-            try {
-              await apiRequest(`/api/inventory/items/${current.id}`, "DELETE");
-              onSaved(`${current.name} deleted.`);
-            } catch (e) {
-              toast.error((e as AuthError).message);
-            }
+            await apiRequest(`/api/inventory/items/${current.id}`, "DELETE");
+            onSaved(`${current.name} deleted.`);
           }}
         />
       )}

@@ -13,7 +13,8 @@ import { EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatRange } from "@/lib/dates";
-import { EXPENSE_CATEGORY_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
+import { categoryName } from "@/lib/expenses/categories";
+import { PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
 import type { ExpenseView } from "@/lib/expenses/service";
 import { formatNaira } from "@/lib/money";
 import { formatPhone, maskAccount, SUPPLY_LABELS } from "@/lib/suppliers/rules";
@@ -31,6 +32,7 @@ export function SupplierDetail({
   const router = useRouter();
   const [editing, setEditing] = React.useState(false);
   const { spend, show, sheets } = useSpending(props);
+  const { categories } = props;
   const owed = expenses.filter((e) => e.paymentStatus === "unpaid" || e.paymentStatus === "failed");
   const sending = expenses.filter((e) => e.paymentStatus === "paying" || e.paymentStatus === "otp");
   const sum = (list: ExpenseView[]) => list.reduce((n, e) => n + e.amountKobo, 0);
@@ -103,7 +105,7 @@ export function SupplierDetail({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-fg">
-                      {e.description || EXPENSE_CATEGORY_LABELS[e.category]}
+                      {e.description || categoryName(categories, e.category)}
                     </span>
                     <span className="block text-xs text-fg-muted">
                       {e.number} · {day(e.date)}

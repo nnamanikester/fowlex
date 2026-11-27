@@ -4,6 +4,8 @@ export const E2E_PASSWORD = "fowlex-e2e-password";
 export const E2E_USERS = {
   owner: { email: "owner@fowlex.test", name: "Ada Owner", role: "owner" },
   manager: { email: "manager@fowlex.test", name: "Musa Manager", role: "manager" },
+  finance: { email: "finance@fowlex.test", name: "Ngozi Finance", role: "finance" },
+  sales: { email: "sales@fowlex.test", name: "Chidi Sales", role: "sales" },
   staff: { email: "staff@fowlex.test", name: "Tunde Staff", role: "staff" },
   customer: { email: "buyer@grill-lounge.test", name: "The Grill Lounge", role: "customer" },
   /** Only for the password-reset test, which changes this person's password. */

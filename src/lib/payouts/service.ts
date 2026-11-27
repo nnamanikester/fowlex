@@ -14,6 +14,8 @@ import { payableRecipient } from "@/lib/suppliers/service";
 import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
 import { PayoutModel } from "@/models/payout";
+import { emailPayslip } from "@/lib/payroll/payslips";
+import { recordTransferSent, recordTransferUndone } from "@/lib/balance/service";
 
 export type PayoutView = {
   id: string;
@@ -95,6 +97,10 @@ async function payable(actor: CurrentUser, expenseId: string) {
   if (expense.paymentStatus === "paid") throw new HttpError(409, "paid", `${expense.number} is already paid.`);
   if (expense.paymentStatus === "paying" || expense.paymentStatus === "otp")
     throw new HttpError(409, "paying", `A transfer for ${expense.number} is already on its way.`);
+  if (expense.approval === "pending")
+    throw new HttpError(409, "not_approved", `${expense.number} is waiting for approval. Approve it, then pay.`);
+  if (expense.approval === "rejected")
+    throw new HttpError(409, "rejected", `${expense.number} was rejected, so it isn't owed.`);
   if (!expense.supplierId && !expense.payeeBank)
     throw new HttpError(409, "no_bank", "Add the bank account to pay before sending money through Paystack.");
   return expense;
@@ -187,10 +193,14 @@ export async function payExpense(actor: CurrentUser, expenseId: string) {
     // No answer: the transfer may or may not exist. Leave it pending to be checked.
     return view((await PayoutModel.findById(payout._id).lean()) as unknown as Doc);
   }
+  const transferId = res.data?.id === undefined || res.data?.id === null ? null : String(res.data.id);
   if (res.status && res.data?.status === "otp") {
+    await PayoutModel.updateOne({ reference }, { $set: { transferId } });
     await settle(reference, "otp", { transferCode: res.data.transfer_code ?? null });
   } else if (res.status) {
-    await PayoutModel.updateOne({ reference }, { $set: { transferCode: res.data?.transfer_code ?? null } });
+    await PayoutModel.updateOne({ reference }, { $set: { transferCode: res.data?.transfer_code ?? null, transferId } });
+    // Paystack took it: the money and fee leave the balance now.
+    await recordTransferSent(reference);
     await syncPayout(reference).catch(() => undefined);
   } else if (/reference already exists/i.test(res.message) || isProviderTrouble(res)) {
     await syncPayout(reference).catch(() => undefined);
@@ -201,7 +211,11 @@ export async function payExpense(actor: CurrentUser, expenseId: string) {
 }
 
 /** Paystack's refusal in words the owner can act on. */
-function refusal(message: string) {
+export function refusal(message: string) {
+  if (/invalid key|authorization|secret key/i.test(message))
+    return "Paystack didn't accept the farm's Paystack key. Whoever set up Fowlex needs to put in the right secret key.";
+  if (/\bip\b|whitelist/i.test(message))
+    return "Paystack is blocking Fowlex's server. Turn off IP whitelisting for the API key in Paystack's settings.";
   if (/balance/i.test(message)) return "Your Paystack balance is too low. Top it up, then try again.";
   if (/otp/i.test(message)) return "Paystack wants an OTP for transfers. Try again, then enter the OTP it sends.";
   return message || "Paystack refused the transfer.";
@@ -224,6 +238,7 @@ export async function submitOtp(actor: CurrentUser, payoutId: string, otp: unkno
     throw new HttpError(400, "invalid_otp", res.message || "Paystack didn't accept that OTP.", "otp");
   }
   await settle(payout.reference, "pending", {});
+  await recordTransferSent(payout.reference);
   await syncPayout(payout.reference).catch(() => undefined);
   return view((await PayoutModel.findById(payout._id).lean()) as unknown as Doc);
 }
@@ -245,6 +260,8 @@ export async function syncPayout(reference: string) {
       });
     return view((await PayoutModel.findOne({ reference }).lean()) as unknown as Doc);
   }
+  if (found.transferId && !payout.transferId)
+    await PayoutModel.updateOne({ reference }, { $set: { transferId: found.transferId } });
   if (found.status === "success")
     await settle(reference, "success", { feeKobo: found.feeKobo, transferCode: found.transferCode });
   else if (found.status === "failed" || found.status === "abandoned" || found.status === "rejected")
@@ -280,6 +297,7 @@ export async function settle(
   status: keyof typeof EXPENSE_STATUS,
   { feeKobo = 0, transferCode, failure }: { feeKobo?: number; transferCode?: string | null; failure?: string },
 ) {
+  let paidExpense: string | null = null;
   await withTransaction(async (session) => {
     const payout = await PayoutModel.findOneAndUpdate(
       { reference, status: { $in: FROM[status] } },
@@ -294,6 +312,7 @@ export async function settle(
       { session, returnDocument: "after" },
     );
     if (!payout) return;
+    if (status === "success") paidExpense = String(payout.expenseId);
     const today = lagosToday();
     await ExpenseModel.updateOne(
       { _id: payout.expenseId },
@@ -325,6 +344,10 @@ export async function settle(
       { session },
     );
   });
+  // The book follows: a failed transfer's money never left; a returned one came back.
+  if (status === "failed" || status === "reversed") await recordTransferUndone(reference, status);
+  // Someone's pay landed: their payslip goes to them.
+  if (paidExpense) await emailPayslip(paidExpense).catch((error) => console.error("[payslip email]", error));
 }
 
 /** True in the simulator, where no webhook comes: transfers are settled by checking at once. */

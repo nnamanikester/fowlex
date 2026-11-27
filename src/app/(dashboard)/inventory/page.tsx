@@ -7,8 +7,7 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadItems, loadSuppliers } from "@/lib/page-data";
+import { loadBatches, loadCategories, loadItems, loadSuppliers, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Inventory" };
 
@@ -34,11 +33,13 @@ async function Tabs() {
 
 async function Inventory() {
   const user = await requireUser();
+  const now = await requestToday();
   const canBuy = can(user.role, "expense.write");
-  const [items, suppliers, batches] = await Promise.all([
+  const [items, suppliers, batches, categories] = await Promise.all([
     loadItems(user.farmId),
     canBuy ? loadSuppliers(user.farmId) : Promise.resolve([]),
     canBuy ? loadBatches(user.farmId) : Promise.resolve([]),
+    loadCategories(user.farmId),
   ]);
   return (
     <InventoryBoard
@@ -48,10 +49,11 @@ async function Inventory() {
       spending={
         canBuy
           ? {
+              categories,
               suppliers,
               items,
               batches: batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code })),
-              today: today(),
+              today: now,
               canWrite: true,
               canPay: can(user.role, "payout.send"),
             }

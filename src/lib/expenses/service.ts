@@ -3,6 +3,7 @@ import "server-only";
 import { Types } from "mongoose";
 
 import {
+  type Approval,
   CATEGORY_FOR_ITEM,
   describeLines,
   type ExpenseCategory,
@@ -12,11 +13,17 @@ import {
   validateExpense,
 } from "./rules";
 import { checkAssetFromExpense, createAssetFromExpense } from "@/lib/assets/service";
+import { assertCategory } from "./categories-service";
+import { repeatMonthly } from "@/lib/recurring/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
+import { sendEmail } from "@/lib/email";
+import { formatNaira } from "@/lib/money";
+import { readSettings } from "@/lib/settings/service";
+import { UserModel } from "@/models/user";
 import { type Category, type ItemInput, nameKey, tidyName } from "@/lib/inventory/rules";
 import { AssetModel } from "@/models/asset";
 import { BatchModel } from "@/models/batch";
@@ -24,6 +31,7 @@ import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { PayoutModel } from "@/models/payout";
+import { emailPayslip } from "@/lib/payroll/payslips";
 import { StockMovementModel } from "@/models/stock-movement";
 import { SupplierModel } from "@/models/supplier";
 import { createRecipient, resolveAccount } from "@/lib/paystack/banks";
@@ -37,8 +45,15 @@ export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   amountKobo: number;
   paymentStatus: PaymentStatus;
   paidOn: string | null;
+  /** Only approved expenses count; a rejected one carries the owner's reason. */
+  approval: Approval;
+  approvalNote: string;
   /** Fowlex recorded it itself (a Paystack fee): it changes with its transfer, not by hand. */
   automatic: boolean;
+  /** A batch's chicks: its cost and hatchery change with the batch, not here. */
+  fromBatch: boolean;
+  /** Bought for a health record: its cost changes there. */
+  fromHealth: boolean;
   /** Equipment: counted as depreciation over its life. */
   capital: boolean;
   createdAt: string;
@@ -49,7 +64,7 @@ type Doc = {
   __v?: number;
   number: string;
   date: string;
-  category: ExpenseCategory;
+  category: string;
   description?: string;
   supplierId?: unknown;
   payeeName?: string;
@@ -61,6 +76,8 @@ type Doc = {
   method: ExpenseInput["method"];
   paymentStatus: PaymentStatus;
   paidOn?: string | null;
+  approval?: Approval;
+  approvalNote?: string;
   notes?: string;
   receipt?: { url: string; name?: string } | null;
   source?: { kind?: string | null };
@@ -91,9 +108,13 @@ const view = (e: Doc): ExpenseView => ({
   method: e.method,
   paymentStatus: e.paymentStatus,
   paidOn: e.paidOn ?? null,
+  approval: e.approval ?? "approved",
+  approvalNote: e.approvalNote ?? "",
   notes: e.notes ?? "",
   receipt: e.receipt ? { url: e.receipt.url, name: e.receipt.name ?? "" } : null,
-  automatic: !!e.source?.kind,
+  automatic: e.source?.kind === "payout-fee",
+  fromBatch: e.source?.kind === "batch",
+  fromHealth: e.source?.kind === "health",
   capital: e.capital ?? false,
   createdAt: (e.createdAt ?? new Date(0)).toISOString(),
 });
@@ -122,7 +143,8 @@ export async function supplierBalances(farmId: string) {
     sendingKobo: number;
     count: number;
   }>([
-    { $match: { farmId: new Types.ObjectId(farmId), supplierId: { $ne: null } } },
+    // A rejected expense isn't owed; one waiting for approval is (the goods came).
+    { $match: { farmId: new Types.ObjectId(farmId), supplierId: { $ne: null }, approval: { $ne: "rejected" } } },
     {
       $group: {
         _id: "$supplierId",
@@ -280,6 +302,7 @@ export async function createExpense(
       "Only the owners send money. Save it as not paid yet, and an owner can pay it.",
       "method",
     );
+  if (!values.lines.length) await assertCategory(actor.farmId, values.category);
   const newItems: NewItem[] = [];
   let supplier = await resolve(actor.farmId, values, newItems);
   // Paying someone who isn't a saved supplier: their account is checked with the bank here, and
@@ -334,6 +357,9 @@ export async function createExpense(
       ? checkAssetFromExpense(input.asset, values, today)
       : null;
   const paid = ["cash", "transfer", "pos"].includes(values.method);
+  // Above the approval limit, a manager's spending waits for an owner before it counts.
+  const limit = (await readSettings(actor.farmId)).expenseApprovalLimitKobo;
+  const pending = !can(actor.role, "expense.approve") && values.amountKobo > limit;
   try {
     const doc = await withTransaction(async (session) => {
       const year = values.date.slice(0, 4);
@@ -350,6 +376,7 @@ export async function createExpense(
             payeeBank,
             number: `EXP-${year}-${String(seq).padStart(4, "0")}`,
             paymentStatus: paid ? "paid" : "unpaid",
+            approval: pending ? "pending" : "approved",
             paidOn: paid ? values.date : null,
             capital: !!asset,
             farmId: actor.farmId,
@@ -375,9 +402,13 @@ export async function createExpense(
           { session, ordered: true },
         );
       if (asset) await createAssetFromExpense(session, actor, asset, expense._id);
+      // Rent, security, internet: made again each month from now on.
+      if (input.repeat === true && !values.lines.length) await repeatMonthly(session, actor, expense);
       return expense;
     });
-    return { expense: view(doc.toObject() as unknown as Doc), created: true };
+    const expense = view(doc.toObject() as unknown as Doc);
+    if (pending) await askOwners(actor, expense).catch(() => undefined);
+    return { expense, created: true };
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
       const again = await sent();
@@ -402,7 +433,8 @@ export async function updateExpense(actor: CurrentUser, id: string, input: Recor
   const doc = await load(actor, id);
   if (typeof version !== "number" || version !== doc.__v)
     throw new HttpError(409, "stale", "Someone changed this expense while you were editing. Open it again.");
-  if (doc.source?.kind) throw new HttpError(409, "automatic", "Fowlex keeps this one in step with its transfer.");
+  if (doc.source?.kind === "payout-fee")
+    throw new HttpError(409, "automatic", "Fowlex keeps this one in step with its transfer.");
   const current = view(doc.toObject() as unknown as Doc);
   const values = clean(
     { ...current, ...pick(input, ["notes", "receipt", "batchId", "payeeName"]), date: current.date },
@@ -429,6 +461,8 @@ export async function markPaid(actor: CurrentUser, id: string, input: Record<str
   if (doc.paymentStatus === "paid") throw new HttpError(409, "paid", `${doc.number} is already paid.`);
   if (doc.paymentStatus === "paying" || doc.paymentStatus === "otp")
     throw new HttpError(409, "paying", "A Paystack transfer for this is on its way. Wait for it to land or fail.");
+  if (doc.approval === "rejected")
+    throw new HttpError(409, "rejected", `${doc.number} was rejected, so it isn't owed.`);
   const method = input.method;
   if (method !== "cash" && method !== "transfer" && method !== "pos")
     throw new HttpError(400, "invalid_expense", "Choose how it was paid.", "method");
@@ -442,6 +476,9 @@ export async function markPaid(actor: CurrentUser, id: string, input: Record<str
     );
   doc.set({ method, paymentStatus: "paid", paidOn });
   await doc.save();
+  // Someone's pay, paid in cash: their payslip goes to them.
+  if (doc.source?.kind === "payslip")
+    await emailPayslip(String(doc._id)).catch((error) => console.error("[payslip email]", error));
   return view(doc.toObject() as unknown as Doc);
 }
 
@@ -451,7 +488,16 @@ export async function markPaid(actor: CurrentUser, id: string, input: Record<str
  */
 export async function deleteExpense(actor: CurrentUser, id: string) {
   const doc = await load(actor, id);
-  if (doc.source?.kind) throw new HttpError(409, "automatic", "Fowlex keeps this one in step with its transfer.");
+  if (doc.source?.kind === "payout-fee")
+    throw new HttpError(409, "automatic", "Fowlex keeps this one in step with its transfer.");
+  if (doc.source?.kind === "batch")
+    throw new HttpError(409, "from_batch", "These are a batch's chicks: change or delete the batch instead.");
+  if (doc.source?.kind === "health")
+    throw new HttpError(409, "from_health", "This came from a health record: change or delete it there.");
+  if (doc.source?.kind === "advance")
+    throw new HttpError(409, "from_advance", "This is a salary advance: remove it on the person's page in People.");
+  if (doc.source?.kind === "payslip")
+    throw new HttpError(409, "from_payroll", "This is someone's pay: it comes and goes with its payroll run.");
   if (await PayoutModel.exists({ expenseId: doc._id, status: { $in: ["pending", "otp", "success"] } }))
     throw new HttpError(409, "has_payout", "Money for this went through Paystack, so it stays on record.");
   await withTransaction(async (session) => {
@@ -464,4 +510,64 @@ export async function deleteExpense(actor: CurrentUser, id: string) {
     const assets = await AssetModel.find({ expenseId: doc._id }).session(session);
     for (const a of assets) await a.softDelete();
   });
+}
+
+/** Tells the owners an expense is waiting for their approval. */
+async function askOwners(actor: CurrentUser, expense: ExpenseView) {
+  const owners = await UserModel.find(
+    { farmId: actor.farmId, role: "owner", status: "active" },
+    { email: 1, name: 1 },
+  ).lean();
+  for (const owner of owners)
+    await sendEmail({
+      to: owner.email,
+      subject: `${actor.name} spent ${formatNaira(expense.amountKobo)}: approve it?`,
+      text: [
+        `Hi ${owner.name},`,
+        "",
+        `${actor.name} recorded ${expense.number}: ${expense.description} (${formatNaira(expense.amountKobo)}).`,
+        "It's above your approval limit, so it doesn't count until you approve it.",
+        "",
+        "Approve or reject it under Expenses in Fowlex.",
+      ].join("\n"),
+    });
+}
+
+/** An owner approves an expense waiting for approval: it counts from now. */
+export async function approveExpense(actor: CurrentUser, id: string) {
+  const doc = await load(actor, id);
+  if (doc.approval !== "pending") throw new HttpError(409, "not_pending", `${doc.number} isn't waiting for approval.`);
+  doc.set({ approval: "approved", approvalNote: "", decidedBy: actor.id, decidedAt: new Date() });
+  await doc.save();
+  return view(doc.toObject() as unknown as Doc);
+}
+
+/**
+ * An owner rejects an expense, with a reason: it doesn't count, isn't owed, can't be paid, and a
+ * purchase's stock and equipment come off again. To fix one, record it again.
+ */
+export async function rejectExpense(actor: CurrentUser, id: string, reason: unknown) {
+  const doc = await load(actor, id);
+  if (doc.approval !== "pending") throw new HttpError(409, "not_pending", `${doc.number} isn't waiting for approval.`);
+  const note = typeof reason === "string" ? reason.trim() : "";
+  if (!note || note.length > 300)
+    throw new HttpError(400, "invalid_reason", "Say why, so they can put it right (up to 300 characters).", "reason");
+  await withTransaction(async (session) => {
+    doc.$session(session);
+    doc.set({ approval: "rejected", approvalNote: note, decidedBy: actor.id, decidedAt: new Date() });
+    await doc.save();
+    const movements = await StockMovementModel.find({ "source.kind": "purchase", "source.id": doc._id }).session(
+      session,
+    );
+    for (const m of movements) await m.softDelete();
+    const assets = await AssetModel.find({ expenseId: doc._id }).session(session);
+    for (const a of assets) await a.softDelete();
+  });
+  return view(doc.toObject() as unknown as Doc);
+}
+
+/** How many expenses are waiting for an owner. */
+export async function pendingApprovals(farmId: string) {
+  await connectDb();
+  return ExpenseModel.countDocuments({ farmId, approval: "pending" });
 }

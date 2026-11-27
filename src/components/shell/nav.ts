@@ -5,6 +5,7 @@ import {
   FileSignature,
   HandCoins,
   House,
+  Landmark,
   ReceiptText,
   Settings,
   ShoppingCart,
@@ -132,6 +133,14 @@ export const NAV: NavGroup[] = [
         keywords: "spend costs receipts transport fuel approvals budget",
       },
       {
+        href: "/balance",
+        label: "Paystack balance",
+        icon: Landmark,
+        permission: "finance.read",
+        key: "k",
+        keywords: "paystack balance fund top up ledger transfers fees reconcile",
+      },
+      {
         href: "/reports",
         label: "Reports",
         icon: ChartColumn,
@@ -207,4 +216,7 @@ const CHILD_NAMES: Record<string, string> = {
   "/settings/houses": "Houses",
   "/settings/users": "Users",
   "/settings/audit": "Audit log",
+  "/inventory/equipment": "Equipment",
+  "/expenses/categories": "Categories",
+  "/people/attendance": "Attendance",
 };

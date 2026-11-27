@@ -9,6 +9,7 @@ import {
   ClipboardPen,
   Hammer,
   MoreHorizontal,
+  PackageCheck,
   Pencil,
   RotateCcw,
   ShoppingCart,
@@ -18,7 +19,9 @@ import {
 import { toast } from "sonner";
 
 import { CloseSheet } from "./close-sheet";
-import { HealthTab } from "./health-tab";
+import { ChicksExpense, CostsTab } from "./costs-tab";
+import { PickUpSheet } from "../../_components/book-chicks";
+import { HealthTab, type StockChoice } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
 import { TrendChart } from "@/components/charts/trend-chart";
@@ -27,10 +30,13 @@ import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { apiRequest } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import { batchKpis, growthRows, vsStandard } from "@/lib/batches/kpis";
 import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
+import type { BatchCosts } from "@/lib/batches/costs";
 import type { BatchView } from "@/lib/batches/service";
+import type { CategoryView } from "@/lib/expenses/categories";
 import { formatRange } from "@/lib/dates";
 import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
 import type { HealthView } from "@/lib/health/service";
@@ -44,8 +50,8 @@ const TABS = [
   ["overview", "Overview", null],
   ["logs", "Daily logs", null],
   ["health", "Health", null],
-  ["costs", "Costs", "8.1"],
-  ["sales", "Sales", "6.3"],
+  ["costs", "Costs", null],
+  ["sales", "Sales", null],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -63,7 +69,22 @@ export function BatchDetail({
   canWrite,
   canLog,
   canManageHouses,
+  costs = null,
+  stock = [],
+  categories = [],
+  hatcheries = [],
+  canSpend = false,
+  sales,
 }: {
+  /** The orders its birds went on (for those who see sales); none hides the tab. */
+  sales?: React.ReactNode;
+  /** What the batch has cost (for those who see money); null hides the money. */
+  costs?: BatchCosts | null;
+  /** Drugs and vaccines in stock, for health records. */
+  stock?: StockChoice[];
+  categories?: CategoryView[];
+  hatcheries?: { id: string; name: string; chicks: boolean }[];
+  canSpend?: boolean;
   batch: BatchView;
   houses: HouseView[];
   logs: LogView[];
@@ -78,18 +99,17 @@ export function BatchDetail({
   const [editing, setEditing] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [closing, setClosing] = React.useState(false);
+  const [pickingUp, setPickingUp] = React.useState(false);
   const [reopening, setReopening] = React.useState(false);
   const open = b.phase !== "closed";
 
-  const setStatus = async (status: "active" | "selling") => {
-    try {
-      await apiRequest(`/api/batches/${b.id}/status`, "POST", { status });
-      toast.success(status === "selling" ? `${b.code} is now selling.` : `${b.code} is back to growing.`);
-      router.refresh();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
-  };
+  const action = useAction();
+  const setStatus = (status: "active" | "selling") =>
+    action.run(() => apiRequest(`/api/batches/${b.id}/status`, "POST", { status }), {
+      progress: status === "selling" ? `Moving ${b.code} to selling…` : `Moving ${b.code} back to growing…`,
+      success: status === "selling" ? `${b.code} is now selling.` : `${b.code} is back to growing.`,
+      onSuccess: () => router.refresh(),
+    });
 
   const daysLeft = b.targetSellAgeDays - b.ageDays;
   const plan = vaccinationPlan(
@@ -168,7 +188,7 @@ export function BatchDetail({
         aria-label="Batch sections"
         className="-mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 [scrollbar-width:none] md:mx-0 md:px-0"
       >
-        {TABS.map(([id, label]) => (
+        {TABS.filter(([id]) => (id !== "costs" || costs) && (id !== "sales" || sales)).map(([id, label]) => (
           <Link
             key={id}
             href={id === "overview" ? `/batches/${b.id}` : `/batches/${b.id}?tab=${id}`}
@@ -184,6 +204,20 @@ export function BatchDetail({
         ))}
       </nav>
 
+      {b.phase === "planned" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-info-line bg-info-subtle px-4 py-3 text-sm">
+          <span className="flex-1 text-fg">
+            <strong>Booked:</strong> {n(b.bookedChicks ?? b.placed)} chicks
+            {b.supplierName ? ` from ${b.supplierName}` : ""}, to pick up{" "}
+            {b.placedOn === today ? "today" : day(b.placedOn)}. When you collect them, tap Chicks picked up.
+          </span>
+          {canWrite && (
+            <Button size="sm" onClick={() => setPickingUp(true)}>
+              <PackageCheck /> Chicks picked up
+            </Button>
+          )}
+        </div>
+      )}
       {!open && b.closedOn && (
         <div
           role="status"
@@ -246,9 +280,24 @@ export function BatchDetail({
                 <Fact label="Dead on arrival" value={n(b.deadOnArrival)} />
                 <Fact label="Free extras" value={n(b.freeExtras)} />
                 <Fact label="Placed alive" value={n(b.placed)} />
+                {b.shortfall > 0 && (
+                  <Fact label="Short from the hatchery" value={`${n(b.shortfall)} chicks owed to you`} />
+                )}
                 <Fact label="Price per chick" value={formatNaira(b.pricePerChickKobo)} />
                 <Fact label={`Chicks cost (${n(b.paid)} paid)`} value={formatNaira(b.chickCostKobo)} />
-                <Fact label="Hatchery" value={b.supplierName || "–"} />
+                <Fact
+                  label="Hatchery"
+                  value={
+                    b.supplierId ? (
+                      <Link href={`/suppliers/${b.supplierId}`} className="focus-ring rounded-md text-brand-fg">
+                        {b.supplierName}
+                      </Link>
+                    ) : (
+                      b.supplierName || "–"
+                    )
+                  }
+                />
+                {costs && <Fact label="Chicks expense" value={<ChicksExpense batch={b} canRecord={canSpend} />} />}
                 <Fact
                   label="Age when placed"
                   value={b.ageAtPlacementDays ? `${b.ageAtPlacementDays} days` : "Day-old"}
@@ -271,10 +320,22 @@ export function BatchDetail({
             </Panel>
           </div>
         </>
+      ) : tab === "costs" && costs ? (
+        <CostsTab batch={b} costs={costs} categories={categories} canSpend={canSpend} />
       ) : tab === "health" ? (
-        <HealthTab batch={b} plan={plan} events={health} today={today} canLog={canLog && open} canWrite={canWrite} />
+        <HealthTab
+          batch={b}
+          plan={plan}
+          events={health}
+          today={today}
+          canLog={canLog && open}
+          canWrite={canWrite}
+          stock={stock}
+        />
       ) : tab === "logs" ? (
         <DailyLogs logs={logs} batch={b} canLog={canLog && open} />
+      ) : tab === "sales" && sales ? (
+        sales
       ) : (
         <Panel>
           <EmptyState
@@ -293,6 +354,7 @@ export function BatchDetail({
           houses={houses}
           today={today}
           canManageHouses={canManageHouses}
+          hatcheries={hatcheries}
           onSaved={(saved) => {
             setEditing(false);
             toast.success(`${saved.code} saved.`);
@@ -301,6 +363,7 @@ export function BatchDetail({
         />
       )}
 
+      {pickingUp && <PickUpSheet batch={b} houses={houses} today={today} onClose={() => setPickingUp(false)} />}
       {closing && (
         <CloseSheet
           batch={b}
@@ -318,13 +381,9 @@ export function BatchDetail({
         confirmLabel="Reopen batch"
         destructive={false}
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/batches/${b.id}/reopen`, "POST");
-            toast.success(`${b.code} is open again.`);
-            router.refresh();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/batches/${b.id}/reopen`, "POST");
+          toast.success(`${b.code} is open again.`);
+          router.refresh();
         }}
       />
       <ConfirmDialog
@@ -335,14 +394,10 @@ export function BatchDetail({
         confirmLabel="Delete batch"
         typeToConfirm={b.code}
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/batches/${b.id}`, "DELETE");
-            toast.success(`${b.code} deleted.`);
-            router.replace("/batches");
-            router.refresh();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/batches/${b.id}`, "DELETE");
+          toast.success(`${b.code} deleted.`);
+          router.replace("/batches");
+          router.refresh();
         }}
       />
     </div>

@@ -265,7 +265,7 @@ export function SettingsForm({ initial }: { initial: Values }) {
           <Button variant="ghost" disabled={!form.dirty || form.isSubmitting} onClick={() => form.resetForm()}>
             Discard
           </Button>
-          <Button type="submit" loading={form.isSubmitting} disabled={!form.dirty}>
+          <Button type="submit" loading={form.isSubmitting} disabled={!form.dirty} reason="Nothing has changed yet.">
             Save changes
           </Button>
         </div>

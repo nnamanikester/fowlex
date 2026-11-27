@@ -59,6 +59,12 @@ export const maskAccount = (number: string) => `••••${number.slice(-4)}`
 
 const POPULAR = ["opay", "moniepoint", "palmpay", "guaranty", "access", "zenith", "first bank", "united bank", "kuda"];
 /** Banks most farm suppliers use come first, then the rest A to Z. */
+/**
+ * Paystack's test bank. With test keys Paystack checks only 3 real bank accounts a day; accounts at
+ * this bank check without limit. Offered first outside live, with `accountNumber` filled in.
+ */
+export const TEST_BANK = { code: "001", name: "Test Bank (test mode only)", accountNumber: "0000000000" } as const;
+
 export function sortBanks<B extends { name: string }>(banks: B[]) {
   const rank = (b: B) => {
     const i = POPULAR.findIndex((p) => b.name.toLowerCase().includes(p));

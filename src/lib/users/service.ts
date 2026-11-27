@@ -12,12 +12,13 @@ import { connectDb, withTransaction } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { FarmModel } from "@/models/farm";
 import { InviteModel } from "@/models/invite";
+import { CustomerModel } from "@/models/customer";
 import { type UserDocument, UserModel } from "@/models/user";
 
 export const INVITE_DAYS = 7;
 
 /** Roles an owner can invite into the dashboard. Customers are invited from their customer page (6.7). */
-export const TEAM_ROLES = ["owner", "manager", "staff"] as const satisfies readonly Role[];
+export const TEAM_ROLES = ["owner", "manager", "finance", "sales", "staff"] as const satisfies readonly Role[];
 type TeamRole = (typeof TEAM_ROLES)[number];
 
 const isTeamRole = (role: unknown): role is TeamRole => TEAM_ROLES.includes(role as TeamRole);
@@ -184,6 +185,13 @@ export async function acceptInvite(
       ],
       { session },
     );
+    // A customer's login sees that customer in the portal.
+    if (invite.customerId)
+      await CustomerModel.updateOne(
+        { _id: invite.customerId, farmId: invite.farmId },
+        { $set: { userId: user._id } },
+        { session },
+      );
     return { ok: true, user } as const;
   });
 }

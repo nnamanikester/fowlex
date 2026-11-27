@@ -6,7 +6,7 @@ import { E2E_BATCHES, E2E_USERS } from "./users";
 test("place a batch of 1,000 birds, confirm sharing a house, and see it on the list at Day 0", async ({ page }) => {
   const errors = watchErrors(page, [/status of 409/]);
   await page.goto("/batches");
-  await page.getByRole("button", { name: "New batch" }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Chicks already here" }).filter({ visible: true }).first().click();
 
   const sheet = page.getByRole("dialog", { name: "New batch" });
   const house1 = await sheet
@@ -88,7 +88,12 @@ test("a batch's page: stats, tabs, selling, editing and deleting", async ({ page
   await page.getByRole("button", { name: `${seeded.code} actions` }).click();
   await page.getByRole("menuitem", { name: "Edit batch" }).click();
   const sheet = page.getByRole("dialog", { name: `Edit ${seeded.code}` });
-  await sheet.getByLabel("Hatchery").fill("Zartech");
+  // A picker once the farm has suppliers, else a name.
+  const hatchery = sheet.getByLabel("Hatchery", { exact: true });
+  if ((await hatchery.evaluate((e) => e.tagName)) === "SELECT") {
+    await hatchery.selectOption("__other");
+    await sheet.getByLabel("Hatchery's name").fill("Zartech");
+  } else await hatchery.fill("Zartech");
   await sheet.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(`${seeded.code} saved.`)).toBeVisible();
   await expect(main.getByText("Zartech")).toBeVisible();
@@ -132,7 +137,7 @@ test.describe("staff", () => {
     await signInAs(page, E2E_USERS.staff.email);
     await page.goto("/batches");
     await expect(page.getByRole("link", { name: new RegExp(E2E_BATCHES[0].code) })).toBeVisible();
-    await expect(page.getByRole("button", { name: "New batch" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Chicks already here" })).toHaveCount(0);
     await page.getByRole("link", { name: new RegExp(E2E_BATCHES[0].code) }).click();
     await expect(page.getByRole("heading", { level: 1, name: E2E_BATCHES[0].code })).toBeVisible();
     await expect(page.getByRole("button", { name: /actions$/ })).toHaveCount(0);

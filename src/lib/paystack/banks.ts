@@ -1,9 +1,13 @@
 import "server-only";
 
 import { HttpError } from "@/lib/auth/guard";
-import { isProviderTrouble, paystack, type PaystackResponse, unavailable } from "./client";
+import { TEST_BANK } from "@/lib/suppliers/rules";
+import { isProviderTrouble, paystack, type PaystackResponse, paystackMode, paystackTrouble } from "./client";
 
-export type Bank = { code: string; name: string };
+/** `test`: Paystack's test bank, only offered with test keys (and in the simulator). */
+export type Bank = { code: string; name: string; test?: true };
+
+export { TEST_BANK } from "@/lib/suppliers/rules";
 
 const DAY = 24 * 60 * 60 * 1000;
 const g = globalThis as typeof globalThis & {
@@ -13,7 +17,7 @@ const g = globalThis as typeof globalThis & {
 
 /** Every Nigerian bank Paystack can pay, A to Z, cached for a day (it rarely changes). */
 export async function listBanks(): Promise<Bank[]> {
-  if (g.__fowlexBanks && Date.now() - g.__fowlexBanks.at < DAY) return g.__fowlexBanks.banks;
+  if (g.__fowlexBanks && Date.now() - g.__fowlexBanks.at < DAY) return withTestBank(g.__fowlexBanks.banks);
   const banks: Bank[] = [];
   let next: string | undefined;
   // Follow Paystack's cursor, bounded so a bad cursor can't loop forever.
@@ -21,14 +25,21 @@ export async function listBanks(): Promise<Bank[]> {
     const res = await paystack<{ code?: string; name?: string; active?: boolean }[]>("/bank", {
       query: { country: "nigeria", perPage: "100", use_cursor: "true", ...(next && { next }) },
     });
-    if (!res.status || !Array.isArray(res.data)) throw unavailable();
+    if (!res.status || !Array.isArray(res.data)) throw paystackTrouble(res, "listing banks");
     for (const b of res.data) if (b.code && b.name && b.active !== false) banks.push({ code: b.code, name: b.name });
     next = res.meta?.next ?? undefined;
     if (!next) break;
   }
   const unique = [...new Map(banks.map((b) => [b.code, b])).values()].sort((a, b) => a.name.localeCompare(b.name));
   g.__fowlexBanks = { at: Date.now(), banks: unique };
-  return unique;
+  return withTestBank(unique);
+}
+
+/** Outside live, the test bank comes first, so trying Fowlex never runs into Paystack's daily limit. */
+function withTestBank(banks: Bank[]): Bank[] {
+  if (paystackMode() === "live") return banks.filter((b) => b.code !== TEST_BANK.code);
+  const rest = banks.filter((b) => b.code !== TEST_BANK.code);
+  return [{ code: TEST_BANK.code, name: TEST_BANK.name, test: true }, ...rest];
 }
 
 type Outcome = { kind: "found"; accountName: string } | { kind: "not_found" } | { kind: "invalid_bank" };
@@ -73,7 +84,7 @@ export async function resolveAccount(accountNumber: unknown, bankCode: unknown) 
       query: { account_number: number, bank_code: code },
     });
     outcome = classifyLookup(res);
-    if (!outcome) throw unavailable();
+    if (!outcome) throw paystackTrouble(res, "checking a bank account");
     cache.set(key, { at: Date.now(), ttl: outcome.kind === "found" ? DAY : 10 * 60 * 1000, outcome });
   }
   if (outcome.kind === "not_found")
@@ -105,6 +116,7 @@ export async function createRecipient(account: { accountName: string; accountNum
     },
   });
   if (res.status && res.data?.recipient_code) return res.data.recipient_code;
-  if (isProviderTrouble(res) || !res.httpStatus) throw unavailable();
+  if (isProviderTrouble(res) || !res.httpStatus || res.httpStatus === 401 || res.httpStatus === 403)
+    throw paystackTrouble(res, "making a transfer recipient");
   throw new HttpError(400, "recipient_refused", res.message || "Paystack won't pay this account.", "accountNumber");
 }

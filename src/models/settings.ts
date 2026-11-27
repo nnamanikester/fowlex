@@ -36,7 +36,15 @@ const schema = new Schema({
   stockingDensity: { type: Number, default: 10, min: 1, max: 40 },
   /** Days a house rests after a batch leaves, for cleaning, disinfection and downtime. */
   houseRestDays: { type: Number, default: 14, min: 0, max: 120 },
+
+  /** The public order page: customers see what's ready and order (Sales manages it, not this form). */
+  shopEnabled: { type: Boolean, default: false },
+  /** The page's address, /order/<slug>; set the first time it's turned on. */
+  shopSlug: { type: String, default: null },
+  /** Whether customers can ask for delivery, or only collect from the farm. */
+  shopDelivers: { type: Boolean, default: true },
 });
+schema.index({ shopSlug: 1 }, { unique: true, partialFilterExpression: { shopSlug: { $type: "string" } } });
 schema.plugin(basePlugin, {
   uniquePerFarm: true,
   audit: { label: (s) => String(s.businessName) },

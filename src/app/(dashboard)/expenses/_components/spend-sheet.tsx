@@ -4,25 +4,19 @@ import * as React from "react";
 import { CircleCheck, HandCoins, Plus, Send, Trash2 } from "lucide-react";
 
 import { BankAccountField, type BankState } from "@/components/bank-account-field";
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Button } from "@/components/ui/button";
 import { FileDrop } from "@/components/ui/file-drop";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { ASSET_KIND_LABELS, ASSET_KINDS, type AssetKind, DEFAULT_LIFE } from "@/lib/assets/rules";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
-import {
-  EXPENSE_CATEGORIES,
-  EXPENSE_CATEGORY_LABELS,
-  type ExpenseCategory,
-  type ExpenseInput,
-  expenseTotal,
-  lineTotal,
-  type PayMethod,
-} from "@/lib/expenses/rules";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
+import { type ExpenseInput, expenseTotal, lineTotal, type PayMethod } from "@/lib/expenses/rules";
+import { type CategoryView, SYSTEM_CATEGORIES } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import {
@@ -36,13 +30,14 @@ import {
 import { formatNaira } from "@/lib/money";
 import { type BankAccount, maskAccount } from "@/lib/suppliers/rules";
 import type { SupplierView } from "@/lib/suppliers/service";
+import { ordinal } from "@/lib/recurring/rules";
 import { uploadReceipt } from "@/lib/upload-client";
 import { cn } from "@/lib/utils";
 
 export type SpendDefaults = {
   kind?: "stock" | "other";
   /** What an "other" expense is for: "equipment" opens on buying equipment. */
-  category?: ExpenseCategory;
+  category?: string;
   supplierId?: string;
   itemId?: string;
   batchId?: string;
@@ -64,6 +59,7 @@ const newRequestId = () =>
  * hands over to the payment step (`onSaved` with `pay: true`), where an owner confirms the transfer.
  */
 export function SpendSheet({
+  categories,
   suppliers,
   items,
   batches,
@@ -73,6 +69,7 @@ export function SpendSheet({
   onClose,
   onSaved,
 }: {
+  categories: CategoryView[];
   suppliers: SupplierView[];
   items: ItemView[];
   batches: { id: string; code: string }[];
@@ -84,7 +81,12 @@ export function SpendSheet({
 }) {
   const active = items.filter((i) => !i.archived);
   const [kind, setKind] = React.useState<"stock" | "other">(defaults.kind ?? "stock");
-  const [supplierId, setSupplierId] = React.useState(defaults.supplierId ?? "");
+  // Buying an item again: from whoever sold it last, at the price paid then.
+  const again = active.find((i) => i.id === defaults.itemId)?.lastBought;
+  const [supplierId, setSupplierId] = React.useState(
+    defaults.supplierId ??
+      (again?.supplierId && suppliers.some((s) => s.id === again.supplierId) ? again.supplierId : ""),
+  );
   const [rows, setRows] = React.useState<Row[]>(() => {
     const item = active.find((i) => i.id === defaults.itemId);
     // Nothing in stock yet: the first line is a new item.
@@ -94,12 +96,12 @@ export function SpendSheet({
         itemId: item?.id ?? "",
         newItem: active.length ? null : freshItem(),
         quantity: "",
-        unitCostKobo: item?.avgCostKobo ?? null,
+        unitCostKobo: item?.lastBought?.unitCostKobo ?? item?.avgCostKobo ?? null,
       },
     ];
   });
   const [deliveryKobo, setDeliveryKobo] = React.useState<number | null>(null);
-  const [category, setCategory] = React.useState<ExpenseCategory>(defaults.category ?? "transport");
+  const [category, setCategory] = React.useState<string>(defaults.category ?? "transport");
   const [amountKobo, setAmountKobo] = React.useState<number | null>(null);
   const [description, setDescription] = React.useState("");
   const [payeeName, setPayeeName] = React.useState("");
@@ -111,6 +113,7 @@ export function SpendSheet({
   const [notes, setNotes] = React.useState("");
   // Equipment bought outright can be tracked and its cost spread over its life.
   const [track, setTrack] = React.useState(true);
+  const [repeat, setRepeat] = React.useState(false);
   const [assetKind, setAssetKind] = React.useState<AssetKind>("generator");
   const [life, setLife] = React.useState(String(DEFAULT_LIFE.generator));
   const [busy, setBusy] = React.useState(false);
@@ -166,6 +169,7 @@ export function SpendSheet({
     }
     const body: Partial<ExpenseInput> & {
       requestId: string;
+      repeat?: boolean;
       saveSupplier?: boolean;
       asset?: Record<string, unknown>;
     } = {
@@ -187,6 +191,7 @@ export function SpendSheet({
         }),
       payeeBank: askBank && bank ? { bankCode: bank.bankCode, accountNumber: bank.accountNumber } : null,
       saveSupplier: askBank && !!bank && saveSupplier,
+      repeat: kind === "other" && category !== "equipment" && repeat,
     };
     if (kind === "stock" && !parsed.length) {
       setFailure({ status: 400, code: "invalid", message: "Add what was bought.", field: "lines.0" });
@@ -198,7 +203,7 @@ export function SpendSheet({
       const expense = await apiRequest<ExpenseView>("/api/expenses", "POST", body);
       onSaved(expense, { pay: choice === "paystack" });
     } catch (e) {
-      setFailure(e as AuthError);
+      setFailure(asProblem(e));
       const field = (e as AuthError).field;
       if (field) document.getElementById(field)?.focus();
     } finally {
@@ -222,6 +227,7 @@ export function SpendSheet({
             <span className="text-fg-muted">Total</span>
             <span className="text-lg font-semibold text-fg">{formatNaira(total)}</span>
           </p>
+          <ActionFeedback action={{ failure }} />
           <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
             {choice === "paystack" && <Send />} {action}
           </Button>
@@ -239,7 +245,6 @@ export function SpendSheet({
             { value: "other", label: "Other expense" },
           ]}
         />
-        {failure && !failure.field && <FormAlert title={failure.message} />}
 
         <Field
           id="supplierId"
@@ -295,7 +300,8 @@ export function SpendSheet({
                             setRow(r.key, {
                               itemId: e.target.value,
                               newItem: null,
-                              unitCostKobo: r.unitCostKobo ?? chosen?.avgCostKobo ?? null,
+                              unitCostKobo:
+                                r.unitCostKobo ?? chosen?.lastBought?.unitCostKobo ?? chosen?.avgCostKobo ?? null,
                             });
                           }}
                         >
@@ -383,23 +389,25 @@ export function SpendSheet({
             <fieldset className="min-w-0">
               <legend className="mb-2 text-sm font-semibold text-fg">What for</legend>
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="What for">
-                {EXPENSE_CATEGORIES.filter((c) => c !== "bank-charges").map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={category === c}
-                    onClick={() => setCategory(c)}
-                    className={cn(
-                      "focus-ring rounded-full border px-3 py-1.5 text-sm font-medium",
-                      category === c
-                        ? "border-brand bg-brand-subtle text-brand-fg"
-                        : "border-line bg-surface text-fg-muted",
-                    )}
-                  >
-                    {EXPENSE_CATEGORY_LABELS[c]}
-                  </button>
-                ))}
+                {categories
+                  .filter((c) => !c.archived && !SYSTEM_CATEGORIES.includes(c.key))
+                  .map(({ key: c, name }) => (
+                    <button
+                      key={c}
+                      type="button"
+                      role="radio"
+                      aria-checked={category === c}
+                      onClick={() => setCategory(c)}
+                      className={cn(
+                        "focus-ring rounded-full border px-3 py-1.5 text-sm font-medium",
+                        category === c
+                          ? "border-brand bg-brand-subtle text-brand-fg"
+                          : "border-line bg-surface text-fg-muted",
+                      )}
+                    >
+                      {name}
+                    </button>
+                  ))}
               </div>
             </fieldset>
             <div className="grid grid-cols-2 gap-3">
@@ -419,6 +427,24 @@ export function SpendSheet({
               </Field>
             </div>
           </>
+        )}
+
+        {kind === "other" && category !== "equipment" && (
+          <label className="flex items-start gap-3 rounded-xl border border-line p-4 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 accent-[rgb(var(--brand))]"
+              checked={repeat}
+              onChange={(e) => setRepeat(e.target.checked)}
+            />
+            <span>
+              <span className="block font-semibold text-fg">Repeats every month</span>
+              <span className="text-fg-muted">
+                Rent, security, internet: made again on the {ordinal(Number(date.slice(8, 10)))} of each month, waiting
+                for an owner to approve it.
+              </span>
+            </span>
+          </label>
         )}
 
         {kind === "other" && category === "equipment" && (

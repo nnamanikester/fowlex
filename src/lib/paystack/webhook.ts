@@ -4,6 +4,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { paystackMode } from "./client";
 import { connectDb } from "@/lib/db";
+import { syncAllBalances } from "@/lib/balance/service";
+import { settleByReference } from "@/lib/collections/service";
 import { syncPayout } from "@/lib/payouts/service";
 import { WebhookEventModel } from "@/models/webhook-event";
 
@@ -39,7 +41,11 @@ export async function handleWebhook(payload: Event) {
   }
   try {
     if (event.startsWith("transfer.") && reference) await syncPayout(reference);
+    // Money into an invoice's transfer account: confirmed with Paystack, then recorded once.
+    if (event === "charge.success" && reference) await settleByReference(reference);
     await WebhookEventModel.updateOne({ key }, { $set: { handledAt: new Date(), error: "" } });
+    // Anything Paystack tells us may have moved the balance: bring the book up to date.
+    await syncAllBalances().catch((error) => console.error("[balance] after webhook", error));
     return "handled";
   } catch (error) {
     await WebhookEventModel.updateOne({ key }, { $set: { error: (error as Error).message } });

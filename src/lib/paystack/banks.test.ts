@@ -39,9 +39,18 @@ describe("banks against Paystack", () => {
           }),
     );
     vi.stubGlobal("fetch", fetch);
-    expect((await listBanks()).map((b) => b.name)).toEqual(["Access Bank", "GTBank", "Zenith Bank"]);
-    await listBanks();
+    // With test keys, Paystack's test bank comes first: it checks accounts without the daily limit.
+    expect((await listBanks()).map((b) => b.name)).toEqual([
+      "Test Bank (test mode only)",
+      "Access Bank",
+      "GTBank",
+      "Zenith Bank",
+    ]);
+    expect((await listBanks())[0]).toEqual({ code: "001", name: "Test Bank (test mode only)", test: true });
     expect(fetch).toHaveBeenCalledTimes(2);
+    // Live, it's never offered, even if Paystack's list had it.
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_live_secret");
+    expect((await listBanks()).map((b) => b.code)).not.toContain("001");
   });
 
   it("is unavailable when the bank list can't be had", async () => {
@@ -121,6 +130,10 @@ describe("banks in the simulator", () => {
   it("lists banks and names accounts, with the special numbers misbehaving", async () => {
     expect((await listBanks()).length).toBeGreaterThan(10);
     expect((await resolveAccount("0123456781", "058")).accountName).toBe("CHIOMA EZE");
+    expect(await resolveAccount("0000000000", "001")).toMatchObject({
+      accountName: "TEST ACCOUNT",
+      bankName: "Test Bank (test mode only)",
+    });
     await expect(resolveAccount("0000000000", "058")).rejects.toMatchObject({ status: 400, code: "account_not_found" });
     await expect(resolveAccount("0123456781", "000")).rejects.toMatchObject({ status: 400, code: "invalid_bank" });
     await expect(resolveAccount("1111111111", "058")).rejects.toMatchObject({ status: 503 });

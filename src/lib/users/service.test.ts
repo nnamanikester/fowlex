@@ -89,6 +89,17 @@ describe("invites", () => {
     expect((await listTeam(actor)).invites).toHaveLength(0);
   });
 
+  it("invites finance and sales, who show on the team with their role", async () => {
+    const { actor } = await setup();
+    await inviteUser(actor, { email: "ngozi@fowlex.com", role: "finance" }, ORIGIN);
+    await inviteUser(actor, { email: "chidi@fowlex.com", role: "sales" }, ORIGIN);
+    const team = await listTeam(actor);
+    expect(team.invites.map((i) => [i.email, i.role]).sort()).toEqual([
+      ["chidi@fowlex.com", "sales"],
+      ["ngozi@fowlex.com", "finance"],
+    ]);
+  });
+
   it("won't invite someone who already has an account, or to a portal role", async () => {
     const { actor } = await setup();
     expect(await refusal(inviteUser(actor, { email: "ada@fowlex.com", role: "staff" }, ORIGIN))).toEqual({

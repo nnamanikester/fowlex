@@ -11,16 +11,13 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import { formatRange } from "@/lib/dates";
-import {
-  EXPENSE_CATEGORY_LABELS,
-  lineTotal,
-  PAY_METHOD_LABELS,
-  PAYMENT_STATUS_LABELS,
-  type PaymentStatus,
-} from "@/lib/expenses/rules";
+import { lineTotal, PAY_METHOD_LABELS, PAYMENT_STATUS_LABELS, type PaymentStatus } from "@/lib/expenses/rules";
+import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { quantity } from "@/lib/inventory/rules";
@@ -51,15 +48,19 @@ type Preview = {
  */
 export function ExpenseSheet({
   expense,
+  categories,
   suppliers,
   items,
   batches,
   canWrite,
   canPay,
   startPay = false,
+  canApprove = false,
   onClose,
 }: {
+  canApprove?: boolean;
   expense: ExpenseView;
+  categories: CategoryView[];
   suppliers: SupplierView[];
   items: ItemView[];
   batches: { id: string; code: string }[];
@@ -74,33 +75,61 @@ export function ExpenseSheet({
   const [paying, setPaying] = React.useState(startPay);
   const [marking, setMarking] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [rejecting, setRejecting] = React.useState(false);
   const [notes, setNotes] = React.useState(expense.notes);
+  const [historyProblem, setHistoryProblem] = React.useState<string | null>(null);
+  const action = useAction();
   const supplier = suppliers.find((s) => s.id === current.supplierId);
   const byId = new Map(items.map((i) => [i.id, i]));
   const batch = batches.find((b) => b.id === current.batchId);
 
+  // After a payment: the latest transfers and the expense as it now stands. If that can't load, the
+  // payment still happened: say the screen may be behind rather than hiding it.
   const refresh = React.useCallback(async () => {
-    const [list, fresh] = await Promise.all([
-      apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET"),
-      apiRequest<ExpenseView[]>(`/api/expenses`, "GET").then((all) => all.find((e) => e.id === expense.id)),
-    ]);
-    setPayouts(list);
-    if (fresh) setCurrent(fresh);
+    try {
+      const [list, fresh] = await Promise.all([
+        apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET"),
+        apiRequest<ExpenseView[]>(`/api/expenses`, "GET").then((all) => all.find((e) => e.id === expense.id)),
+      ]);
+      setPayouts(list);
+      setHistoryProblem(null);
+      if (fresh) setCurrent(fresh);
+    } catch (e) {
+      setHistoryProblem(asProblem(e).message);
+    }
     router.refresh();
   }, [expense.id, router]);
 
+  const [historyAttempt, setHistoryAttempt] = React.useState(0);
   React.useEffect(() => {
     let live = true;
     apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET").then(
-      (list) => live && setPayouts(list),
-      () => undefined,
+      (list) => {
+        if (!live) return;
+        setPayouts(list);
+        setHistoryProblem(null);
+      },
+      (e: AuthError) => live && setHistoryProblem(e.message),
     );
     return () => {
       live = false;
     };
-  }, [expense.id]);
+  }, [expense.id, historyAttempt]);
 
-  const owed = current.paymentStatus === "unpaid" || current.paymentStatus === "failed";
+  // Waiting for approval: it can be approved, rejected or paid in cash, but not sent through Paystack.
+  const approved = current.approval === "approved";
+  const owed =
+    current.approval !== "rejected" && (current.paymentStatus === "unpaid" || current.paymentStatus === "failed");
+  const decide = (path: "approve" | "reject", body?: unknown) =>
+    action.run(() => apiRequest<ExpenseView>(`/api/expenses/${current.id}/${path}`, "POST", body), {
+      key: path,
+      success: path === "approve" ? `${current.number} approved.` : `${current.number} rejected.`,
+      onSuccess: (saved) => {
+        setCurrent(saved);
+        setRejecting(false);
+        router.refresh();
+      },
+    });
   const latest = payouts[0];
 
   return (
@@ -108,19 +137,39 @@ export function ExpenseSheet({
       <Sheet
         open
         onClose={onClose}
-        title={current.description || EXPENSE_CATEGORY_LABELS[current.category]}
+        title={current.description || categoryName(categories, current.category)}
         subtitle={`${current.number} · ${day(current.date)}`}
         footer={
           paying && canPay && owed ? undefined : (
             <div className="space-y-2">
-              {canPay && owed && (supplier?.bank || current.payeeBank) && (
+              <ActionFeedback action={action} />
+              {canApprove && current.approval === "pending" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="lg"
+                    loading={action.isPending("approve")}
+                    disabled={action.busy}
+                    onClick={() => void decide("approve")}
+                  >
+                    <CircleCheck /> Approve
+                  </Button>
+                  <Button size="lg" variant="secondary" disabled={action.busy} onClick={() => setRejecting(true)}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+              {canPay && owed && approved && (supplier?.bank || current.payeeBank) && (
                 <Button size="lg" fullWidth onClick={() => setPaying(true)}>
                   <Send /> Pay {formatNaira(current.amountKobo)} with Paystack
                 </Button>
               )}
               {canWrite && owed && (
                 <Button
-                  variant={canPay && (supplier?.bank || current.payeeBank) ? "secondary" : "primary"}
+                  variant={
+                    (canPay && approved && (supplier?.bank || current.payeeBank)) || (canApprove && !approved)
+                      ? "secondary"
+                      : "primary"
+                  }
                   size="lg"
                   fullWidth
                   onClick={() => setMarking(true)}
@@ -132,20 +181,25 @@ export function ExpenseSheet({
                 <Button
                   variant="secondary"
                   fullWidth
-                  onClick={async () => {
-                    try {
-                      setCurrent(
-                        await apiRequest<ExpenseView>(`/api/expenses/${current.id}`, "PATCH", {
+                  loading={action.isPending("notes")}
+                  disabled={action.busy}
+                  onClick={() =>
+                    void action.run(
+                      () =>
+                        apiRequest<ExpenseView>(`/api/expenses/${current.id}`, "PATCH", {
                           notes,
                           version: current.version,
                         }),
-                      );
-                      toast.success("Notes saved.");
-                      router.refresh();
-                    } catch (e) {
-                      toast.error((e as AuthError).message);
-                    }
-                  }}
+                      {
+                        key: "notes",
+                        success: "Notes saved.",
+                        onSuccess: (saved) => {
+                          setCurrent(saved);
+                          router.refresh();
+                        },
+                      },
+                    )
+                  }
                 >
                   Save notes
                 </Button>
@@ -180,10 +234,36 @@ export function ExpenseSheet({
             />
           ) : (
             <>
+              {current.approval === "pending" && (
+                <p className="rounded-xl border border-info-line bg-info-subtle px-3 py-2.5 text-sm text-fg">
+                  Above the approval limit: it doesn&apos;t count until an owner approves it
+                  {canPay ? ", and can't be sent through Paystack before then." : "."}
+                </p>
+              )}
+              {current.approval === "rejected" && (
+                <p className="rounded-xl border border-danger-line bg-danger-subtle px-3 py-2.5 text-sm text-fg">
+                  <strong>Rejected:</strong> {current.approvalNote} It doesn&apos;t count and isn&apos;t owed; record it
+                  again to put it right.
+                </p>
+              )}
+              {historyProblem && (
+                <FormAlert title="The transfers for this expense didn't load.">
+                  <p>
+                    {historyProblem}{" "}
+                    <button
+                      type="button"
+                      className="focus-ring rounded font-bold text-fg underline"
+                      onClick={() => setHistoryAttempt((a) => a + 1)}
+                    >
+                      Try again
+                    </button>
+                  </p>
+                </FormAlert>
+              )}
               {latest && <TransferStatus payout={latest} canPay={canPay} onChange={refresh} />}
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <Fact label="For" value={EXPENSE_CATEGORY_LABELS[current.category]} />
+                <Fact label="For" value={categoryName(categories, current.category)} />
                 <Fact label="Paid to" value={supplier?.name ?? (current.payeeName || "–")} />
                 <Fact
                   label="Paid by"
@@ -277,6 +357,14 @@ export function ExpenseSheet({
           }}
         />
       )}
+      {rejecting && (
+        <RejectSheet
+          expense={current}
+          onClose={() => setRejecting(false)}
+          action={action}
+          onReject={(reason) => decide("reject", { reason })}
+        />
+      )}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
@@ -288,14 +376,10 @@ export function ExpenseSheet({
         }
         confirmLabel="Delete expense"
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/expenses/${current.id}`, "DELETE");
-            toast.success(`${current.number} deleted.`);
-            router.refresh();
-            onClose();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/expenses/${current.id}`, "DELETE");
+          toast.success(`${current.number} deleted.`);
+          router.refresh();
+          onClose();
         }}
       />
     </>
@@ -396,6 +480,11 @@ function PayStep({ expense, onCancel, onDone }: { expense: ExpenseView; onCancel
           fullWidth
           loading={sending}
           disabled={!confirmed || !preview.enough}
+          reason={
+            !preview.enough
+              ? "Your Paystack balance doesn't cover this. Top it up first."
+              : "Tick the box to say you've checked who you're paying."
+          }
           onClick={() => void send()}
         >
           <Send /> Send {formatNaira(preview.amountKobo)}
@@ -487,7 +576,13 @@ function TransferStatus({
               />
             )}
           </Field>
-          <Button type="submit" loading={busy} className="mb-0.5">
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={otp.length < 4}
+            reason="Type the OTP Paystack sent first."
+            className="mb-0.5"
+          >
             Send
           </Button>
         </form>
@@ -583,5 +678,69 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-xs font-semibold text-fg-muted">{label}</dt>
       <dd className="text-fg">{value}</dd>
     </div>
+  );
+}
+
+/** Rejecting needs a reason, so the person who spent it can put it right. */
+function RejectSheet({
+  expense,
+  onClose,
+  onReject,
+  action,
+}: {
+  expense: ExpenseView;
+  onClose: () => void;
+  onReject: (reason: string) => Promise<unknown>;
+  action: { failure: AuthError | null; slow: boolean; busy: boolean };
+}) {
+  const [reason, setReason] = React.useState("");
+  const busy = action.busy;
+  const [tried, setTried] = React.useState(false);
+  return (
+    <Sheet
+      open
+      onClose={() => !busy && onClose()}
+      title={`Reject ${expense.number}?`}
+      subtitle={formatNaira(expense.amountKobo)}
+      footer={
+        <div className="space-y-2">
+          <ActionFeedback action={action} />
+          <Button
+            size="lg"
+            variant="danger"
+            fullWidth
+            loading={busy}
+            onClick={() => {
+              setTried(true);
+              if (reason.trim()) void onReject(reason);
+            }}
+          >
+            Reject
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-fg-muted">
+          It won&apos;t count or be owed{expense.lines.length ? ", and the stock it brought in comes off" : ""}.
+        </p>
+        <Field
+          id="reason"
+          label="Why"
+          error={tried && !reason.trim() ? "Say why, so they can put it right." : undefined}
+        >
+          {(a11y) => (
+            <Textarea
+              {...a11y}
+              rows={3}
+              maxLength={300}
+              placeholder="The price was ₦17,000 a bag, not ₦19,000."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+    </Sheet>
   );
 }

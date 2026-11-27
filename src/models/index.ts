@@ -1,16 +1,30 @@
+import { AdvanceModel } from "./advance";
 import { AssetModel } from "./asset";
+import { AttendanceModel } from "./attendance";
 import { AuditLogModel } from "./audit-log";
+import { BalanceEntryModel } from "./balance-entry";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
+import { CollectionModel } from "./collection";
+import { ContractModel, ContractTemplateModel } from "./contract";
+import { CustomerModel } from "./customer";
 import { DailyLogModel } from "./daily-log";
+import { EmployeeModel } from "./employee";
 import { ExpenseModel } from "./expense";
+import { ExpenseCategoryModel } from "./expense-category";
 import { FarmModel } from "./farm";
 import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
 import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
+import { InvoiceModel } from "./invoice";
 import { PasswordResetModel } from "./password-reset";
+import { PaymentModel } from "./payment";
+import { PaystackAccountModel } from "./paystack-account";
 import { PayoutModel } from "./payout";
+import { PayrollRunModel } from "./payroll-run";
+import { RecurringExpenseModel } from "./recurring-expense";
+import { SalesOrderModel } from "./sales-order";
 import { SettingsModel } from "./settings";
 import { StockMovementModel } from "./stock-movement";
 import { SupplierModel } from "./supplier";
@@ -19,19 +33,34 @@ import { WebhookEventModel } from "./webhook-event";
 
 /** Every model. A new model joins this list so its indexes are built at deploy time. */
 export const ALL_MODELS = [
+  AdvanceModel,
   AssetModel,
+  AttendanceModel,
   AuditLogModel,
+  BalanceEntryModel,
   BatchModel,
   CounterModel,
+  CollectionModel,
+  ContractModel,
+  ContractTemplateModel,
+  CustomerModel,
   DailyLogModel,
+  EmployeeModel,
+  ExpenseCategoryModel,
   ExpenseModel,
   FarmModel,
   HealthEventModel,
   HouseModel,
   InventoryItemModel,
   InviteModel,
+  InvoiceModel,
   PasswordResetModel,
+  PaymentModel,
+  PaystackAccountModel,
   PayoutModel,
+  PayrollRunModel,
+  RecurringExpenseModel,
+  SalesOrderModel,
   SettingsModel,
   StockMovementModel,
   SupplierModel,

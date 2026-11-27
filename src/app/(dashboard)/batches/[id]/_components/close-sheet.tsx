@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import type { BatchView } from "@/lib/batches/service";
@@ -67,9 +68,19 @@ export function CloseSheet({
       title={`Close ${b.code}`}
       subtitle={`${b.houseName} · placed ${day(b.placedOn)}`}
       footer={
-        <Button size="lg" fullWidth loading={busy} disabled={missing > 0} onClick={() => void close()}>
-          Close batch
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button
+            size="lg"
+            fullWidth
+            loading={busy}
+            disabled={missing > 0}
+            reason={`${n(missing)} bird${missing === 1 ? " isn't" : "s aren't"} accounted for yet. Log them first.`}
+            onClick={() => void close()}
+          >
+            Close batch
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
@@ -127,7 +138,6 @@ export function CloseSheet({
             />
           )}
         </Field>
-        {failure && <FormAlert title={failure.message} />}
       </div>
     </Sheet>
   );

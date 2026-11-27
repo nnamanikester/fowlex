@@ -12,6 +12,7 @@ import { dropLogFeed, syncLogFeed } from "@/lib/inventory/movements";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { BatchModel } from "@/models/batch";
 import { DailyLogModel } from "@/models/daily-log";
+import { SalesOrderModel } from "@/models/sales-order";
 
 export type LogView = LogInput & { id: string; version: number };
 
@@ -56,7 +57,11 @@ export type LogTotals = {
 };
 export const NO_TOTALS: LogTotals = { deaths: 0, culls: 0, sold: 0, feedKg: 0, days: 0, lastWeight: null };
 
-/** Each batch's totals from its logs, in one aggregation. `excludeLogId` leaves one log out. */
+/**
+ * Each batch's totals from its logs, in one aggregation. Birds sold count both the birds logged
+ * as taken and those delivered on sales orders, so the live count follows every sale. `excludeLogId`
+ * leaves one log out.
+ */
 export async function logTotals(farmId: string, batchIds: string[], excludeLogId?: string) {
   await connectDb();
   const ids = batchIds.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
@@ -85,7 +90,7 @@ export async function logTotals(farmId: string, batchIds: string[], excludeLogId
       },
     },
   ]);
-  return new Map(
+  const totals = new Map(
     rows.map((r) => [
       String(r._id),
       {
@@ -98,6 +103,22 @@ export async function logTotals(farmId: string, batchIds: string[], excludeLogId
       } satisfies LogTotals,
     ]),
   );
+  for (const [batchId, birds] of await deliveredBirds(farmId, ids)) {
+    const t = totals.get(batchId) ?? { ...NO_TOTALS };
+    totals.set(batchId, { ...t, sold: t.sold + birds });
+  }
+  return totals;
+}
+
+/** Birds each batch has delivered on sales orders (delivered or since invoiced). */
+async function deliveredBirds(farmId: string, ids: Types.ObjectId[]) {
+  const rows = await SalesOrderModel.aggregate<{ _id: Types.ObjectId; birds: number }>([
+    { $match: { farmId: new Types.ObjectId(farmId), status: { $in: ["delivered", "invoiced"] } } },
+    { $unwind: "$lines" },
+    { $match: { "lines.batchId": { $in: ids } } },
+    { $group: { _id: "$lines.batchId", birds: { $sum: "$lines.birds" } } },
+  ]);
+  return rows.map((r) => [String(r._id), r.birds] as const);
 }
 
 function clean(input: Record<string, unknown>) {
@@ -125,6 +146,8 @@ async function openBatch(farmId: string, batchId: unknown) {
   if (!batch) throw new HttpError(400, "invalid_log", "Choose a batch on the farm.", "batchId");
   if (batch.status === "closed")
     throw new HttpError(409, "closed", `${batch.code} is closed, so its logs can't change.`);
+  if (batch.pickedUp === false)
+    throw new HttpError(409, "not_picked_up", `${batch.code}'s chicks haven't been picked up yet.`);
   return batch;
 }
 

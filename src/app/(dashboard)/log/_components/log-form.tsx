@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CircleCheck, CloudOff, RotateCw, X } from "lucide-react";
+import { CircleCheck, CloudOff, LoaderCircle, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field, FormAlert } from "@/components/auth";
@@ -13,6 +13,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Stepper } from "@/components/ui/stepper";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { ageOn } from "@/lib/batches/rules";
 import type { BatchView } from "@/lib/batches/service";
@@ -131,16 +132,27 @@ export function LogForm({
   }
 
   // A day further back than yesterday isn't in the page: ask the server for it.
+  // The server's answer for one batch, day and attempt; until it comes, that day is "loading".
+  const [dayAttempt, setDayAttempt] = React.useState(0);
+  const [dayAnswer, setDayAnswer] = React.useState<{ key: string; ok: boolean } | null>(null);
+  const dayKey = `${batchId}|${date}|${dayAttempt}`;
+  const needsDay = !!batchId && date < addDays(today, -1);
   React.useEffect(() => {
-    if (!batchId || date >= addDays(today, -1)) return;
+    if (!needsDay) return;
     let live = true;
-    apiRequest<LogView[]>(`/api/logs?batchId=${batchId}&date=${date}`, "GET")
-      .then((logs) => live && setFetched((f) => [...logs, ...f]))
-      .catch(() => undefined);
+    apiRequest<LogView[]>(`/api/logs?batchId=${batchId}&date=${date}`, "GET").then(
+      (logs) => {
+        if (!live) return;
+        setFetched((f) => [...logs, ...f]);
+        setDayAnswer({ key: dayKey, ok: true });
+      },
+      () => live && setDayAnswer({ key: dayKey, ok: false }),
+    );
     return () => {
       live = false;
     };
-  }, [batchId, date, today]);
+  }, [needsDay, batchId, date, dayKey]);
+  const dayState = !needsDay ? null : dayAnswer?.key !== dayKey ? "loading" : dayAnswer.ok ? null : "failed";
 
   if (!batches.length)
     return (
@@ -154,7 +166,8 @@ export function LogForm({
     );
 
   const errors = validateLog({ ...values, batchId, date }, { today, placedOn: batch?.placedOn });
-  const show = (name: keyof LogInput) => (submitted ? errors[name] : undefined);
+  const show = (name: keyof LogInput) =>
+    failure?.field === name ? failure.message : submitted ? errors[name] : undefined;
   const set = <K extends keyof Values>(name: K, value: Values[K]) => setValues((v) => ({ ...v, [name]: value }));
   const loggedOn = (id: string) => known.some((l) => l.batchId === id && l.date === date);
 
@@ -187,7 +200,10 @@ export function LogForm({
         // Logged from another phone a moment ago: load it to edit.
         const logs = await apiRequest<LogView[]>(`/api/logs?batchId=${batchId}&date=${date}`, "GET").catch(() => []);
         setFetched((f) => [...logs, ...f]);
-        setFailure({ ...error, message: "Someone just logged this day from another phone. It's open below to check." });
+        setFailure({
+          ...error,
+          message: "Someone just logged this day from another phone. It's open now: check it, then save.",
+        });
       } else setFailure(error);
     } finally {
       setBusy(false);
@@ -308,14 +324,29 @@ export function LogForm({
           />
         </div>
         {show("date") && <p className="text-[13px] font-medium text-danger-fg">{show("date")}</p>}
+        {dayState === "loading" && !existing && (
+          <p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
+            <LoaderCircle className="size-4 animate-spin" aria-hidden /> Checking for a log on that day…
+          </p>
+        )}
+        {dayState === "failed" && !existing && (
+          <p role="alert" className="flex flex-wrap items-center gap-2 text-sm text-warning-fg">
+            We couldn&apos;t check whether that day is already logged.
+            <button
+              type="button"
+              onClick={() => setDayAttempt((a) => a + 1)}
+              className="focus-ring rounded-md font-semibold text-brand-fg"
+            >
+              Try again
+            </button>
+          </p>
+        )}
         {existing && (
           <p className="text-sm text-info-fg">
             {batch?.code} is already logged for {date === today ? "today" : day(date)}. You&apos;re editing that log.
           </p>
         )}
       </div>
-
-      {failure && <FormAlert title={failure.message} />}
 
       <div className="grid gap-5 sm:grid-cols-2">
         <Field id="deaths" label="Deaths" error={show("deaths")}>
@@ -447,7 +478,12 @@ export function LogForm({
       <details className="rounded-xl border border-line px-4 py-3" open={values.sold > 0}>
         <summary className="cursor-pointer text-sm font-semibold text-fg">Birds taken for sale?</summary>
         <div className="pt-3">
-          <Field id="sold" label="Birds taken" error={show("sold")} hint="Picked up by buyers today">
+          <Field
+            id="sold"
+            label="Birds taken"
+            error={show("sold")}
+            hint="Taken by buyers today without a sales order: birds on orders come off by themselves"
+          >
             {(a11y) => (
               <Stepper
                 id={a11y.id}
@@ -476,6 +512,7 @@ export function LogForm({
 
       {/* Above the tab bar on phones, in thumb's reach. */}
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-canvas/90 px-4 py-3 backdrop-blur-md md:mx-0 md:px-0 lg:bottom-0">
+        <ActionFeedback action={{ failure }} className="mb-2" />
         <Button type="submit" size="lg" fullWidth loading={busy}>
           {existing ? "Save changes" : `Save log for ${date === today ? "today" : day(date)}`}
         </Button>

@@ -16,6 +16,9 @@ const schema = new Schema(
     dose: { type: String, trim: true, default: "" },
     givenBy: { type: String, trim: true, default: "" },
     costKobo: { type: Number, default: 0, min: 0 },
+    /** Taken from stock: the item and how many. Its cost is the stock's average, not `costKobo`. */
+    itemId: { type: Schema.Types.ObjectId, ref: "InventoryItem", default: null },
+    quantity: { type: Number, default: null, min: 0 },
     /** Days birds can't be sold for meat after this drug. */
     withdrawalDays: { type: Number, default: 0, min: 0 },
     notes: { type: String, trim: true, default: "" },

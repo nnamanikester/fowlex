@@ -9,6 +9,8 @@ import { setupTestDb } from "@/test/db";
 // cacheLife only works inside Next; here, check the production loaders ask for the session profile.
 const cacheLife = vi.hoisted(() => vi.fn());
 vi.mock("next/cache", () => ({ cacheLife }));
+const connection = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("next/server", () => ({ connection }));
 
 setupTestDb();
 afterEach(() => {
@@ -29,14 +31,18 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadAssets,
       loadAudit,
       loadBatch,
+      loadBatchCosts,
       loadBatches,
       loadBatchSummaries,
+      loadCategories,
+      loadEmployees,
       loadExpenses,
       loadHealth,
       loadHouses,
       loadItems,
       loadLogs,
       loadMovements,
+      loadRecurring,
       loadSettings,
       loadSupplierBalances,
       loadSuppliers,
@@ -60,8 +66,21 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadExpenses(actor.farmId)).toEqual([]);
     expect(await loadSupplierBalances(actor.farmId)).toEqual(new Map());
     expect(await loadAssets(actor.farmId)).toEqual([]);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 15 : 0);
+    expect((await loadCategories(actor.farmId)).length).toBe(12);
+    expect(await loadRecurring(actor.farmId)).toEqual([]);
+    expect((await loadBatchCosts(actor.farmId, actor.id)).totalKobo).toBe(0);
+    expect(await loadEmployees(actor.farmId)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 19 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
+  });
+});
+
+describe("requestToday", () => {
+  it("waits for the request before reading the clock, then gives Lagos's date", async () => {
+    const { requestToday } = await import("./page-data");
+    const { today } = await import("@/lib/dates");
+    expect(await requestToday()).toBe(today());
+    expect(connection).toHaveBeenCalled();
   });
 });

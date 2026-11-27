@@ -31,6 +31,8 @@ export type BatchInput = {
   freeExtras: number;
   pricePerChickKobo: number;
   supplierName: string;
+  /** The hatchery as a saved supplier; null when only its name is typed in. */
+  supplierId?: string | null;
   ageAtPlacementDays: number;
   targetSellAgeDays: number;
   targetWeightGrams: number;
@@ -39,11 +41,16 @@ export type BatchInput = {
 
 /** Live chicks that went into the house: delivered, less those dead on arrival. */
 export const placedCount = (b: Pick<BatchInput, "delivered" | "deadOnArrival">) => b.delivered - b.deadOnArrival;
-/** Chicks paid for: the hatchery's free extras cost nothing. */
-export const paidCount = (b: Pick<BatchInput, "delivered" | "freeExtras">) => b.delivered - b.freeExtras;
+type Paid = Pick<BatchInput, "delivered" | "freeExtras"> & { bookedChicks?: number | null };
+/**
+ * Chicks paid for: those booked (and paid for) ahead, or else those delivered less the hatchery's
+ * free extras. A booking's count is what was paid, whatever turns up.
+ */
+export const paidCount = (b: Paid) => b.bookedChicks ?? b.delivered - b.freeExtras;
 /** What the chicks cost, in kobo. */
-export const chickCostKobo = (b: Pick<BatchInput, "delivered" | "freeExtras" | "pricePerChickKobo">) =>
-  paidCount(b) * b.pricePerChickKobo;
+export const chickCostKobo = (b: Paid & Pick<BatchInput, "pricePerChickKobo">) => paidCount(b) * b.pricePerChickKobo;
+/** Chicks paid for that the hatchery didn't hand over (0 when all came). */
+export const shortfall = (b: Paid) => (b.bookedChicks ? Math.max(0, b.bookedChicks - (b.delivered - b.freeExtras)) : 0);
 
 const toUTC = (d: string) => Date.parse(`${d}T00:00:00Z`);
 /** Whole days from `from` to `to` (negative when `to` is earlier). */
@@ -60,15 +67,21 @@ export function formatAge(days: number) {
 
 export type Phase = "planned" | "active" | "selling" | "closed";
 
-/** Where a batch is: planned until its placement day, then as its status says. */
-export function phaseOf(b: { status: (typeof BATCH_STATUSES)[number]; placedOn: string }, today: string): Phase {
+/**
+ * Where a batch is: booked (chicks not yet in the house) until they're picked up, or until its
+ * placement day for one placed ahead; then as its status says.
+ */
+export function phaseOf(
+  b: { status: (typeof BATCH_STATUSES)[number]; placedOn: string; pickedUp?: boolean },
+  today: string,
+): Phase {
   if (b.status === "closed") return "closed";
-  if (b.placedOn > today) return "planned";
+  if (b.pickedUp === false || b.placedOn > today) return "planned";
   return b.status;
 }
 
 export const PHASE_LABELS: Record<Phase, string> = {
-  planned: "Planned",
+  planned: "Booked",
   active: "Growing",
   selling: "Selling",
   closed: "Closed",
@@ -111,6 +124,12 @@ export function validateBatch(input: Partial<Record<keyof BatchInput, unknown>>,
   else if (price > LIMITS.pricePerChickKobo)
     errors.pricePerChickKobo = "That's more than any chick costs. Check the amount.";
 
+  if (
+    input.supplierId !== null &&
+    input.supplierId !== undefined &&
+    (typeof input.supplierId !== "string" || !/^[a-f\d]{24}$/i.test(input.supplierId))
+  )
+    errors.supplierId = "Choose the hatchery again.";
   if (typeof input.supplierName !== "string") errors.supplierName = "Enter text.";
   else if (input.supplierName.length > 80) errors.supplierName = "Use at most 80 characters.";
 
