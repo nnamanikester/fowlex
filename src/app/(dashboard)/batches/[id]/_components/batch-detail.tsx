@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { CloseSheet } from "./close-sheet";
 import { ChicksExpense, CostsTab } from "./costs-tab";
 import { PickUpSheet } from "../../_components/book-chicks";
-import { HealthTab } from "./health-tab";
+import { HealthTab, type StockChoice } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
 import { TrendChart } from "@/components/charts/trend-chart";
@@ -69,12 +69,15 @@ export function BatchDetail({
   canLog,
   canManageHouses,
   costs = null,
+  stock = [],
   categories = [],
   hatcheries = [],
   canSpend = false,
 }: {
   /** What the batch has cost (for those who see money); null hides the money. */
   costs?: BatchCosts | null;
+  /** Drugs and vaccines in stock, for health records. */
+  stock?: StockChoice[];
   categories?: CategoryView[];
   hatcheries?: { id: string; name: string; chicks: boolean }[];
   canSpend?: boolean;
@@ -318,7 +321,15 @@ export function BatchDetail({
       ) : tab === "costs" && costs ? (
         <CostsTab batch={b} costs={costs} categories={categories} canSpend={canSpend} />
       ) : tab === "health" ? (
-        <HealthTab batch={b} plan={plan} events={health} today={today} canLog={canLog && open} canWrite={canWrite} />
+        <HealthTab
+          batch={b}
+          plan={plan}
+          events={health}
+          today={today}
+          canLog={canLog && open}
+          canWrite={canWrite}
+          stock={stock}
+        />
       ) : tab === "logs" ? (
         <DailyLogs logs={logs} batch={b} canLog={canLog && open} />
       ) : (

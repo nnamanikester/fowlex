@@ -67,7 +67,7 @@ const schema = new Schema(
      * (kept in step with the batch).
      */
     source: {
-      kind: { type: String, enum: ["payout-fee", "batch", null], default: null },
+      kind: { type: String, enum: ["payout-fee", "batch", "health", null], default: null },
       id: { type: Schema.Types.ObjectId, default: null },
     },
     clientRequestId: { type: String, default: null },

@@ -1,11 +1,14 @@
 import "server-only";
 
+import { Types } from "mongoose";
+
 import { stockLevels } from "./movements";
 import { type ItemInput, nameKey, tidyName, validateItem } from "./rules";
 import { isLow, type StockLevel } from "./stock";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { connectDb } from "@/lib/db";
+import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { StockMovementModel } from "@/models/stock-movement";
 
@@ -16,6 +19,8 @@ export type ItemView = ItemInput &
     archived: boolean;
     /** At or under its reorder level. */
     low: boolean;
+    /** The last purchase: who from and at what price, to buy again in a tap. */
+    lastBought?: { supplierId: string | null; unitCostKobo: number; date: string } | null;
   };
 
 const NONE: StockLevel = { onHand: 0, valueKobo: 0, avgCostKobo: null };
@@ -38,14 +43,18 @@ const view = (i: Doc, level: StockLevel = NONE): ItemView => ({
 /** The farm's stock items, by category then name. */
 export async function listItems(farmId: string): Promise<ItemView[]> {
   await connectDb();
-  const [items, levels] = await Promise.all([
+  const [items, levels, last] = await Promise.all([
     InventoryItemModel.find({ farmId })
       .collation({ locale: "en", numericOrdering: true })
       .sort({ category: 1, name: 1 })
       .lean(),
     stockLevels(farmId),
+    lastPurchases(farmId),
   ]);
-  return items.map((i) => view(i as unknown as Doc, levels.get(String(i._id))));
+  return items.map((i) => ({
+    ...view(i as unknown as Doc, levels.get(String(i._id))),
+    lastBought: last.get(String(i._id)) ?? null,
+  }));
 }
 
 function clean(input: Record<string, unknown>): ItemInput {
@@ -118,4 +127,33 @@ export async function deleteItem(actor: CurrentUser, id: string) {
   if (await StockMovementModel.exists({ farmId: actor.farmId, itemId: item._id }))
     throw new HttpError(409, "has_history", `${item.name} has stock history. Archive it instead.`);
   await item.softDelete();
+}
+
+/** Each item's latest purchase: its price, and the supplier of the expense that bought it. */
+async function lastPurchases(farmId: string) {
+  const rows = await StockMovementModel.aggregate<{
+    _id: unknown;
+    unitCostKobo: number;
+    date: string;
+    expenseId: unknown;
+  }>([
+    { $match: { farmId: new Types.ObjectId(farmId), type: "purchase", "source.kind": "purchase" } },
+    { $sort: { date: -1, createdAt: -1 } },
+    {
+      $group: {
+        _id: "$itemId",
+        unitCostKobo: { $first: "$unitCostKobo" },
+        date: { $first: "$date" },
+        expenseId: { $first: "$source.id" },
+      },
+    },
+  ]);
+  const expenses = await ExpenseModel.find({ _id: { $in: rows.map((r) => r.expenseId) } }, { supplierId: 1 }).lean();
+  const supplierOf = new Map(expenses.map((e) => [String(e._id), e.supplierId ? String(e.supplierId) : null]));
+  return new Map(
+    rows.map((r) => [
+      String(r._id),
+      { supplierId: supplierOf.get(String(r.expenseId)) ?? null, unitCostKobo: r.unitCostKobo, date: r.date },
+    ]),
+  );
 }

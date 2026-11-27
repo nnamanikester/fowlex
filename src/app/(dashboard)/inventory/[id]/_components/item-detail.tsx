@@ -37,7 +37,10 @@ export function ItemDetail({
   canWrite,
   showMoney = true,
   spending = null,
+  buyNow = false,
 }: {
+  /** Opens Buy more straight away (from a low-stock alert). */
+  buyNow?: boolean;
   /** Costs and values are money: hidden from farm hands. */
   showMoney?: boolean;
   spending?: SpendProps | null;
@@ -52,6 +55,7 @@ export function ItemDetail({
   const [action, setAction] = React.useState<Action | null>(null);
   const buying = useSpending(
     spending ?? { categories: [], suppliers: [], items: [], batches: [], today, canWrite: false, canPay: false },
+    { spend: buyNow && spending ? { kind: "stock", itemId: item.id } : null },
   );
   const [editing, setEditing] = React.useState(false);
   const [removing, setRemoving] = React.useState<MovementView | null>(null);

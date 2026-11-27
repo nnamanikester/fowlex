@@ -11,19 +11,19 @@ import { loadBatches, loadItems, loadMovements, loadSuppliers, loadCategories } 
 
 export const metadata: Metadata = { title: "Stock item" };
 
-export default function ItemPage({ params }: PageProps<"/inventory/[id]">) {
+export default function ItemPage({ params, searchParams }: PageProps<"/inventory/[id]">) {
   return (
     <RequirePermission permission="inventory.read">
       <Suspense fallback={<PageSkeleton />}>
-        <Item params={params} />
+        <Item params={params} searchParams={searchParams} />
       </Suspense>
     </RequirePermission>
   );
 }
 
-async function Item({ params }: Pick<PageProps<"/inventory/[id]">, "params">) {
+async function Item({ params, searchParams }: PageProps<"/inventory/[id]">) {
   const user = await requireUser();
-  const { id } = await params;
+  const [{ id }, { buy }] = await Promise.all([params, searchParams]);
   const canBuy = can(user.role, "expense.write");
   const [items, movements, batches, suppliers, categories] = await Promise.all([
     loadItems(user.farmId),
@@ -45,6 +45,7 @@ async function Item({ params }: Pick<PageProps<"/inventory/[id]">, "params">) {
       today={today()}
       canWrite={can(user.role, "inventory.write")}
       showMoney={can(user.role, "expense.read")}
+      buyNow={buy === "1" && canBuy}
       spending={
         canBuy
           ? {

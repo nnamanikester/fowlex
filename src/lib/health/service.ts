@@ -6,13 +6,21 @@ import { type HealthInput, scheduleFor, validateHealth } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { today as lagosToday } from "@/lib/dates";
-import { connectDb } from "@/lib/db";
+import { connectDb, withTransaction } from "@/lib/db";
+import {
+  assertHealthItem,
+  dropHealthLinks,
+  HEALTH_PAYMENTS,
+  type HealthPayment,
+  healthNeedsApproval,
+  syncHealthLinks,
+} from "./links";
 import { BatchModel } from "@/models/batch";
 import { HealthEventModel } from "@/models/health-event";
 
 export type HealthView = HealthInput & { id: string; version: number };
 
-type Doc = Omit<HealthInput, "batchId"> & { _id: unknown; __v?: number; batchId: unknown };
+type Doc = Omit<HealthInput, "batchId" | "itemId"> & { _id: unknown; __v?: number; batchId: unknown; itemId?: unknown };
 const view = (e: Doc): HealthView => ({
   id: String(e._id),
   version: e.__v ?? 0,
@@ -25,6 +33,8 @@ const view = (e: Doc): HealthView => ({
   dose: e.dose ?? "",
   givenBy: e.givenBy ?? "",
   costKobo: e.costKobo ?? 0,
+  itemId: e.itemId ? String(e.itemId) : null,
+  quantity: e.quantity ?? null,
   withdrawalDays: e.withdrawalDays ?? 0,
   notes: e.notes ?? "",
 });
@@ -48,7 +58,10 @@ function clean(input: Record<string, unknown>) {
     route: text(input.route),
     dose: text(input.dose),
     givenBy: text(input.givenBy),
-    costKobo: input.costKobo === "" || input.costKobo == null ? 0 : input.costKobo,
+    // From stock, the stock's cost counts: no cost of its own.
+    costKobo: input.itemId ? 0 : input.costKobo === "" || input.costKobo == null ? 0 : input.costKobo,
+    itemId: input.itemId === "" || input.itemId === undefined ? null : input.itemId,
+    quantity: input.itemId ? (input.quantity ?? null) : null,
     withdrawalDays: input.withdrawalDays === "" || input.withdrawalDays == null ? 0 : input.withdrawalDays,
     notes: text(input.notes),
   } as Record<keyof HealthInput, unknown>;
@@ -105,12 +118,18 @@ export async function createHealthEvent(
     if (given && id && given.clientRequestId === id) return { event: view(given as unknown as Doc), created: false };
     if (given) throw alreadyGiven(String(given._id));
   }
+  await assertHealthItem(actor.farmId, event.itemId);
+  const paidBy = HEALTH_PAYMENTS.includes(input.paidBy as HealthPayment) ? (input.paidBy as HealthPayment) : "cash";
+  const pending = await healthNeedsApproval(actor, event.itemId ? 0 : event.costKobo);
   try {
-    const doc = await HealthEventModel.create({
-      ...event,
-      farmId: actor.farmId,
-      createdBy: actor.id,
-      clientRequestId: id,
+    // The record, and what it used from stock or cost, together.
+    const doc = await withTransaction(async (session) => {
+      const [created] = await HealthEventModel.create(
+        [{ ...event, farmId: actor.farmId, createdBy: actor.id, clientRequestId: id }],
+        { session },
+      );
+      await syncHealthLinks(session, actor, created, { paidBy, pending });
+      return created;
     });
     return { event: view(doc.toObject() as unknown as Doc), created: true };
   } catch (error) {
@@ -147,9 +166,15 @@ export async function updateHealthEvent(
     const given = await HealthEventModel.findOne({ batchId: batch._id, scheduleKey: event.scheduleKey }).lean();
     if (given) throw alreadyGiven(String(given._id));
   }
+  await assertHealthItem(actor.farmId, event.itemId);
+  const pending = await healthNeedsApproval(actor, event.itemId ? 0 : event.costKobo);
   doc.set({ ...event, batchId: batch._id });
   try {
-    await doc.save();
+    await withTransaction(async (session) => {
+      doc.$session(session);
+      await doc.save();
+      await syncHealthLinks(session, actor, doc, { pending });
+    });
   } catch (error) {
     if ((error as { name?: string }).name === "VersionError") throw stale();
     throw error;
@@ -161,5 +186,9 @@ export async function updateHealthEvent(
 export async function deleteHealthEvent(actor: CurrentUser, id: string) {
   const doc = await load(actor, id);
   await openBatch(actor.farmId, String(doc.batchId));
-  await doc.softDelete();
+  await withTransaction(async (session) => {
+    doc.$session(session);
+    await doc.softDelete();
+    await dropHealthLinks(session, doc._id);
+  });
 }

@@ -77,6 +77,9 @@ export type HealthInput = {
   dose: string;
   givenBy: string;
   costKobo: number;
+  /** Taken from stock: the item and how many (then `costKobo` is 0: the stock's cost counts). */
+  itemId?: string | null;
+  quantity?: number | null;
   withdrawalDays: number;
   notes: string;
 };
@@ -88,7 +91,7 @@ export const withdrawalEnds = (e: Pick<HealthInput, "date" | "withdrawalDays">) 
   e.withdrawalDays > 0 ? addDays(e.date, e.withdrawalDays) : null;
 
 export function validateHealth(
-  v: Record<keyof HealthInput, unknown>,
+  v: Partial<Record<keyof HealthInput, unknown>>,
   { today, placedOn }: { today: string; placedOn?: string },
 ): Partial<Record<keyof HealthInput, string>> {
   const errors: Partial<Record<keyof HealthInput, string>> = {};
@@ -120,6 +123,11 @@ export function validateHealth(
   text("notes", LIMITS.notes);
   if (typeof v.costKobo !== "number" || !Number.isInteger(v.costKobo) || v.costKobo < 0 || v.costKobo > LIMITS.costKobo)
     errors.costKobo = "Enter what it cost, or leave it at 0.";
+  if (v.itemId !== null && v.itemId !== undefined) {
+    if (typeof v.itemId !== "string" || !/^[a-f\d]{24}$/i.test(v.itemId)) errors.itemId = "Choose it from your stock.";
+    else if (typeof v.quantity !== "number" || !(v.quantity > 0) || v.quantity > 100_000)
+      errors.quantity = "Enter how much was used.";
+  }
   if (
     typeof v.withdrawalDays !== "number" ||
     !Number.isInteger(v.withdrawalDays) ||

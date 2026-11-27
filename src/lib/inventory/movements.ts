@@ -15,7 +15,7 @@ import { StockMovementModel } from "@/models/stock-movement";
 
 export type MovementView = Movement & {
   batchId: string | null;
-  source: { kind: "daily-log" | "purchase"; id: string } | null;
+  source: { kind: "daily-log" | "purchase" | "health"; id: string } | null;
   notes: string;
 };
 
@@ -40,7 +40,9 @@ const view = (m: Doc): MovementView => ({
   createdAt: (m.createdAt ?? new Date(0)).toISOString(),
   batchId: m.batchId ? String(m.batchId) : null,
   source:
-    m.source?.kind && m.source.id ? { kind: m.source.kind as "daily-log" | "purchase", id: String(m.source.id) } : null,
+    m.source?.kind && m.source.id
+      ? { kind: m.source.kind as "daily-log" | "purchase" | "health", id: String(m.source.id) }
+      : null,
   notes: m.notes ?? "",
 });
 
@@ -151,7 +153,9 @@ export async function deleteMovement(actor: CurrentUser, id: string) {
       "has_source",
       doc.source.kind === "daily-log"
         ? "This came from a daily log. Change the log instead."
-        : "This came from a purchase. Change the purchase instead.",
+        : doc.source.kind === "health"
+          ? "This came from a health record. Change it there."
+          : "This came from a purchase. Change the purchase instead.",
     );
   await doc.softDelete();
 }

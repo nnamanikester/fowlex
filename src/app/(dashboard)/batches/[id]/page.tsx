@@ -13,6 +13,7 @@ import {
   loadCategories,
   loadHealth,
   loadHouses,
+  loadItems,
   loadLogs,
   loadSuppliers,
 } from "@/lib/page-data";
@@ -35,7 +36,7 @@ async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
   const user = await requireUser();
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const money = can(user.role, "expense.read");
-  const [batch, houses, logs, health, costs, categories, suppliers] = await Promise.all([
+  const [batch, houses, logs, health, costs, categories, suppliers, items] = await Promise.all([
     loadBatch(user.farmId, id),
     loadHouses(user.farmId),
     loadLogs(user.farmId, id),
@@ -43,6 +44,7 @@ async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
     money ? loadBatchCosts(user.farmId, id) : Promise.resolve(null),
     money ? loadCategories(user.farmId) : Promise.resolve([]),
     can(user.role, "supplier.read") ? loadSuppliers(user.farmId) : Promise.resolve([]),
+    can(user.role, "inventory.read") ? loadItems(user.farmId) : Promise.resolve([]),
   ]);
   if (!batch) notFound();
   return (
@@ -57,6 +59,9 @@ async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
       canLog={can(user.role, "log.write")}
       canManageHouses={can(user.role, "settings.manage")}
       costs={costs}
+      stock={items
+        .filter((i) => !i.archived && ["medication", "vaccine", "disinfectant", "other"].includes(i.category))
+        .map(({ id, name, unit, onHand }) => ({ id, name, unit, onHand }))}
       categories={categories}
       canSpend={can(user.role, "expense.write")}
       hatcheries={suppliers

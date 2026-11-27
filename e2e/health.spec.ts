@@ -45,6 +45,12 @@ test("a batch on day 7 shows the Newcastle vaccination as due; recording it mark
   await main.getByRole("button", { name: "Record Newcastle (Lasota or B1)" }).click();
   const sheet = page.getByRole("dialog", { name: "Record health" });
   await expect(sheet.getByLabel("Programme dose")).toHaveValue("nd-1");
+  // With a Newcastle vaccine in stock (other tests add one) it's taken from there; here it's bought.
+  const bought = sheet.getByRole("radio", { name: "Bought for this" });
+  if (await bought.isVisible()) {
+    await bought.click();
+    await sheet.getByLabel("Vaccine").fill("Newcastle (Lasota or B1)");
+  }
   await expect(sheet.getByLabel("Vaccine")).toHaveValue("Newcastle (Lasota or B1)");
   await sheet.getByLabel("Done by").fill("Tunde");
   await sheet.getByRole("button", { name: "Save" }).click();
