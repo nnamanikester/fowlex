@@ -11,6 +11,8 @@ import { POST as disposeAsset } from "./assets/[id]/dispose/route";
 import { DELETE as deleteAsset, PATCH as updateAsset } from "./assets/[id]/route";
 import { GET as listAssets, POST as createAsset } from "./assets/route";
 import { GET as listBanks } from "./banks/route";
+import { PATCH as updateCategory } from "./expense-categories/[key]/route";
+import { GET as listCategories, POST as createCategory } from "./expense-categories/route";
 import { POST as markPaid } from "./expenses/[id]/paid/route";
 import { GET as payPreview, POST as payExpense } from "./expenses/[id]/pay/route";
 import { GET as listPayouts } from "./expenses/[id]/payouts/route";
@@ -672,5 +674,38 @@ describe("equipment routes", () => {
     expect((await listAssets()).status).toBe(403);
     session.user = manager;
     expect((await deleteAsset(req("DELETE", `/api/assets/${asset.id}`), ctx(asset.id))).status).toBe(204);
+  });
+});
+
+const keyed = (key: string) => ({ params: Promise.resolve({ key }) });
+
+describe("expense category routes", () => {
+  it("list, add and rename; managers can read but not change budgets", async () => {
+    const owner = await signInAs("owner");
+    expect(await (await listCategories()).json()).toHaveLength(12);
+    const created = await createCategory(
+      req("POST", "/api/expense-categories", { name: "Security", monthlyBudgetKobo: 100 }),
+    );
+    expect(created.status).toBe(201);
+    expect((await created.json()).some((c: { name: string }) => c.name === "Security")).toBe(true);
+    const renamed = await updateCategory(
+      req("PATCH", "/api/expense-categories/rent", { name: "Land rent" }),
+      keyed("rent"),
+    );
+    expect((await renamed.json()).find((c: { key: string }) => c.key === "rent").name).toBe("Land rent");
+    expect(
+      (await createCategory(new Request(`${BASE}/api/expense-categories`, { method: "POST", body: "{oops" }))).status,
+    ).toBe(400);
+    expect(
+      (
+        await updateCategory(
+          new Request(`${BASE}/api/expense-categories/rent`, { method: "PATCH", body: "{oops" }),
+          keyed("rent"),
+        )
+      ).status,
+    ).toBe(400);
+    session.user = { ...owner, role: "manager" };
+    expect((await listCategories()).status).toBe(200);
+    expect((await createCategory(req("POST", "/api/expense-categories", { name: "X" }))).status).toBe(403);
   });
 });

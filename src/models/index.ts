@@ -4,6 +4,7 @@ import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { DailyLogModel } from "./daily-log";
 import { ExpenseModel } from "./expense";
+import { ExpenseCategoryModel } from "./expense-category";
 import { FarmModel } from "./farm";
 import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
@@ -24,6 +25,7 @@ export const ALL_MODELS = [
   BatchModel,
   CounterModel,
   DailyLogModel,
+  ExpenseCategoryModel,
   ExpenseModel,
   FarmModel,
   HealthEventModel,

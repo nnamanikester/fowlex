@@ -14,13 +14,8 @@ import { Segmented } from "@/components/ui/segmented";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { formatRange } from "@/lib/dates";
-import {
-  EXPENSE_CATEGORY_LABELS,
-  lineTotal,
-  PAY_METHOD_LABELS,
-  PAYMENT_STATUS_LABELS,
-  type PaymentStatus,
-} from "@/lib/expenses/rules";
+import { lineTotal, PAY_METHOD_LABELS, PAYMENT_STATUS_LABELS, type PaymentStatus } from "@/lib/expenses/rules";
+import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { quantity } from "@/lib/inventory/rules";
@@ -51,6 +46,7 @@ type Preview = {
  */
 export function ExpenseSheet({
   expense,
+  categories,
   suppliers,
   items,
   batches,
@@ -60,6 +56,7 @@ export function ExpenseSheet({
   onClose,
 }: {
   expense: ExpenseView;
+  categories: CategoryView[];
   suppliers: SupplierView[];
   items: ItemView[];
   batches: { id: string; code: string }[];
@@ -108,7 +105,7 @@ export function ExpenseSheet({
       <Sheet
         open
         onClose={onClose}
-        title={current.description || EXPENSE_CATEGORY_LABELS[current.category]}
+        title={current.description || categoryName(categories, current.category)}
         subtitle={`${current.number} · ${day(current.date)}`}
         footer={
           paying && canPay && owed ? undefined : (
@@ -183,7 +180,7 @@ export function ExpenseSheet({
               {latest && <TransferStatus payout={latest} canPay={canPay} onChange={refresh} />}
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <Fact label="For" value={EXPENSE_CATEGORY_LABELS[current.category]} />
+                <Fact label="For" value={categoryName(categories, current.category)} />
                 <Fact label="Paid to" value={supplier?.name ?? (current.payeeName || "–")} />
                 <Fact
                   label="Paid by"

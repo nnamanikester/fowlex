@@ -14,15 +14,8 @@ import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { ASSET_KIND_LABELS, ASSET_KINDS, type AssetKind, DEFAULT_LIFE } from "@/lib/assets/rules";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
-import {
-  EXPENSE_CATEGORIES,
-  EXPENSE_CATEGORY_LABELS,
-  type ExpenseCategory,
-  type ExpenseInput,
-  expenseTotal,
-  lineTotal,
-  type PayMethod,
-} from "@/lib/expenses/rules";
+import { type ExpenseInput, expenseTotal, lineTotal, type PayMethod } from "@/lib/expenses/rules";
+import { type CategoryView, SYSTEM_CATEGORIES } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import {
@@ -42,7 +35,7 @@ import { cn } from "@/lib/utils";
 export type SpendDefaults = {
   kind?: "stock" | "other";
   /** What an "other" expense is for: "equipment" opens on buying equipment. */
-  category?: ExpenseCategory;
+  category?: string;
   supplierId?: string;
   itemId?: string;
   batchId?: string;
@@ -64,6 +57,7 @@ const newRequestId = () =>
  * hands over to the payment step (`onSaved` with `pay: true`), where an owner confirms the transfer.
  */
 export function SpendSheet({
+  categories,
   suppliers,
   items,
   batches,
@@ -73,6 +67,7 @@ export function SpendSheet({
   onClose,
   onSaved,
 }: {
+  categories: CategoryView[];
   suppliers: SupplierView[];
   items: ItemView[];
   batches: { id: string; code: string }[];
@@ -99,7 +94,7 @@ export function SpendSheet({
     ];
   });
   const [deliveryKobo, setDeliveryKobo] = React.useState<number | null>(null);
-  const [category, setCategory] = React.useState<ExpenseCategory>(defaults.category ?? "transport");
+  const [category, setCategory] = React.useState<string>(defaults.category ?? "transport");
   const [amountKobo, setAmountKobo] = React.useState<number | null>(null);
   const [description, setDescription] = React.useState("");
   const [payeeName, setPayeeName] = React.useState("");
@@ -383,23 +378,25 @@ export function SpendSheet({
             <fieldset className="min-w-0">
               <legend className="mb-2 text-sm font-semibold text-fg">What for</legend>
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="What for">
-                {EXPENSE_CATEGORIES.filter((c) => c !== "bank-charges").map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={category === c}
-                    onClick={() => setCategory(c)}
-                    className={cn(
-                      "focus-ring rounded-full border px-3 py-1.5 text-sm font-medium",
-                      category === c
-                        ? "border-brand bg-brand-subtle text-brand-fg"
-                        : "border-line bg-surface text-fg-muted",
-                    )}
-                  >
-                    {EXPENSE_CATEGORY_LABELS[c]}
-                  </button>
-                ))}
+                {categories
+                  .filter((c) => !c.archived && !SYSTEM_CATEGORIES.includes(c.key))
+                  .map(({ key: c, name }) => (
+                    <button
+                      key={c}
+                      type="button"
+                      role="radio"
+                      aria-checked={category === c}
+                      onClick={() => setCategory(c)}
+                      className={cn(
+                        "focus-ring rounded-full border px-3 py-1.5 text-sm font-medium",
+                        category === c
+                          ? "border-brand bg-brand-subtle text-brand-fg"
+                          : "border-line bg-surface text-fg-muted",
+                      )}
+                    >
+                      {name}
+                    </button>
+                  ))}
               </div>
             </fieldset>
             <div className="grid grid-cols-2 gap-3">

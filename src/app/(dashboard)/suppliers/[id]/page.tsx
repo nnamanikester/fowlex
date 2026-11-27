@@ -7,7 +7,7 @@ import { PageSkeleton, RequirePermission } from "../../_components/require-permi
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadBatches, loadExpenses, loadItems, loadSuppliers } from "@/lib/page-data";
+import { loadBatches, loadCategories, loadExpenses, loadItems, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Supplier" };
 
@@ -24,17 +24,19 @@ export default function SupplierPage({ params }: PageProps<"/suppliers/[id]">) {
 async function Supplier({ params }: Pick<PageProps<"/suppliers/[id]">, "params">) {
   const user = await requireUser();
   const { id } = await params;
-  const [suppliers, expenses, items, batches] = await Promise.all([
+  const [suppliers, expenses, items, batches, categories] = await Promise.all([
     loadSuppliers(user.farmId),
     can(user.role, "expense.read") ? loadExpenses(user.farmId) : Promise.resolve([]),
     loadItems(user.farmId),
     loadBatches(user.farmId),
+    loadCategories(user.farmId),
   ]);
   const supplier = suppliers.find((s) => s.id === id);
   if (!supplier) notFound();
   return (
     <SupplierDetail
       supplier={supplier}
+      categories={categories}
       expenses={expenses.filter((e) => e.supplierId === id)}
       suppliers={suppliers}
       items={items}
