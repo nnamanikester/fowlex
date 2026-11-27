@@ -6,7 +6,8 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { loadItems } from "@/lib/page-data";
+import { today } from "@/lib/dates";
+import { loadBatches, loadItems, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Inventory" };
 
@@ -23,5 +24,28 @@ export default function InventoryPage() {
 
 async function Inventory() {
   const user = await requireUser();
-  return <InventoryBoard items={await loadItems(user.farmId)} canWrite={can(user.role, "inventory.write")} />;
+  const canBuy = can(user.role, "expense.write");
+  const [items, suppliers, batches] = await Promise.all([
+    loadItems(user.farmId),
+    canBuy ? loadSuppliers(user.farmId) : Promise.resolve([]),
+    canBuy ? loadBatches(user.farmId) : Promise.resolve([]),
+  ]);
+  return (
+    <InventoryBoard
+      items={items}
+      canWrite={can(user.role, "inventory.write")}
+      spending={
+        canBuy
+          ? {
+              suppliers,
+              items,
+              batches: batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code })),
+              today: today(),
+              canWrite: true,
+              canPay: can(user.role, "payout.send"),
+            }
+          : null
+      }
+    />
+  );
 }

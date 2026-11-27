@@ -6,7 +6,7 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { loadSuppliers } from "@/lib/page-data";
+import { loadSupplierBalances, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Suppliers" };
 
@@ -23,5 +23,15 @@ export default function SuppliersPage() {
 
 async function Suppliers() {
   const user = await requireUser();
-  return <SuppliersBoard suppliers={await loadSuppliers(user.farmId)} canWrite={can(user.role, "supplier.write")} />;
+  const [suppliers, balances] = await Promise.all([
+    loadSuppliers(user.farmId),
+    can(user.role, "expense.read") ? loadSupplierBalances(user.farmId) : Promise.resolve(new Map()),
+  ]);
+  return (
+    <SuppliersBoard
+      suppliers={suppliers}
+      owed={Object.fromEntries([...balances].map(([id, b]) => [id, b.owedKobo]))}
+      canWrite={can(user.role, "supplier.write")}
+    />
+  );
 }

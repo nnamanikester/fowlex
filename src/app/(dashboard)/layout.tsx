@@ -1,10 +1,12 @@
 import { Suspense } from "react";
 
 import { ShellFallback } from "./_components/shell-fallback";
+import { TestModeBanner } from "@/components/kit";
 import { DashboardShell } from "@/components/shell";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { loadBatchSummaries } from "@/lib/page-data";
+import { paystackMode } from "@/lib/paystack/client";
 import { WorkspaceProvider } from "@/lib/workspace";
 
 /**
@@ -23,9 +25,15 @@ async function SignedIn({ children }: { children: React.ReactNode }) {
   const { id, name, email, role, farmId } = await requireUser();
   // The batches the switcher offers; roles that can't see batches get none.
   const batches = can(role, "batch.read") ? await loadBatchSummaries(farmId) : [];
+  // Anyone who sees money is told when it isn't real.
+  const mode = paystackMode();
+  const banner =
+    can(role, "expense.read") && (mode === "test" || mode === "simulated") ? (
+      <TestModeBanner simulated={mode === "simulated"} />
+    ) : undefined;
   return (
     <WorkspaceProvider me={{ id, name, email, role }} batches={batches}>
-      <DashboardShell>{children}</DashboardShell>
+      <DashboardShell banner={banner}>{children}</DashboardShell>
     </WorkspaceProvider>
   );
 }

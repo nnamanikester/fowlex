@@ -8,6 +8,15 @@ import { POST as closeBatch } from "./batches/[id]/close/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { GET as listBanks } from "./banks/route";
+import { POST as markPaid } from "./expenses/[id]/paid/route";
+import { GET as payPreview, POST as payExpense } from "./expenses/[id]/pay/route";
+import { GET as listPayouts } from "./expenses/[id]/payouts/route";
+import { DELETE as deleteExpense, PATCH as updateExpense } from "./expenses/[id]/route";
+import { GET as listExpenses, POST as createExpense } from "./expenses/route";
+import { POST as checkPayout } from "./payouts/[id]/check/route";
+import { POST as submitOtp } from "./payouts/[id]/otp/route";
+import { GET as getUpload } from "./uploads/[id]/route";
+import { POST as upload } from "./uploads/route";
 import { GET as resolveBank } from "./banks/resolve/route";
 import { DELETE as deleteMovement } from "./inventory/movements/[id]/route";
 import { DELETE as deleteSupplier, PATCH as updateSupplier } from "./suppliers/[id]/route";
@@ -501,5 +510,116 @@ describe("supplier and bank routes", () => {
     session.user = manager;
     expect((await deleteSupplier(req("DELETE", `/api/suppliers/${supplier.id}`), ctx(supplier.id))).status).toBe(204);
     vi.unstubAllEnvs();
+  });
+});
+
+describe("expense, payment and upload routes", () => {
+  it("record, pay through Paystack (owners only), check, release an OTP, mark paid, edit and delete", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    const { resetSimulator, configureSimulator } = await import("@/lib/paystack/simulator");
+    resetSimulator();
+    const owner = await signInAs("owner");
+    const supplier = await (
+      await createSupplier(
+        req("POST", "/api/suppliers", { name: "Feed mill", bank: { bankCode: "058", accountNumber: "0123456781" } }),
+      )
+    ).json();
+    const body = {
+      category: "transport",
+      amountKobo: 1_500_000,
+      description: "Feed from Ibadan",
+      supplierId: supplier.id,
+      method: "later",
+      requestId: "route-exp-0001",
+    };
+    const created = await createExpense(req("POST", "/api/expenses", body));
+    expect(created.status).toBe(201);
+    const expense = await created.json();
+    expect((await createExpense(req("POST", "/api/expenses", body))).status).toBe(200);
+    expect(await (await listExpenses(req("GET", `/api/expenses?supplierId=${supplier.id}`))).json()).toHaveLength(1);
+    expect((await createExpense(new Request(`${BASE}/api/expenses`, { method: "POST", body: "{oops" }))).status).toBe(
+      400,
+    );
+
+    session.user = { ...owner, role: "manager" };
+    expect((await payExpense(req("POST", `/api/expenses/${expense.id}/pay`), ctx(expense.id))).status).toBe(403);
+    expect((await payPreview(req("GET", `/api/expenses/${expense.id}/pay`), ctx(expense.id))).status).toBe(403);
+    session.user = owner;
+    expect(
+      await (await payPreview(req("GET", `/api/expenses/${expense.id}/pay`), ctx(expense.id))).json(),
+    ).toMatchObject({
+      enough: true,
+    });
+    configureSimulator({ otp: true });
+    const paid = await payExpense(req("POST", `/api/expenses/${expense.id}/pay`), ctx(expense.id));
+    expect(paid.status).toBe(201);
+    const payout = await paid.json();
+    expect(payout.status).toBe("otp");
+    expect(
+      (
+        await submitOtp(
+          new Request(`${BASE}/api/payouts/${payout.id}/otp`, { method: "POST", body: "{oops" }),
+          ctx(payout.id),
+        )
+      ).status,
+    ).toBe(400);
+    const released = await submitOtp(req("POST", `/api/payouts/${payout.id}/otp`, { otp: "123456" }), ctx(payout.id));
+    expect((await released.json()).status).toBe("success");
+    expect(
+      await (await checkPayout(req("POST", `/api/payouts/${payout.id}/check`), ctx(payout.id))).json(),
+    ).toMatchObject({ status: "success" });
+    expect((await checkPayout(req("POST", "/api/payouts/nope/check"), ctx("nope"))).status).toBe(404);
+    expect(
+      await (await listPayouts(req("GET", `/api/expenses/${expense.id}/payouts`), ctx(expense.id))).json(),
+    ).toHaveLength(1);
+
+    const cash = await (
+      await createExpense(req("POST", "/api/expenses", { ...body, requestId: undefined, supplierId: null }))
+    ).json();
+    expect(
+      await (await markPaid(req("POST", `/api/expenses/${cash.id}/paid`, { method: "cash" }), ctx(cash.id))).json(),
+    ).toMatchObject({
+      paymentStatus: "paid",
+    });
+    expect(
+      (
+        await markPaid(
+          new Request(`${BASE}/api/expenses/${cash.id}/paid`, { method: "POST", body: "{oops" }),
+          ctx(cash.id),
+        )
+      ).status,
+    ).toBe(409);
+    const edited = await updateExpense(
+      req("PATCH", `/api/expenses/${cash.id}`, { notes: "Okada", version: 1 }),
+      ctx(cash.id),
+    );
+    expect((await edited.json()).notes).toBe("Okada");
+    expect(
+      (
+        await updateExpense(
+          new Request(`${BASE}/api/expenses/${cash.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(cash.id),
+        )
+      ).status,
+    ).toBe(409);
+    expect((await deleteExpense(req("DELETE", `/api/expenses/${cash.id}`), ctx(cash.id))).status).toBe(204);
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps a receipt and serves it back only to its farm", async () => {
+    await signInAs("manager");
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "receipt.jpg", { type: "image/jpeg" }));
+    const stored = await upload(new Request(`${BASE}/api/uploads`, { method: "POST", body: form }));
+    expect(stored.status).toBe(201);
+    const { url } = await stored.json();
+    const id = url.split("/").pop();
+    const served = await getUpload(req("GET", url), ctx(id));
+    expect(served.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect((await upload(new Request(`${BASE}/api/uploads`, { method: "POST", body: "nope" }))).status).toBe(400);
+    await signInAs("owner");
+    expect((await getUpload(req("GET", url), ctx(id))).status).toBe(404);
   });
 });

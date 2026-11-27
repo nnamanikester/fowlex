@@ -4,9 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormik } from "formik";
-import { Archive, Boxes, Plus, Search, Trash2 } from "lucide-react";
+import { Archive, Boxes, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { type SpendProps, useSpending } from "../../expenses/_components/expenses-board";
 import { Field, FormAlert, useFocusFirstError } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
@@ -31,9 +32,19 @@ import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 /** The farm's stock items, searchable and filtered by kind; each opens a sheet to edit it. */
-export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrite: boolean }) {
+export function InventoryBoard({
+  items,
+  canWrite,
+  spending = null,
+}: {
+  items: ItemView[];
+  canWrite: boolean;
+  /** What buying stock needs, for those who can record spending; null hides it. */
+  spending?: SpendProps | null;
+}) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<ItemView | ItemInput | null>(null);
+  const buying = useSpending(spending ?? EMPTY_SPEND);
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState<Category | "all">("all");
   const [showArchived, setShowArchived] = React.useState(false);
@@ -103,8 +114,13 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
                 className="pl-9"
               />
             </label>
+            {spending && (
+              <Button size="sm" onClick={() => buying.spend({ kind: "stock" })}>
+                <ShoppingCart /> Buy stock
+              </Button>
+            )}
             {canWrite && (
-              <Button size="sm" className="hidden lg:inline-flex" onClick={() => setEditing(BLANK)}>
+              <Button size="sm" variant="secondary" className="hidden lg:inline-flex" onClick={() => setEditing(BLANK)}>
                 <Plus /> Add item
               </Button>
             )}
@@ -206,6 +222,7 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
       )}
 
       {canWrite && <Fab label="Add item" icon={<Plus />} onClick={() => setEditing(BLANK)} />}
+      {spending && buying.sheets}
 
       {editing && (
         <ItemSheet
@@ -222,6 +239,8 @@ export function InventoryBoard({ items, canWrite }: { items: ItemView[]; canWrit
     </div>
   );
 }
+
+const EMPTY_SPEND: SpendProps = { suppliers: [], items: [], batches: [], today: "", canWrite: false, canPay: false };
 
 const BLANK: ItemInput = {
   name: "",

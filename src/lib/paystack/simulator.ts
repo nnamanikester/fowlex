@@ -49,6 +49,13 @@ const g = globalThis as typeof globalThis & { __fowlexPaystack?: State };
 const state = () =>
   (g.__fowlexPaystack ??= { balance: 1_000_000_000, recipients: new Map(), transfers: new Map(), otp: false });
 
+/** Changes the balance or OTP setting, keeping recipients and transfers (as Paystack would). */
+export function configureSimulator({ otp, balance }: { otp?: boolean; balance?: number }) {
+  const s = state();
+  if (otp !== undefined) s.otp = otp;
+  if (balance !== undefined) s.balance = balance;
+}
+
 /** Resets the simulator; `otp` makes transfers wait for an OTP (Paystack's default). */
 export function resetSimulator({ otp = false, balance = 1_000_000_000 }: { otp?: boolean; balance?: number } = {}) {
   g.__fowlexPaystack = { balance, recipients: new Map(), transfers: new Map(), otp };
@@ -128,7 +135,7 @@ export function simulate<T>(
     const verify = /^\/transfer\/verify\/(.+)$/.exec(path);
     if (method === "GET" && verify) {
       const t = s.transfers.get(decodeURIComponent(verify[1]));
-      return t ? ok({ ...t }) : no(404, "Transfer not found");
+      return t ? ok({ ...t, fee_charged: t.status === "success" ? t.fee : 0 }) : no(404, "Transfer not found");
     }
     return no(404, `The simulator doesn't know ${method} ${path}`);
   })();
