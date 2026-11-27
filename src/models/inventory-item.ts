@@ -16,6 +16,8 @@ const schema = new Schema(
     unitKg: { type: Number, default: null, min: 0 },
     reorderLevel: { type: Number, default: null, min: 0 },
     notes: { type: String, trim: true, default: "" },
+    /** When the owners were last told it ran low; cleared once it's restocked above its reorder level. */
+    lowAlertedAt: { type: Date, default: null },
     /** Hidden from new purchases and logs, kept for history. */
     archived: { type: Boolean, default: false },
   },
