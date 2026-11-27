@@ -63,11 +63,11 @@ const schema = new Schema(
       default: null,
     },
     /**
-     * A cost Fowlex recorded itself: the fee Paystack charged for a transfer, or a batch's chicks
-     * (kept in step with the batch).
+     * A cost Fowlex recorded itself, kept in step with where it came from: the fee Paystack charged
+     * for a transfer, a batch's chicks, a health record's cost, a salary advance or a payslip.
      */
     source: {
-      kind: { type: String, enum: ["payout-fee", "batch", "health", null], default: null },
+      kind: { type: String, enum: ["payout-fee", "batch", "health", "advance", "payslip", null], default: null },
       id: { type: Schema.Types.ObjectId, default: null },
     },
     clientRequestId: { type: String, default: null },

@@ -15,7 +15,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
       method: "cash",
     },
   });
-  await page.request.post("/api/employees", {
+  const person = await page.request.post("/api/employees", {
     data: { name: "Oluwaseun Adebayo-Okonkwo Chukwuemeka", payType: "daily", rateKobo: 999_999_999_00 },
   });
   const width = page.viewportSize()!.width;
@@ -30,6 +30,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/log",
     "/people",
     "/people/attendance",
+    `/people/${(await person.json()).id}`,
   ]) {
     await page.goto(path);
     await expect(page.getByRole("main")).toBeVisible();
