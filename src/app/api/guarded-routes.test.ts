@@ -10,6 +10,7 @@ import { POST as pickUp } from "./batches/[id]/pickup/route";
 import { DELETE as deleteEmployee, PATCH as updateEmployee } from "./employees/[id]/route";
 import { POST as employeeStatus } from "./employees/[id]/status/route";
 import { GET as listEmployees, POST as createEmployee } from "./employees/route";
+import { GET as attendanceDay, POST as saveAttendance } from "./attendance/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -905,5 +906,29 @@ describe("employee routes", () => {
     await signInAs("staff");
     expect((await listEmployees()).status).toBe(403);
     expect((await createEmployee(req("POST", "/api/employees", {}))).status).toBe(403);
+  });
+});
+
+describe("attendance routes", () => {
+  it("reads and saves a day; staff can't", async () => {
+    await signInAs("manager");
+    const musa = await (
+      await createEmployee(req("POST", "/api/employees", { name: "Musa", payType: "daily", rateKobo: 400_000 }))
+    ).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const saved = await saveAttendance(
+      req("POST", "/api/attendance", { date: today, entries: [{ employeeId: musa.id, status: "present" }] }),
+    );
+    expect(await saved.json()).toMatchObject([{ employeeId: musa.id, status: "present" }]);
+    expect(await (await attendanceDay(req("GET", `/api/attendance?date=${today}`))).json()).toMatchObject([
+      { status: "present" },
+    ]);
+    expect(await (await attendanceDay(req("GET", "/api/attendance"))).json()).toEqual([]);
+    expect(
+      (await saveAttendance(new Request(`${BASE}/api/attendance`, { method: "POST", body: "{oops" }))).status,
+    ).toBe(400);
+    await signInAs("staff");
+    expect((await attendanceDay(req("GET", "/api/attendance"))).status).toBe(403);
+    expect((await saveAttendance(req("POST", "/api/attendance", {}))).status).toBe(403);
   });
 });

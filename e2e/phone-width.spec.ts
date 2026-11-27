@@ -16,7 +16,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     },
   });
   await page.request.post("/api/employees", {
-    data: { name: "Oluwaseun Adebayo-Okonkwo Chukwuemeka", payType: "monthly", rateKobo: 999_999_999_00 },
+    data: { name: "Oluwaseun Adebayo-Okonkwo Chukwuemeka", payType: "daily", rateKobo: 999_999_999_00 },
   });
   const width = page.viewportSize()!.width;
   for (const path of [
@@ -29,6 +29,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/batches",
     "/log",
     "/people",
+    "/people/attendance",
   ]) {
     await page.goto(path);
     await expect(page.getByRole("main")).toBeVisible();
