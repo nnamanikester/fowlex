@@ -92,6 +92,11 @@ import { POST as emailStatement } from "./customers/[id]/statement/email/route";
 import { GET as statementPdf } from "./customers/[id]/statement/pdf/route";
 import { GET as statement } from "./customers/[id]/statement/route";
 import { GET as agingRoute } from "./invoices/aging/route";
+import { POST as inviteCustomer } from "./customers/[id]/invite/route";
+import { GET as portalInvoicePdf } from "./portal/invoices/[id]/pdf/route";
+import { GET as portalInvoice } from "./portal/invoices/[id]/route";
+import { GET as portalHome } from "./portal/route";
+import { GET as portalStatement } from "./portal/statement/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1368,5 +1373,57 @@ describe("statement and aging routes", () => {
     await signInAs("staff");
     expect((await statement(req("GET", "/x"), ctx("x"))).status).toBe(403);
     expect((await agingRoute()).status).toBe(403);
+  });
+});
+
+describe("portal routes", () => {
+  it("a customer sees their own invoices; another customer's is 404; staff can't use the portal", async () => {
+    await signInAs("owner");
+    const farmId = session.user!.farmId;
+    const owner = session.user!;
+    const mine = await (
+      await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge", email: "grill@f.com" }))
+    ).json();
+    const other = await (await createCustomer(req("POST", "/x", { name: "Suya", type: "restaurant" }))).json();
+    const invited = await inviteCustomer(req("POST", "/x"), ctx(mine.id));
+    expect((await invited.json()).invited).toBe(true);
+    // Two invoices made by hand, one for each customer, both sent.
+    const { InvoiceModel } = await import("@/models/invoice");
+    const make = (customerId: string, number: string) =>
+      InvoiceModel.create({
+        farmId,
+        number,
+        customerId,
+        lines: [{ description: "Birds", amountKobo: 100 }],
+        issueDate: "2026-11-01",
+        dueDate: "2026-11-15",
+        subtotalKobo: 100,
+        totalKobo: 100,
+        state: "sent",
+      });
+    const a = await make(mine.id, "INV-2026-0901");
+    const b = await make(other.id, "INV-2026-0902");
+    const buyer = await UserModel.create({ farmId, email: "grill@f.com", name: "Grill", role: "customer" });
+    const { CustomerModel } = await import("@/models/customer");
+    await CustomerModel.updateOne({ _id: mine.id }, { $set: { userId: buyer._id } });
+    session.user = { id: String(buyer._id), farmId, name: "Grill", email: "grill@f.com", role: "customer" };
+
+    expect((await (await portalHome()).json()).invoices.map((i: { number: string }) => i.number)).toEqual([
+      "INV-2026-0901",
+    ]);
+    expect((await (await portalInvoice(req("GET", "/x"), ctx(String(a._id)))).json()).invoice.number).toBe(
+      "INV-2026-0901",
+    );
+    expect((await portalInvoice(req("GET", "/x"), ctx(String(b._id)))).status).toBe(404);
+    expect((await portalInvoicePdf(req("GET", "/x"), ctx(String(b._id)))).status).toBe(404);
+    expect((await portalInvoicePdf(req("GET", "/x"), ctx(String(a._id)))).headers.get("Content-Type")).toBe(
+      "application/pdf",
+    );
+    const statement = await portalStatement(req("GET", "/api/portal/statement?from=2026-01-01"));
+    expect(statement.headers.get("Content-Type")).toBe("application/pdf");
+
+    session.user = { ...owner, role: "staff" };
+    expect((await portalHome()).status).toBe(403);
+    expect((await inviteCustomer(req("POST", "/x"), ctx(mine.id))).status).toBe(403);
   });
 });

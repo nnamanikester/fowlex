@@ -173,7 +173,11 @@ test("a customer's statement ends on what's left on their invoices, and the agin
   const errors = watchErrors(page);
   const { customer, orders, email } = await delivered(page, `statement ${info.project.name}`, 2);
   const [a, b] = await Promise.all(
-    orders.map(async (o) => (await page.request.post("/api/invoices", { data: { orderIds: [o.id] } })).json()),
+    orders.map(async (o) => {
+      const inv = await (await page.request.post("/api/invoices", { data: { orderIds: [o.id] } })).json();
+      // Sent, as a statement shows what the customer has been sent.
+      return (await page.request.post(`/api/invoices/${inv.id}/send`)).json();
+    }),
   );
   await page.request.post(`/api/invoices/${a.id}/payments`, { data: { amountKobo: 3_000_000, method: "cash" } });
   // ₦85,000 + ₦85,000 billed, ₦30,000 paid: ₦140,000 owed.

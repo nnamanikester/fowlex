@@ -6,7 +6,7 @@ import { ROLES } from "@/lib/auth/permissions";
 /**
  * An invitation to join the farm with a role. The link's token is stored only as its SHA-256; it
  * works once, for seven days, unless a newer invite to the same email or a revoke replaces it.
- * `createdBy` is who sent it.
+ * `createdBy` is who sent it. A customer's invite carries the customer it signs in as.
  */
 const schema = new Schema({
   email: { type: String, required: true, lowercase: true, trim: true, index: true },
@@ -15,6 +15,8 @@ const schema = new Schema({
   expiresAt: { type: Date, required: true },
   acceptedAt: { type: Date, default: null },
   revokedAt: { type: Date, default: null },
+  /** For the customer portal: the customer this login sees. */
+  customerId: { type: Schema.Types.ObjectId, ref: "Customer", default: null },
 });
 schema.plugin(basePlugin, { audit: { label: (i) => `${i.email}`, redact: ["tokenHash"] } });
 

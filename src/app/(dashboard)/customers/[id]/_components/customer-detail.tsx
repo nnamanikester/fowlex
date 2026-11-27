@@ -3,17 +3,19 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Mail, MapPin, Pencil, Phone } from "lucide-react";
+import { ChevronLeft, Mail, MapPin, Pencil, Phone, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { CustomerSheet } from "../../_components/customer-sheet";
 import { Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/auth/client";
 import { CUSTOMER_TYPE_LABELS, termsLine } from "@/lib/customers/rules";
 import type { CustomerView } from "@/lib/customers/service";
 import { formatNaira } from "@/lib/money";
 import { formatPhone } from "@/lib/suppliers/rules";
+import { useAction } from "@/lib/use-action";
 
 /** One customer: who they are, how to reach them and their terms. Contracts, orders and invoices join as they're built. */
 export function CustomerDetail({
@@ -29,6 +31,7 @@ export function CustomerDetail({
 }) {
   const router = useRouter();
   const [editing, setEditing] = React.useState(false);
+  const invite = useAction();
 
   return (
     <div className="space-y-5">
@@ -44,6 +47,7 @@ export function CustomerDetail({
             <span className="min-w-0 [overflow-wrap:anywhere]">{c.name}</span>
             {c.status === "archived" && <Badge>Archived</Badge>}
             {c.hasLogin && <Badge tone="info">Uses the portal</Badge>}
+            {c.invited && <Badge>Invited to the portal</Badge>}
           </h1>
           <p className="text-sm text-fg-muted">
             {CUSTOMER_TYPE_LABELS[c.type]}
@@ -51,9 +55,28 @@ export function CustomerDetail({
           </p>
         </div>
         {canWrite && (
-          <Button variant="secondary" className="w-full sm:w-auto" onClick={() => setEditing(true)}>
-            <Pencil /> Edit details
-          </Button>
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setEditing(true)}>
+              <Pencil /> Edit details
+            </Button>
+            {!c.hasLogin && c.status === "active" && (
+              <Button
+                className="flex-1 sm:flex-none"
+                loading={invite.busy}
+                disabled={!c.email}
+                reason="Add their email first: the invite goes there."
+                onClick={() =>
+                  void invite.run(() => apiRequest<CustomerView>(`/api/customers/${c.id}/invite`, "POST"), {
+                    toastError: true,
+                    success: `Invite sent to ${c.email}: they set a password, then see their invoices in the portal.`,
+                    onSuccess: () => router.refresh(),
+                  })
+                }
+              >
+                <UserPlus /> {c.invited ? "Send the invite again" : "Invite to the portal"}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

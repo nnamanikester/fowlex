@@ -7,7 +7,7 @@ import { createBatch } from "@/lib/batches/service";
 import { createCustomer } from "@/lib/customers/service";
 import { outbox } from "@/lib/email";
 import { createHouse } from "@/lib/houses/service";
-import { createInvoice, listInvoices, voidInvoice } from "@/lib/invoices/service";
+import { createInvoice, listInvoices, sendInvoice, voidInvoice } from "@/lib/invoices/service";
 import { recordPayment, removePayment } from "@/lib/payments/service";
 import { createOrder, deliverOrder } from "@/lib/sales/service";
 import { oid, setupTestDb } from "@/test/db";
@@ -42,14 +42,15 @@ async function farm({ email = "orders@grill.ng" } = {}) {
     "2026-11-27",
   );
   const grill = await createCustomer(owner, { name: "The Grill", type: "lounge", email, termsDays: 14 });
-  const bill = async (kobo: number, on: string, customerId = grill.id) => {
+  const bill = async (kobo: number, on: string, customerId = grill.id, send = true) => {
     const o = await createOrder(owner, {
       customerId,
       deliveryDate: on,
       lines: [{ batchId: batch.id, birds: 1, weightGrams: 0, priceKobo: kobo, pricing: "perBird" }],
     });
     await deliverOrder(owner, o.id, { deliveredOn: on }, o.version, on);
-    return createInvoice(owner, { orderIds: [o.id], issueDate: on }, on);
+    const inv = await createInvoice(owner, { orderIds: [o.id], issueDate: on }, on);
+    return send ? sendInvoice(owner, inv.id, "", on) : inv;
   };
   return { owner, grill, bill };
 }
@@ -95,6 +96,11 @@ describe("customer statements", () => {
     ]);
     expect(all.entries[1].description).toBe(`Payment for ${a.number}, Bank transfer (GTB-1)`);
 
+    // A draft being checked isn't on it.
+    await bill(4_000_000, "2026-11-25", grill.id, false);
+    expect((await statementFor(owner.farmId, grill.id, { from: "2026-01-01" }, "2026-11-27")).closingKobo).toBe(
+      40_000_000,
+    );
     const autumn = await statementFor(owner.farmId, grill.id, { from: "2026-09-01", to: "2026-10-31" }, "2026-11-27");
     expect(autumn).toMatchObject({ openingKobo: 0, closingKobo: 20_000_000 });
     const late = await statementFor(owner.farmId, grill.id, { from: "2026-10-02" }, "2026-11-27");
@@ -173,7 +179,7 @@ describe("aging", () => {
     await bill(20_000_000, "2026-09-20"); // due 4 Oct: 54 days
     const part = await bill(30_000_000, "2026-08-01"); // due 15 Aug: 104 days
     await recordPayment(owner, part.id, { amountKobo: 5_000_000, method: "cash" }, "2026-11-27");
-    await bill(7_000_000, "2026-08-20", suya.id); // due 20 Aug: 99 days
+    await bill(7_000_000, "2026-08-20", suya.id, false); // due 20 Aug: 99 days; a draft counts here
     const paid = await bill(1_000_000, "2026-11-01");
     await recordPayment(owner, paid.id, { amountKobo: 1_000_000, method: "cash" }, "2026-11-27");
 
