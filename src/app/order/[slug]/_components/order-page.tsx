@@ -5,7 +5,8 @@ import { Check, Home, LoaderCircle, Minus, Phone, Plus, Truck } from "lucide-rea
 
 import { apiRequest, asProblem, type AuthError } from "@/lib/auth/client";
 import { formatNaira as formatKobo } from "@/lib/money";
-import { dayLabel, estimate, type OnlineOrderInput, validateOnlineOrder } from "@/lib/shop/rules";
+import { type PriceOption, priceEstimate, priceLabel } from "@/lib/shop/prices";
+import { dayLabel, type OnlineOrderInput, validateOnlineOrder } from "@/lib/shop/rules";
 import type { Offer, Placed } from "@/lib/shop/service";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
   const [birds, setBirds] = React.useState(Math.min(50, offer.days[0]?.birds ?? 0) || 0);
   const [date, setDate] = React.useState(firstDay);
   const [delivery, setDelivery] = React.useState(false);
+  const [priceId, setPriceId] = React.useState(offer.prices[0]?.id ?? "");
   const [details, setDetails] = React.useState<Details>(EMPTY);
   const [returning, setReturning] = React.useState(false);
   const [notes, setNotes] = React.useState("");
@@ -80,7 +82,9 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
     errors.birds = `We have ${birdsText(max)} for ${dayLabel(date, today).toLowerCase() === "today" ? "today" : "that day"}.`;
   const show = (f: keyof OnlineOrderInput) =>
     failure?.field === f ? failure.message : submitted ? errors[f] : undefined;
-  const total = estimate(birds, offer.weightGrams, offer.pricePerKgKobo);
+  const option = offer.prices.find((p) => p.id === priceId) ?? offer.prices[0];
+  const total = priceEstimate(option, birds, offer.weightGrams);
+  const exact = option.pricing === "perBird";
   const set = (k: keyof Details, v: string) => setDetails((d) => ({ ...d, [k]: v }));
 
   const place = async () => {
@@ -98,6 +102,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
     try {
       const done = await apiRequest<Placed>(`/api/public/shop/${offer.slug}/orders`, "POST", {
         ...values,
+        priceId: option.id,
         requestId: requestId.current,
         website: trap.current?.value ?? "",
       });
@@ -205,9 +210,32 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
               >
                 {show("birds") ??
                   (birds
-                    ? `About ${kg(birds * offer.weightGrams)} of chicken, about ${formatNaira(total)}`
+                    ? `About ${kg(birds * offer.weightGrams)} of chicken, ${exact ? "" : "about "}${formatNaira(total)}`
                     : "Tap a number, or type it")}
               </p>
+              {offer.prices.length > 1 && (
+                <>
+                  <p id="which-birds" className="mt-6 text-sm font-semibold text-fg-heading">
+                    Which birds?
+                  </p>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="which-birds"
+                    id="order-priceId"
+                    className="mt-2 grid gap-2 sm:grid-cols-2"
+                  >
+                    {offer.prices.map((p) => (
+                      <PriceChoice
+                        key={p.id}
+                        price={p}
+                        weightGrams={offer.weightGrams}
+                        checked={option.id === p.id}
+                        onClick={() => setPriceId(p.id)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </Step>
 
             <Step n={2} title="When?">
@@ -392,6 +420,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
               day={date ? dayLabel(date, today) : ""}
               delivery={delivery}
               total={total}
+              exact={exact}
               sending={sending}
               failure={failure && !failure.field ? failure.message : null}
               floating
@@ -405,6 +434,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                 day={date ? dayLabel(date, today) : ""}
                 delivery={delivery}
                 total={total}
+                exact={exact}
                 sending={sending}
                 failure={failure && !failure.field ? failure.message : null}
                 onPlace={() => void place()}
@@ -420,7 +450,9 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 /** The supply board: what's ready, how heavy and what it costs, in the farm's own colours. */
 function Board({ offer, today }: { offer: Offer; today: string }) {
   const next = offer.days.find((d) => d.birds > offer.readyNow);
-  const perBird = estimate(1, offer.weightGrams, offer.pricePerKgKobo);
+  const [only] = offer.prices.length === 1 ? offer.prices : [];
+  const cheapest = Math.min(...offer.prices.map((p) => priceEstimate(p, 1, offer.weightGrams)));
+  const orderable = offer.days[offer.days.length - 1]?.birds ?? 0;
   return (
     <header className="bg-charcoal text-white">
       <div className="mx-auto max-w-5xl px-4 pb-10 pt-6 sm:pb-14">
@@ -459,8 +491,10 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
         <dl className="mt-8 grid max-w-2xl grid-cols-3 border-t border-white/15">
           {[
             ["Each bird", `about ${kg(offer.weightGrams)}`],
-            ["Price", `${formatNaira(offer.pricePerKgKobo)} a kg`],
-            ["A bird comes to", `about ${formatNaira(perBird)}`],
+            only ? ["Price", priceLabel(only)] : ["Prices", `from ${formatNaira(cheapest)} a bird`],
+            only?.pricing === "perKg"
+              ? ["A bird comes to", `about ${formatNaira(cheapest)}`]
+              : ["To order", `${orderable.toLocaleString("en-NG")} birds`],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -538,6 +572,42 @@ function Chip({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       )}
     >
       {children}
+    </button>
+  );
+}
+
+/** One of the farm's prices, as a card to choose: its name, the price and what a bird comes to. */
+function PriceChoice({
+  price,
+  weightGrams,
+  checked,
+  onClick,
+}: {
+  price: PriceOption;
+  weightGrams: number;
+  checked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onClick}
+      className={cn(
+        "focus-ring flex items-center justify-between gap-3 rounded-2xl border p-4 text-left transition-colors",
+        checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
+      )}
+    >
+      <span className="min-w-0">
+        <span className="block font-semibold">{price.name}</span>
+        <span className={cn("num block text-xs", checked ? "text-white/70" : "text-fg-muted")}>
+          {price.pricing === "perKg"
+            ? `About ${formatNaira(priceEstimate(price, 1, weightGrams))} a bird, weighed on the day`
+            : "A set price for each bird"}
+        </span>
+      </span>
+      <span className="num shrink-0 font-display text-lg font-bold">{priceLabel(price)}</span>
     </button>
   );
 }
@@ -647,6 +717,7 @@ function Summary({
   day,
   delivery,
   total,
+  exact,
   sending,
   failure,
   floating,
@@ -657,6 +728,8 @@ function Summary({
   day: string;
   delivery: boolean;
   total: number;
+  /** Priced per bird: the total is what they pay, not an estimate. */
+  exact: boolean;
   sending: boolean;
   failure: string | null;
   floating?: boolean;
@@ -688,7 +761,7 @@ function Summary({
                 : ""}
             </p>
             <p className="num text-sm text-fg-muted">
-              {birds ? `About ${formatNaira(total)}` : " "}
+              {birds ? (exact ? formatNaira(total) : `About ${formatNaira(total)}`) : " "}
               {!floating && birds ? (delivery ? ", delivered" : ", collected") : ""}
             </p>
           </div>
@@ -770,7 +843,7 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
             ["Birds", birdsText(placed.birds)],
             ["Day", dayLabel(placed.date, today)],
             ["How", placed.delivery ? "We deliver to you" : "You collect from the farm"],
-            ["About", formatNaira(placed.estimateKobo)],
+            [placed.exact ? "Comes to" : "About", formatNaira(placed.estimateKobo)],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between gap-4 px-5 py-3.5">
               <dt className="text-fg-muted">{label}</dt>

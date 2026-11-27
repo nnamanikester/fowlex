@@ -70,7 +70,3 @@ export function dayLabel(day: string, today: string) {
     new Date(`${day}T12:00:00Z`),
   );
 }
-
-/** About what `birds` birds come to at `pricePerKgKobo`, at about `weightGrams` each. */
-export const estimate = (birds: number, weightGrams: number, pricePerKgKobo: number) =>
-  Math.round((birds * weightGrams * pricePerKgKobo) / 1000);

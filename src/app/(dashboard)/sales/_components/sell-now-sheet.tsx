@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Banknote, Clock, Landmark, Minus, Plus, UserRound } from "lucide-react";
+import { Banknote, Check, Clock, Landmark, Minus, Plus, UserRound, X } from "lucide-react";
 
 import { Field } from "@/components/auth";
 import { TransferAccount } from "@/components/payments/transfer-account";
@@ -9,7 +9,6 @@ import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
-import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { apiRequest } from "@/lib/auth/client";
@@ -17,26 +16,39 @@ import type { CollectionView } from "@/lib/collections/service";
 import type { Pricing } from "@/lib/contracts/rules";
 import { formatNaira } from "@/lib/money";
 import type { QuickSale } from "@/lib/sales/quick";
+import { type PriceOption, priceLabel } from "@/lib/shop/prices";
 import { useAction } from "@/lib/use-action";
 import { cn } from "@/lib/utils";
 
 type PaidBy = "cash" | "transfer" | "later";
 const PER_BIRD = "fowlex.sell.perBird";
+const QUICK = [1, 2, 5, 10, 20];
+
+/** Whole naira when there are no kobo: ₦14,000 reads faster than ₦14,000.00. */
+const naira = (kobo: number) => (kobo % 100 ? formatNaira(kobo) : formatNaira(kobo).replace(/\.00$/, ""));
+
+const PAYS: { value: PaidBy; label: string; hint: string; icon: React.ReactNode }[] = [
+  { value: "cash", label: "Cash now", hint: "Marked paid", icon: <Banknote /> },
+  { value: "transfer", label: "Transfer now", hint: "An account for this sale", icon: <Landmark /> },
+  { value: "later", label: "Pay later", hint: "The invoice waits", icon: <Clock /> },
+];
 
 /**
- * Selling over the counter, for anyone, in one sheet: how many birds, the price, and how they pay.
- * Their name or phone is optional. Cash is recorded at once; Transfer shows a bank account that
- * turns to Paid when the money lands; Later leaves the invoice to pay.
+ * Selling over the counter, for anyone, in one sheet that reads like a receipt: how many birds,
+ * the price, how they pay, the total. Their name or phone is optional. Cash is recorded at once;
+ * Transfer turns the sheet into a bank slip that becomes Paid when the money lands; Later leaves
+ * the invoice to pay.
  */
 export function SellNowSheet({
   batches,
-  pricePerKgKobo,
+  prices = [],
   simulated,
   onClose,
   onDone,
 }: {
   batches: { id: string; code: string; free: number }[];
-  pricePerKgKobo: number | null;
+  /** The farm's prices, the usual one first: one tap each. */
+  prices?: PriceOption[];
   simulated: boolean;
   onClose: () => void;
   onDone: (message: string) => void;
@@ -44,9 +56,13 @@ export function SellNowSheet({
   const free = batches.reduce((n, b) => n + b.free, 0);
   const [birds, setBirds] = React.useState(Math.min(1, free));
   const [batchId, setBatchId] = React.useState("");
-  const [pricing, setPricing] = React.useState<Pricing>(pricePerKgKobo ? "perKg" : "perBird");
-  const [perKg, setPerKg] = React.useState<number | null>(pricePerKgKobo);
-  const [perBird, setPerBird] = React.useState<number | null>(null);
+  const [choosingBatch, setChoosingBatch] = React.useState(false);
+  const usual = prices[0];
+  const [pricing, setPricing] = React.useState<Pricing>(usual?.pricing ?? "perBird");
+  const [perKg, setPerKg] = React.useState<number | null>(prices.find((p) => p.pricing === "perKg")?.priceKobo ?? null);
+  const [perBird, setPerBird] = React.useState<number | null>(
+    prices.find((p) => p.pricing === "perBird")?.priceKobo ?? null,
+  );
   const [kg, setKg] = React.useState("");
   const [who, setWho] = React.useState({ open: false, name: "", phone: "" });
   const [paidBy, setPaidBy] = React.useState<PaidBy>("cash");
@@ -54,8 +70,9 @@ export function SellNowSheet({
   const [sold, setSold] = React.useState<QuickSale | null>(null);
   const action = useAction();
 
-  // The last price per bird used on this device: walk-in prices rarely change day to day.
+  // Without a price list, the last price per bird used on this device: walk-in prices rarely change.
   React.useEffect(() => {
+    if (usual) return;
     try {
       const saved = Number(window.localStorage.getItem(PER_BIRD));
       // eslint-disable-next-line react-hooks/set-state-in-effect -- storage is only readable in the browser
@@ -63,12 +80,19 @@ export function SellNowSheet({
     } catch {
       // Nothing kept.
     }
-  }, []);
+  }, [usual]);
 
   const grams = Math.round(Number(kg || 0) * 1000);
   const price = pricing === "perKg" ? perKg : perBird;
+  const chosen = prices.find((p) => p.pricing === pricing && p.priceKobo === price);
+  const pick = (p: PriceOption) => {
+    setPricing(p.pricing);
+    if (p.pricing === "perKg") setPerKg(p.priceKobo);
+    else setPerBird(p.priceKobo);
+  };
   const total = !price ? 0 : pricing === "perKg" ? Math.round((grams * price) / 1000) : birds * price;
-  const limit = batchId ? (batches.find((b) => b.id === batchId)?.free ?? 0) : free;
+  const batch = batches.find((b) => b.id === batchId);
+  const limit = batch ? batch.free : free;
   const reason =
     birds < 1
       ? "Choose how many birds."
@@ -79,6 +103,14 @@ export function SellNowSheet({
           : pricing === "perKg" && grams < 1
             ? "Weigh the birds and enter their weight."
             : "";
+  const sum =
+    !price || !birds
+      ? "Add the price to see the total"
+      : pricing === "perKg"
+        ? grams
+          ? `${Number(kg).toLocaleString("en-NG")} kg × ${naira(price)}`
+          : "Add their weight to see the total"
+        : `${birds.toLocaleString("en-NG")} × ${naira(price)}`;
 
   const sell = () =>
     void action.run(
@@ -102,7 +134,7 @@ export function SellNowSheet({
               // Not kept: typed again next time.
             }
           setSold(sale);
-          const what = `${birds.toLocaleString("en-NG")} bird${birds === 1 ? "" : "s"} for ${formatNaira(sale.invoice.totalKobo)}`;
+          const what = `${birds.toLocaleString("en-NG")} bird${birds === 1 ? "" : "s"} for ${naira(sale.invoice.totalKobo)}`;
           if (sale.collection) setCollection(sale.collection);
           else
             onDone(
@@ -114,53 +146,55 @@ export function SellNowSheet({
       },
     );
 
-  if (collection && sold)
+  if (collection && sold) {
+    const leave = () => onDone(`${sold.invoice.number} is waiting for the transfer: it's marked paid when it lands.`);
     return (
       <Sheet
+        key="pay"
         open
-        onClose={onClose}
+        onClose={leave}
         title="Pay by transfer"
-        subtitle={`${sold.invoice.number} · ${formatNaira(collection.amountKobo)}`}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-fg-muted">Show them this, or read it out. It&apos;s for this sale only.</p>
-          <TransferAccount
-            collection={collection}
-            checkUrl={(id) => `/api/collections/${id}`}
-            simulated={simulated}
-            onPaid={(c) => onDone(`Paid by transfer: ${formatNaira(c.amountKobo)} for ${c.invoiceNumber}.`)}
-            onNew={() =>
-              void action.run(() => apiRequest<CollectionView>(`/api/invoices/${sold.invoice.id}/collect`, "POST"), {
-                toastError: true,
-                onSuccess: setCollection,
-              })
-            }
-          />
-          <Button
-            variant="ghost"
-            fullWidth
-            onClick={() =>
-              onDone(`${sold.invoice.number} is waiting for the transfer: it's marked paid when it lands.`)
-            }
-          >
-            Close: it&apos;s marked paid when the money lands
+        subtitle="Show them this screen, or send them the details"
+        footer={
+          <Button variant="ghost" fullWidth onClick={leave}>
+            Done for now: it turns paid by itself
           </Button>
-        </div>
+        }
+      >
+        <TransferAccount
+          collection={collection}
+          checkUrl={(id) => `/api/collections/${id}`}
+          simulated={simulated}
+          onPaid={(c) => onDone(`Paid by transfer: ${naira(c.amountKobo)} for ${c.invoiceNumber}.`)}
+          onNew={() =>
+            void action.run(() => apiRequest<CollectionView>(`/api/invoices/${sold.invoice.id}/collect`, "POST"), {
+              toastError: true,
+              onSuccess: setCollection,
+            })
+          }
+        />
       </Sheet>
     );
+  }
 
   return (
     <Sheet
+      key="sale"
       open
       onClose={() => !action.busy && onClose()}
       title="Sell now"
-      subtitle="To anyone, paid now or later"
+      subtitle="To anyone: no details needed"
       footer={
-        <div className="space-y-2">
-          <p className="num flex items-baseline justify-between" aria-live="polite">
-            <span className="text-sm text-fg-muted">Total</span>
-            <span className="font-display text-2xl font-bold text-fg-heading">{formatNaira(total)}</span>
-          </p>
+        <div className="space-y-3">
+          <div className="flex items-end justify-between gap-4" aria-live="polite">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-fg">Total</p>
+              <p className="num truncate text-sm text-fg-muted">{sum}</p>
+            </div>
+            <p className="num shrink-0 font-display text-3xl font-bold tracking-tight text-fg-heading">
+              {naira(total)}
+            </p>
+          </div>
           <ActionFeedback action={action} />
           <Button
             size="lg"
@@ -171,7 +205,7 @@ export function SellNowSheet({
             onClick={sell}
           >
             {paidBy === "cash"
-              ? `Sold: ${formatNaira(total)} cash`
+              ? `Sold: ${naira(total)} cash`
               : paidBy === "transfer"
                 ? "Get an account to pay into"
                 : "Sold: they'll pay later"}
@@ -179,19 +213,18 @@ export function SellNowSheet({
         </div>
       }
     >
-      <div className="space-y-6">
-        <section className="space-y-2">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="One bird fewer"
+      <div className="space-y-8">
+        {/* How many: the one big thing on the sheet. */}
+        <section aria-label="How many birds" className="rounded-3xl bg-surface-subtle px-4 pb-5 pt-6">
+          <div className="flex items-center justify-center gap-4 sm:gap-6">
+            <StepButton
+              label="One bird fewer"
               disabled={birds <= 1}
               onClick={() => setBirds((b) => Math.max(1, b - 1))}
-              className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-line-strong text-fg disabled:opacity-40 [&_svg]:size-5"
             >
               <Minus />
-            </button>
-            <label className="block min-w-0 flex-1 text-center">
+            </StepButton>
+            <label className="block w-36 text-center">
               <span className="sr-only">Birds</span>
               <input
                 size={1}
@@ -199,152 +232,316 @@ export function SellNowSheet({
                 value={birds ? String(birds) : ""}
                 placeholder="0"
                 onChange={(e) => setBirds(Number(e.target.value.replace(/\D/g, "").slice(0, 6)) || 0)}
-                className="num w-full bg-transparent text-center font-display text-5xl font-bold text-fg-heading outline-none"
+                onFocus={(e) => e.currentTarget.select()}
+                className="num w-full bg-transparent text-center font-display text-6xl font-bold leading-none tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8"
               />
-              <span className="block text-sm text-fg-muted">{birds === 1 ? "bird" : "birds"}</span>
+              <span className="mt-1 block text-sm font-medium text-fg-muted">{birds === 1 ? "bird" : "birds"}</span>
             </label>
-            <button
-              type="button"
-              aria-label="One bird more"
+            <StepButton
+              label="One bird more"
               disabled={birds >= limit}
               onClick={() => setBirds((b) => Math.min(limit, b + 1))}
-              className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-line-strong text-fg disabled:opacity-40 [&_svg]:size-5"
             >
               <Plus />
-            </button>
+            </StepButton>
           </div>
-          {batches.length > 1 ? (
-            <Select
-              aria-label="From batch"
-              value={batchId}
-              onChange={(e) => setBatchId(e.target.value)}
-              className="text-center"
-            >
-              <option value="">From the oldest batch ({free.toLocaleString("en-NG")} free)</option>
-              {batches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.code} ({b.free.toLocaleString("en-NG")} free)
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <p className="text-center text-sm text-fg-muted">{free.toLocaleString("en-NG")} free to sell</p>
-          )}
-        </section>
-
-        <section className="space-y-3">
-          <Segmented
-            label="Priced"
-            className="w-full"
-            value={pricing}
-            onChange={setPricing}
-            options={[
-              { value: "perBird", label: "Per bird" },
-              { value: "perKg", label: "Per kg" },
-            ]}
-          />
-          <div className={cn("grid gap-3", pricing === "perKg" && "grid-cols-2")}>
-            {pricing === "perKg" ? (
-              <>
-                <Field id="sellKg" label="They weigh (kg)" error={action.fieldError("weightGrams")}>
-                  {(a11y) => (
-                    <Input
-                      {...a11y}
-                      inputMode="decimal"
-                      className="num"
-                      placeholder="4.4"
-                      value={kg}
-                      onChange={(e) => setKg(e.target.value.replace(/[^\d.]/g, "").slice(0, 8))}
-                    />
-                  )}
-                </Field>
-                <Field id="sellPerKg" label="Price a kg" error={action.fieldError("priceKobo")}>
-                  {(a11y) => <MoneyInput {...a11y} value={perKg} onChange={setPerKg} placeholder="3,200.00" />}
-                </Field>
-              </>
+          <div role="group" aria-label="Quick amounts" className="mt-5 flex flex-wrap justify-center gap-2">
+            {QUICK.filter((q) => q <= limit).map((q) => (
+              <button
+                key={q}
+                type="button"
+                aria-pressed={birds === q}
+                onClick={() => setBirds(q)}
+                className={cn(
+                  "focus-ring num min-h-10 min-w-12 rounded-full border px-4 text-sm font-semibold transition-colors",
+                  birds === q
+                    ? "border-fg-heading bg-fg-heading text-surface"
+                    : "border-line-strong bg-surface text-fg hover:border-fg-subtle",
+                )}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 text-center text-sm">
+            {choosingBatch && batches.length > 1 ? (
+              <div className="mx-auto flex max-w-sm items-center gap-2">
+                <Select
+                  aria-label="From batch"
+                  value={batchId}
+                  onChange={(e) => setBatchId(e.target.value)}
+                  className="flex-1"
+                >
+                  <option value="">The oldest batch first ({free.toLocaleString("en-NG")} free)</option>
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.code} ({b.free.toLocaleString("en-NG")} free)
+                    </option>
+                  ))}
+                </Select>
+                <button
+                  type="button"
+                  aria-label="Done choosing"
+                  onClick={() => setChoosingBatch(false)}
+                  className="focus-ring grid size-10 shrink-0 place-items-center rounded-lg text-fg-subtle hover:bg-surface-muted"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
             ) : (
-              <Field id="sellPerBird" label="Price a bird" error={action.fieldError("priceKobo")}>
-                {(a11y) => <MoneyInput {...a11y} value={perBird} onChange={setPerBird} placeholder="7,000.00" />}
-              </Field>
+              <p className={birds > limit ? "font-medium text-danger-fg" : "text-fg-muted"}>
+                {birds > limit ? `Only ${limit.toLocaleString("en-NG")} free` : `${limit.toLocaleString("en-NG")} free`}{" "}
+                {batch ? `in ${batch.code}` : "to sell"}
+                {batches.length > 1 && (
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => setChoosingBatch(true)}
+                      className="focus-ring rounded font-semibold text-brand-fg underline-offset-4 hover:underline"
+                    >
+                      Choose batch
+                    </button>
+                  </>
+                )}
+              </p>
             )}
           </div>
         </section>
 
-        <section className="space-y-2">
-          <p id="paid-by" className="text-sm font-semibold text-fg">
-            How do they pay?
-          </p>
-          <div role="radiogroup" aria-labelledby="paid-by" className="grid grid-cols-3 gap-2">
-            {(
-              [
-                ["cash", "Cash now", <Banknote key="c" />],
-                ["transfer", "Transfer now", <Landmark key="t" />],
-                ["later", "Pay later", <Clock key="l" />],
-              ] as const
-            ).map(([value, label, icon]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={paidBy === value}
-                onClick={() => setPaidBy(value)}
-                className={cn(
-                  "focus-ring flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-sm font-semibold transition-colors [&_svg]:size-5",
-                  paidBy === value ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg",
-                )}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
+        {/* The price, per bird or per kg. */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-fg-heading">Price</h3>
+            <PricingSwitch value={pricing} onChange={setPricing} />
           </div>
-          {paidBy === "transfer" && (
-            <p className="text-sm text-fg-muted">
-              They get a bank account for this sale. It&apos;s marked paid by itself when the money lands.
-            </p>
+          {prices.length > 0 && (
+            <div role="radiogroup" aria-label="Your prices" className="grid gap-2 sm:flex sm:flex-wrap">
+              {prices.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={chosen?.id === p.id}
+                  onClick={() => pick(p)}
+                  className={cn(
+                    "focus-ring flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3.5 text-left text-sm transition-colors sm:inline-flex sm:justify-start",
+                    chosen?.id === p.id
+                      ? "border-fg-heading bg-fg-heading text-surface"
+                      : "border-line-strong bg-surface text-fg hover:border-fg-subtle",
+                  )}
+                >
+                  <span className="font-semibold">{p.name}</span>
+                  <span className={cn("num", chosen?.id === p.id ? "text-surface/75" : "text-fg-muted")}>
+                    {priceLabel(p)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {pricing === "perKg" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Field id="sellKg" label="They weigh (kg)" error={action.fieldError("weightGrams")}>
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    inputMode="decimal"
+                    className="num h-12 text-lg"
+                    placeholder="4.4"
+                    value={kg}
+                    onChange={(e) => setKg(e.target.value.replace(/[^\d.]/g, "").slice(0, 8))}
+                  />
+                )}
+              </Field>
+              <Field id="sellPerKg" label="Price a kg" error={action.fieldError("priceKobo")}>
+                {(a11y) => (
+                  <MoneyInput
+                    {...a11y}
+                    value={perKg}
+                    onChange={setPerKg}
+                    placeholder="3,200.00"
+                    className="h-12 text-lg"
+                  />
+                )}
+              </Field>
+            </div>
+          ) : (
+            <Field id="sellPerBird" label="Price a bird" error={action.fieldError("priceKobo")}>
+              {(a11y) => (
+                <MoneyInput
+                  {...a11y}
+                  value={perBird}
+                  onChange={setPerBird}
+                  placeholder="7,000.00"
+                  className="h-12 text-lg"
+                />
+              )}
+            </Field>
           )}
         </section>
 
+        {/* How they pay. */}
+        <section className="space-y-3">
+          <h3 id="paid-by" className="font-semibold text-fg-heading">
+            How do they pay?
+          </h3>
+          <div role="radiogroup" aria-labelledby="paid-by" className="grid grid-cols-3 gap-2 sm:gap-3">
+            {PAYS.map((p) => {
+              const on = paidBy === p.value;
+              return (
+                <button
+                  key={p.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setPaidBy(p.value)}
+                  className={cn(
+                    "focus-ring relative flex min-h-28 flex-col items-start gap-3 rounded-2xl border bg-surface p-3 text-left transition-[border-color,box-shadow] sm:p-4",
+                    on
+                      ? "border-fg-heading shadow-[0_0_0_1px_rgb(var(--fg-heading))]"
+                      : "border-line hover:border-line-strong",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid size-9 place-items-center rounded-xl transition-colors [&_svg]:size-5",
+                      on ? "bg-fg-heading text-surface" : "bg-surface-subtle text-fg-muted",
+                    )}
+                    aria-hidden
+                  >
+                    {p.icon}
+                  </span>
+                  <span className="block">
+                    <span className="block text-sm font-semibold leading-tight text-fg-heading">{p.label}</span>
+                    <span className="mt-0.5 block text-xs leading-snug text-fg-muted">{p.hint}</span>
+                  </span>
+                  {on && (
+                    <span
+                      className="absolute right-2.5 top-2.5 grid size-5 place-items-center rounded-full bg-fg-heading text-surface motion-safe:animate-pop-in"
+                      aria-hidden
+                    >
+                      <Check className="size-3" strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Who: never needed, there if they want it. */}
         {who.open ? (
-          <section className="grid gap-3 sm:grid-cols-2">
-            <Field id="sellName" label="Their name" hint="Optional">
-              {(a11y) => (
-                <Input
-                  {...a11y}
-                  value={who.name}
-                  maxLength={80}
-                  onChange={(e) => setWho((w) => ({ ...w, name: e.target.value }))}
-                />
-              )}
-            </Field>
-            <Field
-              id="sellPhone"
-              label="Their phone"
-              hint="Optional: to find them next time"
-              error={action.fieldError("phone")}
-            >
-              {(a11y) => (
-                <Input
-                  {...a11y}
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="0803 123 4567"
-                  value={who.phone}
-                  onChange={(e) => setWho((w) => ({ ...w, phone: e.target.value }))}
-                />
-              )}
-            </Field>
+          <section className="space-y-3">
+            <h3 className="font-semibold text-fg-heading">Who is buying</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field id="sellName" label="Their name" hint="Optional">
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    value={who.name}
+                    maxLength={80}
+                    autoComplete="off"
+                    onChange={(e) => setWho((w) => ({ ...w, name: e.target.value }))}
+                  />
+                )}
+              </Field>
+              <Field
+                id="sellPhone"
+                label="Their phone"
+                hint="Optional: finds them next time"
+                error={action.fieldError("phone")}
+              >
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    placeholder="0803 123 4567"
+                    value={who.phone}
+                    onChange={(e) => setWho((w) => ({ ...w, phone: e.target.value }))}
+                  />
+                )}
+              </Field>
+            </div>
           </section>
         ) : (
           <button
             type="button"
             onClick={() => setWho((w) => ({ ...w, open: true }))}
-            className="focus-ring inline-flex items-center gap-2 rounded text-sm font-semibold text-brand-fg"
+            className="focus-ring flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong p-4 text-left transition-colors hover:bg-surface-subtle"
           >
-            <UserRound className="size-4" aria-hidden /> Add their name or phone (optional)
+            <span
+              className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-subtle text-fg-muted"
+              aria-hidden
+            >
+              <UserRound className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-fg-heading">Add their name or phone (optional)</span>
+              <span className="block text-xs text-fg-muted">
+                Skip it for a walk-in: the sale goes through either way
+              </span>
+            </span>
           </button>
         )}
       </div>
     </Sheet>
+  );
+}
+
+/** Per bird or per kg: two halves of one switch. */
+export function PricingSwitch({ value, onChange }: { value: Pricing; onChange: (p: Pricing) => void }) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Priced"
+      className="grid grid-cols-2 rounded-xl border border-line bg-surface-subtle p-1 text-sm font-semibold"
+    >
+      {(
+        [
+          ["perBird", "Per bird"],
+          ["perKg", "Per kg"],
+        ] as const
+      ).map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "focus-ring min-h-9 whitespace-nowrap rounded-lg px-4 transition-colors",
+            value === v ? "bg-surface text-fg-heading shadow-card" : "text-fg-muted hover:text-fg",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StepButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="focus-ring grid size-14 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg-heading shadow-button transition active:scale-95 disabled:opacity-40 disabled:shadow-none [&_svg]:size-6"
+    >
+      {children}
+    </button>
   );
 }

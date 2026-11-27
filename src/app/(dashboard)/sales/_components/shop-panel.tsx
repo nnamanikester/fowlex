@@ -4,24 +4,34 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Globe, MessageCircle, Share2 } from "lucide-react";
 
-import { Field } from "@/components/auth";
+import { changed, draftsOf, PriceList, problem } from "./price-list";
 import { CopyButton, Panel } from "@/components/kit";
 import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Button } from "@/components/ui/button";
-import { MoneyInput } from "@/components/ui/money-input";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { apiRequest } from "@/lib/auth/client";
+import type { PriceDraft } from "@/lib/shop/prices";
 import type { ShopSettings } from "@/lib/shop/service";
 import { useAction } from "@/lib/use-action";
 
 /**
- * The farm's order link: turn it on with a price, then copy or share it (WhatsApp first: that's
+ * The farm's order link: turn it on with the farm's prices (per bird, per kg, or several), then
+ * copy or share it (WhatsApp first: that's
  * where buyers are). Customers who open it see what's ready and order without signing in.
  */
 export function ShopPanel({ shop, canWrite }: { shop: ShopSettings; canWrite: boolean }) {
   const router = useRouter();
   const action = useAction();
-  const [price, setPrice] = React.useState<number | null>(shop.pricePerKgKobo);
+  const [drafts, setDrafts] = React.useState<PriceDraft[]>(() => draftsOf(shop.prices));
+  // Saved elsewhere, the list shows what's saved; a refresh with the same prices keeps what's being typed.
+  const savedKey = JSON.stringify(shop.prices);
+  const [seen, setSeen] = React.useState(savedKey);
+  if (seen !== savedKey) {
+    setSeen(savedKey);
+    setDrafts(draftsOf(shop.prices));
+  }
+  const wrong = problem(drafts);
+  const dirty = changed(drafts, shop.prices);
   const [origin, setOrigin] = React.useState("");
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the address is only known in the browser
@@ -32,14 +42,20 @@ export function ShopPanel({ shop, canWrite }: { shop: ShopSettings; canWrite: bo
     void action.run(() => apiRequest<ShopSettings>("/api/shop", "PATCH", change), {
       key,
       success: message,
-      onSuccess: () => router.refresh(),
+      onSuccess: (next) => {
+        if (change.prices) {
+          setSeen(JSON.stringify(next.prices));
+          setDrafts(draftsOf(next.prices));
+        }
+        router.refresh();
+      },
     });
 
   if (!shop.enabled)
     return (
       <Panel>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-1">
+        <div className="space-y-4">
+          <div className="min-w-0 space-y-1">
             <h2 className="flex items-center gap-2 text-base font-bold text-fg-heading">
               <Globe className="size-4 text-fg-muted" aria-hidden /> Let customers order online
             </h2>
@@ -49,15 +65,19 @@ export function ShopPanel({ shop, canWrite }: { shop: ShopSettings; canWrite: bo
             </p>
           </div>
           {canWrite && (
-            <div className="flex flex-wrap items-end gap-2">
-              <Field id="shopPrice" label="Your price per kg" error={action.fieldError("pricePerKgKobo")}>
-                {(a11y) => <MoneyInput {...a11y} value={price} onChange={setPrice} placeholder="3,200.00" />}
-              </Field>
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-fg-heading">What you sell at</p>
+              <PriceList
+                drafts={drafts}
+                onChange={setDrafts}
+                errorFor={(f) => action.fieldError(f)}
+                disabled={action.busy}
+              />
               <Button
                 loading={action.isPending("on")}
-                disabled={!price}
-                reason="Enter your price per kg: customers see it."
-                onClick={() => save({ enabled: true, pricePerKgKobo: price }, "Your order page is on.", "on")}
+                disabled={!!wrong}
+                reason={wrong ? `${wrong} Customers see it on the page.` : undefined}
+                onClick={() => save({ enabled: true, prices: drafts }, "Your order page is on.", "on")}
               >
                 Turn on my order page
               </Button>
@@ -106,24 +126,32 @@ export function ShopPanel({ shop, canWrite }: { shop: ShopSettings; canWrite: bo
           </a>
         </div>
         {canWrite && (
-          <div className="grid gap-3 border-t border-line pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div className="flex flex-wrap items-end gap-2">
-              <Field id="shopPrice" label="Price per kg on the page" error={action.fieldError("pricePerKgKobo")}>
-                {(a11y) => <MoneyInput {...a11y} value={price} onChange={setPrice} />}
-              </Field>
-              {price !== shop.pricePerKgKobo && (
-                <Button
-                  variant="secondary"
-                  loading={action.isPending("price")}
-                  disabled={!price}
-                  reason="Enter a price."
-                  onClick={() => save({ pricePerKgKobo: price }, "Price saved: the page shows it now.", "price")}
-                >
-                  Save price
-                </Button>
+          <div className="space-y-4 border-t border-line pt-4">
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-fg-heading">What you sell at</p>
+              <PriceList
+                drafts={drafts}
+                onChange={setDrafts}
+                errorFor={(f) => action.fieldError(f)}
+                disabled={action.busy}
+              />
+              {dirty && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    loading={action.isPending("price")}
+                    disabled={!!wrong}
+                    reason={wrong || undefined}
+                    onClick={() => save({ prices: drafts }, "Prices saved: the page shows them now.", "price")}
+                  >
+                    Save prices
+                  </Button>
+                  <Button variant="ghost" disabled={action.busy} onClick={() => setDrafts(draftsOf(shop.prices))}>
+                    Undo
+                  </Button>
+                </div>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <label className="flex items-center gap-2 text-sm font-semibold text-fg">
                 <ToggleSwitch
                   ariaLabel="We deliver"
