@@ -7,8 +7,7 @@ import { InventoryTabs } from "../_components/inventory-tabs";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadAssets, loadBatches, loadItems, loadSuppliers, loadCategories } from "@/lib/page-data";
+import { loadAssets, loadBatches, loadCategories, loadItems, loadSuppliers, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Equipment" };
 
@@ -26,6 +25,7 @@ export default function EquipmentPage() {
 
 async function Equipment() {
   const user = await requireUser();
+  const now = await requestToday();
   const canWrite = can(user.role, "expense.write");
   const [assets, suppliers, items, batches, categories] = await Promise.all([
     loadAssets(user.farmId),
@@ -37,14 +37,14 @@ async function Equipment() {
   return (
     <EquipmentBoard
       assets={assets}
-      today={today()}
+      today={now}
       canWrite={canWrite}
       spending={{
         categories,
         suppliers,
         items,
         batches: batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code })),
-        today: today(),
+        today: now,
         canWrite,
         canPay: can(user.role, "payout.send"),
       }}

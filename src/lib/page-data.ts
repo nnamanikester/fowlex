@@ -1,7 +1,9 @@
 import "server-only";
 
 import { cacheLife } from "next/cache";
+import { connection } from "next/server";
 
+import { today } from "@/lib/dates";
 import { listAudit } from "@/lib/audit/service";
 import { batchSummaries, getBatch, listBatches } from "@/lib/batches/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
@@ -171,3 +173,13 @@ export const loadTeam: typeof listTeam = PRODUCTION ? teamCached : listTeam;
 export const loadAudit: (actor: CurrentUser) => ReturnType<typeof listAudit> = PRODUCTION
   ? auditCached
   : (actor) => listAudit(actor);
+
+/**
+ * Today's date for a page, read at request time. Pages are prerendered (and prefetched with the
+ * session), where reading the clock is refused: `connection()` defers what follows to the request.
+ * Call it before anything else on the page that reads the time.
+ */
+export async function requestToday() {
+  await connection();
+  return today();
+}

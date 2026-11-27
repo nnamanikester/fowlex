@@ -1,7 +1,7 @@
 import "server-only";
 
 import { HttpError } from "@/lib/auth/guard";
-import { isProviderTrouble, paystack, type PaystackResponse, unavailable } from "./client";
+import { isProviderTrouble, paystack, type PaystackResponse, paystackTrouble } from "./client";
 
 export type Bank = { code: string; name: string };
 
@@ -21,7 +21,7 @@ export async function listBanks(): Promise<Bank[]> {
     const res = await paystack<{ code?: string; name?: string; active?: boolean }[]>("/bank", {
       query: { country: "nigeria", perPage: "100", use_cursor: "true", ...(next && { next }) },
     });
-    if (!res.status || !Array.isArray(res.data)) throw unavailable();
+    if (!res.status || !Array.isArray(res.data)) throw paystackTrouble(res, "listing banks");
     for (const b of res.data) if (b.code && b.name && b.active !== false) banks.push({ code: b.code, name: b.name });
     next = res.meta?.next ?? undefined;
     if (!next) break;
@@ -73,7 +73,7 @@ export async function resolveAccount(accountNumber: unknown, bankCode: unknown) 
       query: { account_number: number, bank_code: code },
     });
     outcome = classifyLookup(res);
-    if (!outcome) throw unavailable();
+    if (!outcome) throw paystackTrouble(res, "checking a bank account");
     cache.set(key, { at: Date.now(), ttl: outcome.kind === "found" ? DAY : 10 * 60 * 1000, outcome });
   }
   if (outcome.kind === "not_found")
@@ -105,6 +105,7 @@ export async function createRecipient(account: { accountName: string; accountNum
     },
   });
   if (res.status && res.data?.recipient_code) return res.data.recipient_code;
-  if (isProviderTrouble(res) || !res.httpStatus) throw unavailable();
+  if (isProviderTrouble(res) || !res.httpStatus || res.httpStatus === 401 || res.httpStatus === 403)
+    throw paystackTrouble(res, "making a transfer recipient");
   throw new HttpError(400, "recipient_refused", res.message || "Paystack won't pay this account.", "accountNumber");
 }

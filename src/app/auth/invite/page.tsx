@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import { AcceptForm } from "./_components/accept-form";
 import { AuthHeading, AuthLink, AuthShell } from "@/components/auth";
@@ -26,6 +27,8 @@ const PROBLEMS = {
 
 async function Invite({ searchParams }: Pick<PageProps<"/auth/invite">, "searchParams">) {
   const { token } = await searchParams;
+  // Whether it has expired depends on the time: check at request time, not while prerendering.
+  await connection();
   const invite =
     typeof token === "string" && token
       ? await previewInvite(token)

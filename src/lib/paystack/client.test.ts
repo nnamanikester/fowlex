@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isProviderTrouble, paystack, paystackMode } from "./client";
+import { isProviderTrouble, paystack, paystackMode, paystackTrouble } from "./client";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -71,5 +71,26 @@ describe("paystack client", () => {
     expect(isProviderTrouble(res(429))).toBe(true);
     expect(isProviderTrouble(res(400, "Daily limit reached"))).toBe(true);
     expect(isProviderTrouble(res(422, "Could not resolve account name"))).toBe(false);
+  });
+
+  it("names each cause of trouble and logs what Paystack said, never the key", () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_secret");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const res = (httpStatus: number, message = "") => ({ httpStatus, status: false, message, data: null });
+    expect(paystackTrouble(res(401, "Invalid key"), "listing banks")).toMatchObject({
+      status: 503,
+      code: "paystack_key",
+    });
+    expect(paystackTrouble(res(403, "IP address not allowed"), "x").code).toBe("paystack_blocked");
+    expect(paystackTrouble(res(400, "Your IP is not whitelisted"), "x").code).toBe("paystack_blocked");
+    expect(paystackTrouble(res(429, "You have exceeded the daily limit for test resolves"), "x").code).toBe(
+      "paystack_test_limit",
+    );
+    expect(paystackTrouble(res(502, ""), "x").code).toBe("paystack_unavailable");
+    expect(warn).toHaveBeenCalledWith('[paystack] listing banks: HTTP 401 "Invalid key"');
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("sk_test_secret");
+    // Live keys have no daily test limit: a limit there is Paystack being busy.
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_live_secret");
+    expect(paystackTrouble(res(429, "Rate limit exceeded"), "x").code).toBe("paystack_unavailable");
   });
 });

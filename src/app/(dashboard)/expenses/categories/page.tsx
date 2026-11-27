@@ -7,8 +7,7 @@ import { ExpensesTabs } from "../_components/expenses-tabs";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadCategories, loadExpenses } from "@/lib/page-data";
+import { loadCategories, loadExpenses, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Expense categories" };
 
@@ -26,12 +25,13 @@ export default function CategoriesPage() {
 
 async function Categories() {
   const user = await requireUser();
+  const now = await requestToday();
   const [categories, expenses] = await Promise.all([loadCategories(user.farmId), loadExpenses(user.farmId)]);
   return (
     <CategoriesBoard
       categories={categories}
       expenses={expenses}
-      today={today()}
+      today={now}
       canManage={can(user.role, "settings.manage")}
     />
   );
