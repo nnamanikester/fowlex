@@ -18,6 +18,10 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
   const person = await page.request.post("/api/employees", {
     data: { name: "Oluwaseun Adebayo-Okonkwo Chukwuemeka", payType: "daily", rateKobo: 999_999_999_00 },
   });
+  // A month's pay of its own, far in the past, with that long name on it.
+  const run = await page.request.post("/api/payroll", {
+    data: { period: `19${String(10 + (Date.now() % 90))}-${String(1 + (Date.now() % 12)).padStart(2, "0")}` },
+  });
   const width = page.viewportSize()!.width;
   for (const path of [
     "/",
@@ -31,6 +35,8 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/people",
     "/people/attendance",
     `/people/${(await person.json()).id}`,
+    "/payroll",
+    ...(run.ok() ? [`/payroll/${(await run.json()).id}`] : []),
   ]) {
     await page.goto(path);
     await expect(page.getByRole("main")).toBeVisible();

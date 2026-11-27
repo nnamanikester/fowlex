@@ -15,6 +15,7 @@ import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
 import { PayoutModel } from "./payout";
+import { PayrollRunModel } from "./payroll-run";
 import { RecurringExpenseModel } from "./recurring-expense";
 import { SettingsModel } from "./settings";
 import { StockMovementModel } from "./stock-movement";
@@ -41,6 +42,7 @@ export const ALL_MODELS = [
   InviteModel,
   PasswordResetModel,
   PayoutModel,
+  PayrollRunModel,
   RecurringExpenseModel,
   SettingsModel,
   StockMovementModel,
