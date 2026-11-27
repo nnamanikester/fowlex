@@ -39,6 +39,8 @@ test("add a house with a suggested capacity, refuse a duplicate name, edit and d
   // Edit: put it under maintenance with a new capacity.
   await card.click();
   const edit = page.getByRole("dialog", { name });
+  // The form opens with the saved capacity; type over it only once it's there.
+  await expect(edit.getByLabel("Holds (birds)")).toHaveValue("1200");
   await edit.getByLabel("Holds (birds)").fill("1000");
   await edit.getByLabel("Status").selectOption("maintenance");
   await edit.getByRole("button", { name: "Save changes" }).click();

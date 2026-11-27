@@ -21,6 +21,7 @@ import { PaystackAccountModel } from "./paystack-account";
 import { PayoutModel } from "./payout";
 import { PayrollRunModel } from "./payroll-run";
 import { RecurringExpenseModel } from "./recurring-expense";
+import { SalesOrderModel } from "./sales-order";
 import { SettingsModel } from "./settings";
 import { StockMovementModel } from "./stock-movement";
 import { SupplierModel } from "./supplier";
@@ -53,6 +54,7 @@ export const ALL_MODELS = [
   PayoutModel,
   PayrollRunModel,
   RecurringExpenseModel,
+  SalesOrderModel,
   SettingsModel,
   StockMovementModel,
   SupplierModel,

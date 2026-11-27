@@ -51,7 +51,7 @@ const TABS = [
   ["logs", "Daily logs", null],
   ["health", "Health", null],
   ["costs", "Costs", null],
-  ["sales", "Sales", "6.3"],
+  ["sales", "Sales", null],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -74,7 +74,10 @@ export function BatchDetail({
   categories = [],
   hatcheries = [],
   canSpend = false,
+  sales,
 }: {
+  /** The orders its birds went on (for those who see sales); none hides the tab. */
+  sales?: React.ReactNode;
   /** What the batch has cost (for those who see money); null hides the money. */
   costs?: BatchCosts | null;
   /** Drugs and vaccines in stock, for health records. */
@@ -185,7 +188,7 @@ export function BatchDetail({
         aria-label="Batch sections"
         className="-mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 [scrollbar-width:none] md:mx-0 md:px-0"
       >
-        {TABS.filter(([id]) => id !== "costs" || costs).map(([id, label]) => (
+        {TABS.filter(([id]) => (id !== "costs" || costs) && (id !== "sales" || sales)).map(([id, label]) => (
           <Link
             key={id}
             href={id === "overview" ? `/batches/${b.id}` : `/batches/${b.id}?tab=${id}`}
@@ -331,6 +334,8 @@ export function BatchDetail({
         />
       ) : tab === "logs" ? (
         <DailyLogs logs={logs} batch={b} canLog={canLog && open} />
+      ) : tab === "sales" && sales ? (
+        sales
       ) : (
         <Panel>
           <EmptyState

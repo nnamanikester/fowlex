@@ -76,6 +76,11 @@ import { POST as endContract } from "./contracts/[id]/end/route";
 import { DELETE as deleteContract, PATCH as updateContract } from "./contracts/[id]/route";
 import { GET as listContracts, POST as createContract } from "./contracts/route";
 import { GET as contractsCron } from "./cron/contracts/route";
+import { POST as cancelOrder } from "./sales/[id]/cancel/route";
+import { POST as deliverOrder } from "./sales/[id]/deliver/route";
+import { PATCH as updateOrder } from "./sales/[id]/route";
+import { GET as salesQuote } from "./sales/quote/route";
+import { GET as listOrders, POST as createOrder } from "./sales/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1199,5 +1204,58 @@ describe("contract routes", () => {
     form.set("file", new File([new Uint8Array([37, 80, 68, 70])], "signed.pdf", { type: "application/pdf" }));
     const stored = await upload(new Request(`${BASE}/api/uploads`, { method: "POST", body: form }));
     expect(stored.status).toBe(201);
+  });
+});
+
+describe("sales order routes", () => {
+  it("quote, book, change, deliver and cancel orders; finance reads, staff can't", async () => {
+    // The owner both sets up houses and batches and sells.
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const placed = new Date(Date.parse(today) - 30 * 86_400_000).toISOString().slice(0, 10);
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: placed,
+          breed: "Ross 308",
+          delivered: 500,
+          pricePerChickKobo: 85_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    const customer = await (await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge" }))).json();
+    const q = await salesQuote(req("GET", `/api/sales/quote?customerId=${customer.id}&date=${today}`));
+    expect(await q.json()).toMatchObject({ contract: null, owedKobo: 0 });
+    const line = { batchId: batch.id, birds: 100, weightGrams: 0, priceKobo: 850_000, pricing: "perBird" };
+    const body = { customerId: customer.id, deliveryDate: today, lines: [line], deliveryKobo: 0, notes: "" };
+    const booked = await createOrder(req("POST", "/x", body));
+    expect(booked.status).toBe(201);
+    const o = await booked.json();
+    const changed = await (
+      await updateOrder(
+        req("PATCH", "/x", { ...body, lines: [{ ...line, birds: 120 }], version: o.version }),
+        ctx(o.id),
+      )
+    ).json();
+    expect(changed.totalKobo).toBe(102_000_000);
+    const done = await deliverOrder(req("POST", "/x", { version: changed.version }), ctx(o.id));
+    expect((await done.json()).status).toBe("delivered");
+    const other = await (await createOrder(req("POST", "/x", body))).json();
+    expect((await (await cancelOrder(req("POST", "/x"), ctx(other.id))).json()).status).toBe("cancelled");
+    expect(await (await listOrders(req("GET", `/api/sales?batchId=${batch.id}`))).json()).toHaveLength(2);
+    expect((await createOrder(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+
+    await signInAs("finance");
+    expect((await listOrders(req("GET", "/api/sales"))).status).toBe(200);
+    expect((await createOrder(req("POST", "/x", {}))).status).toBe(403);
+    await signInAs("staff");
+    for (const r of [listOrders(req("GET", "/api/sales")), salesQuote(req("GET", "/api/sales/quote"))])
+      expect((await r).status).toBe(403);
+    expect((await deliverOrder(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
   });
 });

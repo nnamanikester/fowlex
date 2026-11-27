@@ -37,6 +37,7 @@ import { DailyLogModel } from "@/models/daily-log";
 import { HealthEventModel } from "@/models/health-event";
 import { nextSequence } from "@/models/counter";
 import { HouseModel } from "@/models/house";
+import { SalesOrderModel } from "@/models/sales-order";
 import { WITH_DELETED } from "@/models/plugins/base";
 
 export type PlacementWarning = { code: string; message: string };
@@ -432,6 +433,13 @@ export async function deleteBatch(actor: CurrentUser, id: string) {
       409,
       "has_logs",
       `${batch.code} has ${days} day${days === 1 ? "" : "s"} of logs. Delete those first, or close the batch instead.`,
+    );
+  const orders = await SalesOrderModel.countDocuments({ "lines.batchId": batch._id, status: { $ne: "cancelled" } });
+  if (orders)
+    throw new HttpError(
+      409,
+      "has_orders",
+      `${batch.code} is on ${orders} sales order${orders === 1 ? "" : "s"}, so it stays.`,
     );
   await assertChicksRemovable(batch._id, batch.code);
   await withTransaction(async (session) => {
