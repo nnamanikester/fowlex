@@ -490,6 +490,10 @@ export async function deleteExpense(actor: CurrentUser, id: string) {
     throw new HttpError(409, "from_batch", "These are a batch's chicks: change or delete the batch instead.");
   if (doc.source?.kind === "health")
     throw new HttpError(409, "from_health", "This came from a health record: change or delete it there.");
+  if (doc.source?.kind === "advance")
+    throw new HttpError(409, "from_advance", "This is a salary advance: remove it on the person's page in People.");
+  if (doc.source?.kind === "payslip")
+    throw new HttpError(409, "from_payroll", "This is someone's pay: it comes and goes with its payroll run.");
   if (await PayoutModel.exists({ expenseId: doc._id, status: { $in: ["pending", "otp", "success"] } }))
     throw new HttpError(409, "has_payout", "Money for this went through Paystack, so it stays on record.");
   await withTransaction(async (session) => {

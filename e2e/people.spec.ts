@@ -19,24 +19,31 @@ test("add someone with their bank account, edit their pay, and mark them as left
   await sheet.getByLabel("Phone", { exact: true }).fill("08031234567");
   await sheet.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(`${name} added.`)).toBeVisible();
+  // Adding someone opens their page.
+  await expect(page.getByRole("heading", { name })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText("Guaranty Trust Bank ••••6781 · CHIOMA EZE");
+  await page.getByRole("main").getByRole("link", { name: "People", exact: true }).first().click();
 
   const card = page.getByRole("main").getByRole("listitem").filter({ hasText: name });
   await expect(card).toContainText("₦60,000.00 a month");
   await expect(card).toContainText("Guaranty Trust Bank ••••6781");
   await expect(card.getByRole("link", { name: "0803 123 4567" })).toHaveAttribute("href", "tel:+2348031234567");
 
-  await card.getByRole("button", { name: `${name}. Edit` }).click();
+  await card.getByRole("link", { name: new RegExp(name) }).click();
+  await page.getByRole("button", { name: "Edit details" }).click();
   const edit = page.getByRole("dialog", { name });
   await edit.getByRole("radio", { name: "By the day" }).click();
   await edit.getByLabel("Pay a day").fill("4500");
   await expect(edit.getByText("Payroll counts the days ticked on the attendance sheet.")).toBeVisible();
   await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(`${name} saved.`)).toBeVisible();
-  await expect(card).toContainText("₦4,500.00 a day");
+  await expect(page.getByRole("main")).toContainText("₦4,500.00 a day");
 
-  await card.getByRole("button", { name: `${name}. Edit` }).click();
+  await page.getByRole("button", { name: "Edit details" }).click();
   await page.getByRole("dialog", { name }).getByRole("button", { name: "Left the farm" }).click();
   await expect(page.getByText(`${name} marked as left.`)).toBeVisible();
+  await expect(page.getByRole("heading", { name })).toContainText("Left on");
+  await page.goto("/people");
   await expect(card).toHaveCount(0);
   await page.getByRole("button", { name: "Show people who left" }).click();
   await expect(card).toContainText("Left");

@@ -11,6 +11,8 @@ import { DELETE as deleteEmployee, PATCH as updateEmployee } from "./employees/[
 import { POST as employeeStatus } from "./employees/[id]/status/route";
 import { GET as listEmployees, POST as createEmployee } from "./employees/route";
 import { GET as attendanceDay, POST as saveAttendance } from "./attendance/route";
+import { DELETE as deleteAdvance } from "./advances/[id]/route";
+import { GET as listAdvances, POST as createAdvance } from "./advances/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -930,5 +932,28 @@ describe("attendance routes", () => {
     await signInAs("staff");
     expect((await attendanceDay(req("GET", "/api/attendance"))).status).toBe(403);
     expect((await saveAttendance(req("POST", "/api/attendance", {}))).status).toBe(403);
+  });
+});
+
+describe("advance routes", () => {
+  it("give, list and remove an advance; staff can't", async () => {
+    await signInAs("owner");
+    const musa = await (
+      await createEmployee(req("POST", "/api/employees", { name: "Musa", payType: "monthly", rateKobo: 6_000_000 }))
+    ).json();
+    const given = await createAdvance(req("POST", "/api/advances", { employeeId: musa.id, amountKobo: 1_000_000 }));
+    expect(given.status).toBe(201);
+    const advance = await given.json();
+    expect(await (await listAdvances(req("GET", `/api/advances?employeeId=${musa.id}`))).json()).toMatchObject([
+      { id: advance.id },
+    ]);
+    expect(await (await listAdvances(req("GET", "/api/advances"))).json()).toHaveLength(1);
+    expect((await createAdvance(new Request(`${BASE}/api/advances`, { method: "POST", body: "{oops" }))).status).toBe(
+      400,
+    );
+    expect((await deleteAdvance(req("DELETE", `/api/advances/${advance.id}`), ctx(advance.id))).status).toBe(204);
+    await signInAs("staff");
+    expect((await listAdvances(req("GET", "/api/advances"))).status).toBe(403);
+    expect((await createAdvance(req("POST", "/api/advances", {}))).status).toBe(403);
   });
 });
