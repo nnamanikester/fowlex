@@ -6,6 +6,7 @@ import { Download, Plus, Receipt, Search, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { ExpenseSheet, PAYMENT_TONE } from "./expense-sheet";
+import { RepeatsPanel } from "./repeats-panel";
 import { type SpendDefaults, SpendSheet } from "./spend-sheet";
 import { EmptyState, Fab, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { formatRange } from "@/lib/dates";
 import { APPROVAL_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
 import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
+import type { RecurringView } from "@/lib/recurring/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { formatNaira } from "@/lib/money";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
@@ -83,7 +85,11 @@ export function useSpending(props: SpendProps) {
 }
 
 /** Every expense, newest first, with what's owed and spent this month. */
-export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: ExpenseView[] }) {
+export function ExpensesBoard({
+  expenses,
+  recurring = [],
+  ...props
+}: SpendProps & { expenses: ExpenseView[]; recurring?: RecurringView[] }) {
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
   const [monthFilter, setMonthFilter] = React.useState("");
@@ -128,6 +134,8 @@ export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: E
           <StatCard label="On its way" value={formatNaira(sum(sending))} hint="Paystack transfers" />
         )}
       </div>
+
+      <RepeatsPanel recurring={recurring} categories={categories} canWrite={props.canWrite} />
 
       {props.canApprove && waiting.length > 0 && (
         <ApprovalQueue expenses={waiting} categories={categories} onReview={show} />

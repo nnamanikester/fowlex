@@ -38,6 +38,7 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadItems,
       loadLogs,
       loadMovements,
+      loadRecurring,
       loadSettings,
       loadSupplierBalances,
       loadSuppliers,
@@ -62,7 +63,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadSupplierBalances(actor.farmId)).toEqual(new Map());
     expect(await loadAssets(actor.farmId)).toEqual([]);
     expect((await loadCategories(actor.farmId)).length).toBe(12);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 16 : 0);
+    expect(await loadRecurring(actor.farmId)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 17 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });

@@ -11,6 +11,8 @@ import { POST as disposeAsset } from "./assets/[id]/dispose/route";
 import { DELETE as deleteAsset, PATCH as updateAsset } from "./assets/[id]/route";
 import { GET as listAssets, POST as createAsset } from "./assets/route";
 import { GET as listBanks } from "./banks/route";
+import { PATCH as updateRecurring } from "./recurring/[id]/route";
+import { GET as listRecurring } from "./recurring/route";
 import { PATCH as updateCategory } from "./expense-categories/[key]/route";
 import { GET as listCategories, POST as createCategory } from "./expense-categories/route";
 import { POST as approveExpense } from "./expenses/[id]/approve/route";
@@ -738,5 +740,34 @@ describe("approval routes", () => {
       ctx(second.id),
     );
     expect((await rejected.json()).approval).toBe("rejected");
+  });
+});
+
+describe("repeat routes", () => {
+  it("list and change repeats; staff can't", async () => {
+    const manager = await signInAs("manager");
+    await createExpense(
+      req("POST", "/api/expenses", {
+        category: "rent",
+        amountKobo: 5_000_000,
+        description: "Rent",
+        method: "cash",
+        repeat: true,
+      }),
+    );
+    const [repeat] = await (await listRecurring()).json();
+    expect(repeat.description).toBe("Rent");
+    const saved = await updateRecurring(req("PATCH", `/api/recurring/${repeat.id}`, { active: false }), ctx(repeat.id));
+    expect((await saved.json()).active).toBe(false);
+    expect(
+      (
+        await updateRecurring(
+          new Request(`${BASE}/api/recurring/${repeat.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(repeat.id),
+        )
+      ).status,
+    ).toBe(200);
+    session.user = { ...manager, role: "staff" };
+    expect((await listRecurring()).status).toBe(403);
   });
 });
