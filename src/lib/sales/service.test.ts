@@ -202,6 +202,22 @@ describe("sales orders", () => {
   });
 });
 
+describe("orders and closed batches", () => {
+  it("won't sell from a closed batch, and says a delivered order can't be cancelled", async () => {
+    const { owner, batch, order } = await farm();
+    const o = await createOrder(owner, order({ lines: [{ ...order().lines[0], birds: 1000, priceKobo: 1 }] }));
+    const done = await deliverOrder(owner, o.id, {}, o.version, TODAY);
+    expect(await refusal(cancelOrder(owner, done.id))).toMatchObject({ code: "not_pending" });
+    const { closeBatch } = await import("@/lib/batches/service");
+    const fresh = (await getBatch(owner.farmId, batch.id, TODAY))!;
+    await closeBatch(owner, batch.id, { version: fresh.version }, TODAY);
+    expect(await refusal(createOrder(owner, order({ lines: [{ ...order().lines[0], priceKobo: 1 }] })))).toMatchObject({
+      code: "closed",
+      field: "lines.0.batchId",
+    });
+  });
+});
+
 describe("order rules", () => {
   it("adds up lines to the kobo, by the bird or by the kg", () => {
     expect(lineAmount({ birds: 3, weightGrams: 0, priceKobo: 850_000, pricing: "perBird" })).toBe(2_550_000);

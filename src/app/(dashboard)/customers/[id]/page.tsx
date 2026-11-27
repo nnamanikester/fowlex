@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { CustomerDetail } from "./_components/customer-detail";
+import { StatementPanel } from "./_components/statement-panel";
 import { ContractsList } from "../../contracts/_components/contracts-list";
 import { InvoicesList } from "../../invoices/_components/invoices-list";
 import { OrdersList } from "../../sales/_components/orders-list";
@@ -88,6 +89,14 @@ async function Customer({ params }: Pick<PageProps<"/customers/[id]">, "params">
           canWrite={can(user.role, "contract.write")}
           showCustomer={false}
           description="While one runs, their orders use its price."
+        />
+      )}
+      {seesInvoices && (
+        <StatementPanel
+          customerId={customer.id}
+          hasEmail={!!customer.email}
+          today={now}
+          canSend={can(user.role, "invoice.write")}
         />
       )}
     </CustomerDetail>

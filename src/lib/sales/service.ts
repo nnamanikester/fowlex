@@ -33,9 +33,10 @@ export type OrderView = OrderInput & {
   batchCodes: Record<string, string>;
 };
 
+/** As stored: every field has a default, so nothing is missing. */
 type Doc = {
   _id: unknown;
-  __v?: number;
+  __v: number;
   number: string;
   customerId: unknown;
   contractId?: unknown;
@@ -43,7 +44,7 @@ type Doc = {
   lines: (Omit<OrderLine, "batchId"> & { batchId: unknown })[];
   deliveryKobo: number;
   totalKobo: number;
-  notes?: string;
+  notes: string;
   status: OrderStatus;
   deliveredOn?: string | null;
   invoiceId?: unknown;
@@ -53,7 +54,7 @@ type Names = { customers: Map<string, string>; batches: Map<string, string>; con
 
 const view = (o: Doc, names: Names): OrderView => ({
   id: String(o._id),
-  version: o.__v ?? 0,
+  version: o.__v,
   number: o.number,
   customerId: String(o.customerId),
   customerName: names.customers.get(String(o.customerId)) ?? "A removed customer",
@@ -62,13 +63,13 @@ const view = (o: Doc, names: Names): OrderView => ({
   lines: o.lines.map((l) => ({
     batchId: String(l.batchId),
     birds: l.birds,
-    weightGrams: l.weightGrams ?? 0,
+    weightGrams: l.weightGrams,
     priceKobo: l.priceKobo,
     pricing: l.pricing,
   })),
-  deliveryKobo: o.deliveryKobo ?? 0,
+  deliveryKobo: o.deliveryKobo,
   totalKobo: o.totalKobo,
-  notes: o.notes ?? "",
+  notes: o.notes,
   status: o.status,
   deliveredOn: o.deliveredOn ?? null,
   invoiceId: o.invoiceId ? String(o.invoiceId) : null,

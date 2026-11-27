@@ -96,7 +96,8 @@ test("a draft invoice is checked, then voided: its orders can be billed again", 
   await sheet.getByRole("button", { name: "Save as draft" }).click();
   await expect(page.getByText(/saved as a draft to check\.$/)).toBeVisible();
 
-  const row = page.getByRole("main").getByRole("listitem").filter({ hasText: customer.name });
+  const invoices = page.getByRole("main").locator("section", { has: page.getByRole("heading", { name: "Invoices" }) });
+  const row = invoices.getByRole("listitem").filter({ hasText: customer.name });
   await expect(row).toContainText("Draft");
   await row.getByRole("button").click();
   const invoice = page.getByRole("dialog", { name: new RegExp(customer.name) });
@@ -163,5 +164,40 @@ test("₦300,000 paid on a ₦500,000 invoice leaves it part paid with ₦200,00
   await expect(page.getByText(`₦200,000.00 recorded: ${invoice.number} is paid in full.`)).toBeVisible();
   await page.getByRole("radio", { name: "Paid", exact: true }).click();
   await expect(row).toContainText("Paid");
+  expect(errors).toEqual([]);
+});
+
+test("a customer's statement ends on what's left on their invoices, and the aging shows who owes what", async ({
+  page,
+}, info) => {
+  const errors = watchErrors(page);
+  const { customer, orders, email } = await delivered(page, `statement ${info.project.name}`, 2);
+  const [a, b] = await Promise.all(
+    orders.map(async (o) => (await page.request.post("/api/invoices", { data: { orderIds: [o.id] } })).json()),
+  );
+  await page.request.post(`/api/invoices/${a.id}/payments`, { data: { amountKobo: 3_000_000, method: "cash" } });
+  // ₦85,000 + ₦85,000 billed, ₦30,000 paid: ₦140,000 owed.
+
+  await page.goto(`/customers/${customer.id}`);
+  const main = page.getByRole("main");
+  const statement = main.locator("section", { has: page.getByRole("heading", { name: "Statement" }) });
+  await expect(statement).toContainText("Owed at the end: ₦140,000.00");
+  await expect(statement).toContainText(`Invoice ${a.number}`);
+  await expect(statement).toContainText(`Payment for ${a.number}, Cash`);
+  await expect(statement).toContainText(`Invoice ${b.number}`);
+  const download = page.waitForEvent("download");
+  await statement.getByRole("link", { name: "PDF" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^Statement Grill .* to .*\.pdf$/);
+  await statement.getByRole("button", { name: "Email it" }).click();
+  await expect(page.getByText(`Statement sent to ${email}.`)).toBeVisible();
+  const mails = (await (await page.request.get("/api/dev/outbox")).json()) as { to: string; subject: string }[];
+  expect(mails.find((m) => m.to === email && m.subject.startsWith("Your statement"))?.subject).toMatch(
+    /₦140,000\.00 owed$/,
+  );
+
+  await page.goto("/invoices");
+  const aging = main.locator("section", { has: page.getByRole("heading", { name: "Money owed, by how late" }) });
+  await expect(aging.getByRole("link", { name: new RegExp(customer.name) })).toContainText("₦140,000.00");
+  await expect(aging.getByRole("link", { name: new RegExp(customer.name) })).toContainText("2 invoices");
   expect(errors).toEqual([]);
 });

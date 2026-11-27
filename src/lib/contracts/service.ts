@@ -34,9 +34,10 @@ export type ContractView = ContractInput & {
   terminatedOn: string | null;
 };
 
+/** As stored: every field has a default, so nothing is missing. */
 type Doc = Omit<ContractInput, "customerId"> & {
   _id: unknown;
-  __v?: number;
+  __v: number;
   number: string;
   customerId: unknown;
   status: StoredStatus;
@@ -45,7 +46,7 @@ type Doc = Omit<ContractInput, "customerId"> & {
 
 const view = (c: Doc, names: Map<string, string>, today: string): ContractView => ({
   id: String(c._id),
-  version: c.__v ?? 0,
+  version: c.__v,
   number: c.number,
   customerId: String(c.customerId),
   customerName: names.get(String(c.customerId)) ?? "A removed customer",
@@ -58,8 +59,8 @@ const view = (c: Doc, names: Map<string, string>, today: string): ContractView =
   startDate: c.startDate,
   endDate: c.endDate,
   reviewOn: c.reviewOn ?? null,
-  notes: c.notes ?? "",
-  document: c.document ? { url: c.document.url, name: c.document.name ?? "" } : null,
+  notes: c.notes,
+  document: c.document ? { url: c.document.url, name: c.document.name } : null,
   status: contractStatus(c, today),
   terminatedOn: c.terminatedOn ?? null,
 });
