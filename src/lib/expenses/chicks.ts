@@ -18,6 +18,7 @@ export type ChickPayment = (typeof CHICK_PAYMENTS)[number];
 
 type Batch = {
   _id: Types.ObjectId;
+  bookedChicks?: number | null;
   code: string;
   placedOn: string;
   delivered: number;
@@ -110,7 +111,8 @@ export async function syncChicks(session: ClientSession, batch: Batch, today: st
   const expense = await chickExpenseOf(batch._id, session);
   if (!expense) return;
   const changes = {
-    date: dayOf(batch, today),
+    // Money already paid keeps the day it was paid (a booking paid ahead of pickup).
+    date: expense.paymentStatus === "paid" ? expense.date : dayOf(batch, today),
     description: describe(batch),
     amountKobo: cost(batch),
     supplierId: batch.supplierId ? new Types.ObjectId(String(batch.supplierId)) : null,

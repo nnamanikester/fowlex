@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bird, Plus, Search } from "lucide-react";
+import { Bird, CalendarPlus, PackageCheck, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { BatchSheet } from "./batch-sheet";
+import { BookChicksSheet, type Hatchery, PickUpSheet } from "./book-chicks";
 import { EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,13 +36,15 @@ export function BatchesBoard({
   canWrite,
   canManageHouses,
   hatcheries = [],
+  canPay = false,
 }: {
+  canPay?: boolean;
   batches: BatchView[];
   houses: HouseView[];
   today: string;
   canWrite: boolean;
   canManageHouses: boolean;
-  hatcheries?: { id: string; name: string; chicks: boolean }[];
+  hatcheries?: Hatchery[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -49,10 +52,15 @@ export function BatchesBoard({
   const [filter, setFilter] = React.useState<Filter>("farm");
   const [query, setQuery] = React.useState("");
   const creating = canWrite && params.get("new") === "1";
+  const booking = canWrite && params.get("book") === "1";
+  const pickingUp = canWrite ? batches.find((b) => b.id === params.get("pickup")) : undefined;
 
-  const setCreating = (open: boolean) => router.replace(open ? `${pathname}?new=1` : pathname, { scroll: false });
+  const go = (query: string) => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  const setCreating = (open: boolean) => go(open ? "new=1" : "");
 
-  const onFarm = batches.filter((b) => b.phase !== "closed");
+  // Booked chicks waiting to be picked up, soonest first, above the rest.
+  const toPickUp = batches.filter((b) => b.phase === "planned").sort((a, b) => a.placedOn.localeCompare(b.placedOn));
+  const onFarm = batches.filter((b) => b.phase !== "closed" && b.phase !== "planned");
   const closed = batches.filter((b) => b.phase === "closed");
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = (filter === "farm" ? onFarm : filter === "closed" ? closed : batches)
@@ -63,11 +71,29 @@ export function BatchesBoard({
   return (
     <div className="space-y-4">
       {canWrite && (
-        <div className="hidden justify-end lg:-mt-14 lg:mb-6 lg:flex">
-          <Button onClick={() => setCreating(true)}>
-            <Plus /> New batch
+        <div className="flex flex-wrap gap-2 lg:-mt-14 lg:mb-6 lg:justify-end">
+          <Button onClick={() => go("book=1")}>
+            <CalendarPlus /> Book chicks
+          </Button>
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            <Plus /> Chicks already here
           </Button>
         </div>
+      )}
+
+      {toPickUp.length > 0 && (
+        <section aria-labelledby="to-pick-up" className="space-y-2">
+          <h2 id="to-pick-up" className="text-sm font-semibold text-fg">
+            To pick up
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {toPickUp.map((b) => (
+              <li key={b.id}>
+                <BookedCard batch={b} today={today} canWrite={canWrite} onPickUp={() => go(`pickup=${b.id}`)} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {batches.length > 0 && (
@@ -77,7 +103,7 @@ export function BatchesBoard({
             value={filter}
             onChange={setFilter}
             options={[
-              { value: "farm", label: `On the farm (${onFarm.length})` },
+              { value: "farm", label: `In the houses (${onFarm.length})` },
               { value: "closed", label: `Closed (${closed.length})` },
               { value: "all", label: "All" },
             ]}
@@ -104,12 +130,17 @@ export function BatchesBoard({
           <EmptyState
             icon={<Bird />}
             title="No batches yet"
-            description="A batch is one group of chicks placed in a house, followed until sale."
+            description="A batch is one group of chicks, from booking them to selling the birds. Book your next chicks to start."
             action={
               canWrite ? (
-                <Button size="sm" onClick={() => setCreating(true)}>
-                  <Plus /> Start your first batch
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={() => go("book=1")}>
+                    <CalendarPlus /> Book chicks
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
+                    <Plus /> Chicks already here
+                  </Button>
+                </div>
               ) : undefined
             }
           />
@@ -128,7 +159,20 @@ export function BatchesBoard({
         </ul>
       )}
 
-      {canWrite && <Fab label="New batch" icon={<Plus />} onClick={() => setCreating(true)} />}
+      {canWrite && <Fab label="Book chicks" icon={<CalendarPlus />} onClick={() => go("book=1")} />}
+      {booking && (
+        <BookChicksSheet
+          houses={houses}
+          hatcheries={hatcheries}
+          last={[...batches].sort((a, b) => b.placedOn.localeCompare(a.placedOn))[0] ?? null}
+          today={today}
+          canPay={canPay}
+          onClose={() => go("")}
+        />
+      )}
+      {pickingUp && (
+        <PickUpSheet key={pickingUp.id} batch={pickingUp} houses={houses} today={today} onClose={() => go("")} />
+      )}
 
       <BatchSheet
         open={creating}
@@ -202,5 +246,53 @@ function BatchCard({ batch: b }: { batch: BatchView }) {
         <span className="text-xs text-fg-subtle">Closed {formatRange({ from: b.closedOn, to: b.closedOn })}</span>
       )}
     </Link>
+  );
+}
+
+/** Booked chicks: when to collect them, how many, and one tap when they're picked up. */
+function BookedCard({
+  batch: b,
+  today,
+  canWrite,
+  onPickUp,
+}: {
+  batch: BatchView;
+  today: string;
+  canWrite: boolean;
+  onPickUp: () => void;
+}) {
+  const due = b.placedOn <= today;
+  const when =
+    b.placedOn === today
+      ? "today"
+      : b.placedOn < today
+        ? `since ${formatRange({ from: b.placedOn, to: b.placedOn })}`
+        : new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(
+            new Date(`${b.placedOn}T00:00:00Z`),
+          );
+  return (
+    <div
+      className={cn(
+        "flex h-full flex-col gap-3 rounded-xl border bg-surface p-4 shadow-card",
+        due ? "border-brand" : "border-line",
+      )}
+    >
+      <Link href={`/batches/${b.id}`} className="focus-ring flex items-start justify-between gap-2 rounded-md">
+        <span>
+          <span className="block font-mono text-base font-semibold text-fg-heading">{b.code}</span>
+          <span className="text-xs text-fg-subtle">{[b.supplierName, b.houseName].filter(Boolean).join(" → ")}</span>
+        </span>
+        <Badge tone="info">Booked</Badge>
+      </Link>
+      <span className="text-sm text-fg">
+        <span className="num font-semibold">{n(b.bookedChicks ?? b.placed)}</span> chicks · pick up{" "}
+        <span className={cn("font-semibold", due && "text-brand-fg")}>{when}</span>
+      </span>
+      {canWrite && (
+        <Button variant={due ? "primary" : "secondary"} onClick={onPickUp} className="mt-auto">
+          <PackageCheck /> Chicks picked up
+        </Button>
+      )}
+    </div>
   );
 }

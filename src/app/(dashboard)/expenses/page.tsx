@@ -44,6 +44,7 @@ async function Expenses({ searchParams }: Pick<PageProps<"/expenses">, "searchPa
       expenses={expenses}
       recurring={recurring}
       openId={one(params.open)}
+      payNow={one(params.pay) === "1"}
       spendForBatch={one(params.spend) ? (one(params.batch) ?? "") : undefined}
       categories={categories}
       suppliers={suppliers}

@@ -9,6 +9,7 @@ import {
   daysBetween,
   paidCount,
   type Phase,
+  shortfall,
   phaseOf,
   placedCount,
   validateBatch,
@@ -55,6 +56,11 @@ export type BatchView = BatchInput & {
   ageDays: number;
   /** What the daily logs add up to. */
   totals: LogTotals;
+  /** A booking: chicks paid for ahead, and whether they've been picked up yet. */
+  bookedChicks: number | null;
+  pickedUp: boolean;
+  /** Chicks paid for that the hatchery didn't hand over. */
+  shortfall: number;
   /** The expense recording its chicks (from `getBatch` only; undefined in lists). */
   chickExpense?: { id: string; number: string; paymentStatus: string; approval: string } | null;
 };
@@ -66,6 +72,8 @@ type Doc = BatchInput & {
   code: string;
   status: "active" | "selling" | "closed";
   closedOn?: string | null;
+  bookedChicks?: number | null;
+  pickedUp?: boolean;
 };
 
 function view(b: Doc, houseName: string, today: string, totals: LogTotals = NO_TOTALS): BatchView {
@@ -86,6 +94,9 @@ function view(b: Doc, houseName: string, today: string, totals: LogTotals = NO_T
     pricePerChickKobo: b.pricePerChickKobo,
     supplierName: b.supplierName ?? "",
     supplierId: b.supplierId ? String(b.supplierId) : null,
+    bookedChicks: b.bookedChicks ?? null,
+    pickedUp: b.pickedUp !== false,
+    shortfall: shortfall(b),
     ageAtPlacementDays: b.ageAtPlacementDays,
     targetSellAgeDays: b.targetSellAgeDays,
     targetWeightGrams: b.targetWeightGrams,
@@ -287,6 +298,9 @@ export async function createBatch(
   const paidBy = CHICK_PAYMENTS.includes(input.chicksPaidBy as ChickPayment)
     ? (input.chicksPaidBy as ChickPayment)
     : "later";
+  // A booking: the chicks are paid for now and picked up later, so what's paid stays fixed.
+  const booking = input.booking === true;
+  const booked = booking ? { pickedUp: false, bookedChicks: paidCount(values) } : {};
   const pending = await chicksNeedApproval(actor, values);
 
   const year = Number(values.placedOn.slice(0, 4));
@@ -297,6 +311,7 @@ export async function createBatch(
         [
           {
             ...values,
+            ...booked,
             farmId: actor.farmId,
             createdBy: actor.id,
             code: `B-${year}-${String(seq).padStart(2, "0")}`,
@@ -365,6 +380,8 @@ export async function updateBatch(
   }
   Object.assign(values, await resolveHatchery(actor.farmId, values));
   batch.set(values);
+  // Until picked up, a booking's paid-for count follows its edits.
+  if (batch.pickedUp === false) batch.bookedChicks = values.delivered - values.freeExtras;
   try {
     // The chicks expense follows the batch: count, price, hatchery and day.
     await withTransaction(async (session) => {
@@ -495,5 +512,56 @@ export async function reopenBatch(actor: CurrentUser, id: string, today = lagosT
   if (batch.status !== "closed") throw new HttpError(409, "not_closed", `${batch.code} isn't closed.`);
   batch.set({ status: "selling", closedOn: null });
   await batch.save();
+  return (await getBatch(actor.farmId, id, today))!;
+}
+
+/**
+ * Booked chicks picked up and placed: what turned up (delivered, dead on arrival, free extras), the
+ * house they went into and the day. The batch starts that day; what was paid stays as booked, and
+ * any chicks the hatchery didn't hand over are counted as its shortfall.
+ */
+export async function pickUpBatch(
+  actor: CurrentUser,
+  id: string,
+  input: Record<string, unknown>,
+  { confirm = false, version }: { confirm?: boolean; version: unknown },
+  today = lagosToday(),
+) {
+  const batch = await load(actor, id);
+  if (batch.status === "closed") throw new HttpError(409, "closed", "A closed batch can't be changed.");
+  if (batch.pickedUp !== false && batch.placedOn <= today)
+    throw new HttpError(409, "placed", `${batch.code}'s chicks are already in the house.`);
+  if (typeof version !== "number" || version !== batch.__v) throw stale();
+  const current = view(batch.toObject() as unknown as Doc, "", today);
+  const on = input.pickedUpOn === undefined || input.pickedUpOn === "" ? today : input.pickedUpOn;
+  if (typeof on !== "string" || !isISODate(on) || on > today)
+    throw new HttpError(400, "invalid_batch", "Choose the day they were picked up: today or earlier.", "pickedUpOn");
+  const values = clean(
+    {
+      ...current,
+      placedOn: on,
+      houseId: input.houseId ?? current.houseId,
+      delivered: input.delivered ?? current.delivered,
+      deadOnArrival: input.deadOnArrival ?? 0,
+      freeExtras: input.freeExtras ?? 0,
+    },
+    today,
+  );
+  // Checked when booked: ask again only if they went into another house, or more came.
+  if (values.houseId !== current.houseId || placedCount(values) > placedCount(current)) {
+    const warnings = await placementWarnings(actor.farmId, values, today, id);
+    if (warnings.length && !confirm) throw needsConfirmation(warnings);
+  }
+  batch.set({ ...values, pickedUp: true, bookedChicks: batch.bookedChicks ?? paidCount(current) });
+  try {
+    await withTransaction(async (session) => {
+      batch.$session(session);
+      await batch.save();
+      await syncChicks(session, batch, today);
+    });
+  } catch (error) {
+    if ((error as { name?: string }).name === "VersionError") throw stale();
+    throw error;
+  }
   return (await getBatch(actor.farmId, id, today))!;
 }

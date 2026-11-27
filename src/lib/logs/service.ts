@@ -125,6 +125,8 @@ async function openBatch(farmId: string, batchId: unknown) {
   if (!batch) throw new HttpError(400, "invalid_log", "Choose a batch on the farm.", "batchId");
   if (batch.status === "closed")
     throw new HttpError(409, "closed", `${batch.code} is closed, so its logs can't change.`);
+  if (batch.pickedUp === false)
+    throw new HttpError(409, "not_picked_up", `${batch.code}'s chicks haven't been picked up yet.`);
   return batch;
 }
 

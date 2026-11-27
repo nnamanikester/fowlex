@@ -49,12 +49,12 @@ export type SpendProps = {
 /** Opens the spend sheet, then the pay step when Paystack was chosen; and any expense's sheet. */
 export function useSpending(
   props: SpendProps,
-  initial: { spend?: SpendDefaults | null; open?: ExpenseView | null } = {},
+  initial: { spend?: SpendDefaults | null; open?: ExpenseView | null; pay?: boolean } = {},
 ) {
   const router = useRouter();
   const [spending, setSpending] = React.useState<SpendDefaults | null>(initial.spend ?? null);
   const [open, setOpen] = React.useState<{ expense: ExpenseView; pay: boolean } | null>(
-    initial.open ? { expense: initial.open, pay: false } : null,
+    initial.open ? { expense: initial.open, pay: initial.pay ?? false } : null,
   );
   const sheets = (
     <>
@@ -96,6 +96,7 @@ export function ExpensesBoard({
   expenses,
   recurring = [],
   openId,
+  payNow = false,
   spendForBatch,
   ...props
 }: SpendProps & {
@@ -103,6 +104,8 @@ export function ExpensesBoard({
   recurring?: RecurringView[];
   /** Opens this expense (a link from a batch or elsewhere). */
   openId?: string;
+  /** And goes straight to paying it (after booking chicks to pay through Paystack). */
+  payNow?: boolean;
   /** Opens Spend money charged to this batch. */
   spendForBatch?: string;
 }) {
@@ -113,6 +116,7 @@ export function ExpensesBoard({
   const { categories } = props;
   const { spend, show, sheets } = useSpending(props, {
     open: expenses.find((e) => e.id === openId) ?? null,
+    pay: payNow,
     spend: spendForBatch ? { kind: "other", batchId: spendForBatch } : null,
   });
   const month = props.today.slice(0, 7);

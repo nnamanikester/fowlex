@@ -38,7 +38,8 @@ async function Batches() {
       canManageHouses={can(user.role, "settings.manage")}
       hatcheries={suppliers
         .filter((s) => !s.archived)
-        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks") }))}
+        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks"), payable: !!s.bank }))}
+      canPay={can(user.role, "payout.send")}
     />
   );
 }

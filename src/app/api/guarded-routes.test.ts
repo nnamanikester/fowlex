@@ -6,6 +6,7 @@ import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
 import { POST as recordChicks } from "./batches/[id]/chicks/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
+import { POST as pickUp } from "./batches/[id]/pickup/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -810,5 +811,46 @@ describe("batch chicks route", () => {
     ).toBe(409);
     session.user = { ...owner, role: "staff" };
     expect((await recordChicks(req("POST", `/api/batches/${batch.id}/chicks`, {}), ctx(batch.id))).status).toBe(403);
+  });
+});
+
+describe("pickup route", () => {
+  it("places booked chicks; staff can't", async () => {
+    const owner = await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          booking: true,
+          houseId: house.id,
+          placedOn: today,
+          breed: "Ross 308",
+          delivered: 100,
+          pricePerChickKobo: 50_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+        }),
+      )
+    ).json();
+    expect(batch.phase).toBe("planned");
+    session.user = { ...owner, role: "staff" };
+    expect((await pickUp(req("POST", `/api/batches/${batch.id}/pickup`, { version: 0 }), ctx(batch.id))).status).toBe(
+      403,
+    );
+    session.user = owner;
+    expect(
+      (
+        await pickUp(
+          new Request(`${BASE}/api/batches/${batch.id}/pickup`, { method: "POST", body: "{oops" }),
+          ctx(batch.id),
+        )
+      ).status,
+    ).toBe(409);
+    const placed = await pickUp(
+      req("POST", `/api/batches/${batch.id}/pickup`, { version: 0, delivered: 98, confirm: true }),
+      ctx(batch.id),
+    );
+    expect(await placed.json()).toMatchObject({ phase: "active", shortfall: 2 });
   });
 });
