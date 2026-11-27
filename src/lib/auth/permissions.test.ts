@@ -8,26 +8,32 @@ import { can, homeFor, PERMISSIONS, ROLES } from "./permissions";
  */
 const O = "owner";
 const M = "manager";
+const F = "finance";
+const L = "sales";
 const S = "staff";
 const EXPECTED: Record<(typeof PERMISSIONS)[number], string[]> = {
-  "batch.read": [O, M, S],
+  "batch.read": [O, M, F, L, S],
   "batch.write": [O, M],
   "log.write": [O, M, S],
-  "inventory.read": [O, M, S],
+  "inventory.read": [O, M, F, L, S],
   "inventory.write": [O, M],
-  "supplier.read": [O, M],
+  "supplier.read": [O, M, F],
   "supplier.write": [O, M],
-  "customer.read": [O, M],
-  "contract.read": [O, M],
-  "sales.read": [O, M],
-  "invoice.read": [O, M],
-  "expense.read": [O, M],
-  "expense.write": [O, M],
+  "customer.read": [O, M, F, L],
+  "customer.write": [O, M, L],
+  "contract.read": [O, M, F, L],
+  "contract.write": [O, M, L],
+  "sales.read": [O, M, F, L],
+  "sales.write": [O, M, L],
+  "invoice.read": [O, M, F, L],
+  "invoice.write": [O, M, L],
+  "expense.read": [O, M, F],
+  "expense.write": [O, M, F],
   "expense.approve": [O],
-  "finance.read": [O, M],
-  "people.read": [O, M],
+  "finance.read": [O, M, F],
+  "people.read": [O, M, F],
   "people.write": [O, M],
-  "payroll.read": [O, M],
+  "payroll.read": [O, M, F],
   "payroll.run": [O],
   "payout.send": [O],
   "settings.manage": [O],
@@ -49,6 +55,6 @@ describe("permissions", () => {
   });
 
   it("sends each role to its own home page", () => {
-    expect(ROLES.map(homeFor)).toEqual(["/", "/", "/log", "/portal"]);
+    expect(ROLES.map(homeFor)).toEqual(["/", "/", "/", "/sales", "/log", "/portal"]);
   });
 });
