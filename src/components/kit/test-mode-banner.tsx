@@ -26,7 +26,7 @@ export function TestModeBanner({
         className,
       )}
     >
-      <span className="inline-flex items-center gap-1 rounded-full bg-warning-fg px-2 py-px text-[10px] font-extrabold uppercase tracking-[0.12em] text-fg-inverse">
+      <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-warning-fg px-2 py-px text-[10px] font-extrabold uppercase tracking-[0.12em] text-fg-inverse">
         <FlaskConical className="size-3" aria-hidden />
         Test mode
       </span>
