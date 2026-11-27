@@ -5,8 +5,8 @@ import { LogForm } from "./_components/log-form";
 import { PageSkeleton, RequirePermission } from "../_components/require-permission";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
-import { addDays, today } from "@/lib/dates";
-import { loadBatches, loadHealth, loadItems, loadLogs } from "@/lib/page-data";
+import { addDays } from "@/lib/dates";
+import { loadBatches, loadHealth, loadItems, loadLogs, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Daily log" };
 
@@ -23,7 +23,8 @@ export default function LogPage() {
 
 async function Log() {
   const user = await requireUser();
-  const on = today();
+  const now = await requestToday();
+  const on = now;
   const batches = (await loadBatches(user.farmId)).filter((b) => b.phase === "active" || b.phase === "selling");
   // Today's and yesterday's logs for every batch on the farm, so the form opens them instantly.
   const recent = (await Promise.all(batches.map((b) => loadLogs(user.farmId, b.id))))

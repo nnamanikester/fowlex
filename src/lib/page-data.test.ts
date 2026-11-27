@@ -9,6 +9,8 @@ import { setupTestDb } from "@/test/db";
 // cacheLife only works inside Next; here, check the production loaders ask for the session profile.
 const cacheLife = vi.hoisted(() => vi.fn());
 vi.mock("next/cache", () => ({ cacheLife }));
+const connection = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("next/server", () => ({ connection }));
 
 setupTestDb();
 afterEach(() => {
@@ -71,5 +73,14 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(cacheLife.mock.calls.length).toBe(env === "production" ? 19 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
+  });
+});
+
+describe("requestToday", () => {
+  it("waits for the request before reading the clock, then gives Lagos's date", async () => {
+    const { requestToday } = await import("./page-data");
+    const { today } = await import("@/lib/dates");
+    expect(await requestToday()).toBe(today());
+    expect(connection).toHaveBeenCalled();
   });
 });

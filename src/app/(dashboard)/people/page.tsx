@@ -7,8 +7,7 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadEmployees } from "@/lib/page-data";
+import { loadBatches, loadEmployees, requestToday } from "@/lib/page-data";
 import { listAdvances } from "@/lib/people/advances";
 
 export const metadata: Metadata = { title: "People" };
@@ -27,6 +26,7 @@ export default function PeoplePage() {
 
 async function People() {
   const user = await requireUser();
+  const now = await requestToday();
   const [employees, batches, advances] = await Promise.all([
     loadEmployees(user.farmId),
     loadBatches(user.farmId),
@@ -39,7 +39,7 @@ async function People() {
       employees={employees}
       owing={owing}
       batches={batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code }))}
-      today={today()}
+      today={now}
       canWrite={can(user.role, "people.write")}
       canInvite={can(user.role, "settings.manage")}
     />

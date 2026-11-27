@@ -7,8 +7,7 @@ import { Planned } from "./_components/planned";
 import { PageSkeleton } from "./_components/require-permission";
 import { requireUser } from "@/lib/auth/current-user";
 import { can, homeFor } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadItems } from "@/lib/page-data";
+import { loadBatches, loadItems, requestToday } from "@/lib/page-data";
 
 export default function OverviewPage() {
   return (
@@ -21,6 +20,7 @@ export default function OverviewPage() {
 async function Overview() {
   // The overview is money; staff land on their daily log instead.
   const user = await requireUser();
+  const now = await requestToday();
   if (!can(user.role, "finance.read")) redirect(homeFor(user.role));
   const [items, batches] = await Promise.all([loadItems(user.farmId), loadBatches(user.farmId)]);
   const low = items.filter((i) => i.low).sort((a, b) => a.onHand - b.onHand);
@@ -33,7 +33,7 @@ async function Overview() {
       permission="finance.read"
     >
       <div className="space-y-4">
-        <PickupCard batches={toPickUp} today={today()} />
+        <PickupCard batches={toPickUp} today={now} />
         <LowStockCard items={low} />
       </div>
     </Planned>

@@ -6,8 +6,7 @@ import { EmployeeDetail } from "./_components/employee-detail";
 import { PageSkeleton, RequirePermission } from "../../_components/require-permission";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadEmployees } from "@/lib/page-data";
+import { loadBatches, loadEmployees, requestToday } from "@/lib/page-data";
 import { listPayslips } from "@/lib/payroll/payslips";
 import { listAdvances } from "@/lib/people/advances";
 
@@ -25,6 +24,7 @@ export default function PersonPage({ params }: PageProps<"/people/[id]">) {
 
 async function Person({ params }: Pick<PageProps<"/people/[id]">, "params">) {
   const user = await requireUser();
+  const now = await requestToday();
   const { id } = await params;
   const valid = /^[a-f\d]{24}$/i.test(id);
   const [employees, batches, advances, payslips] = await Promise.all([
@@ -43,7 +43,7 @@ async function Person({ params }: Pick<PageProps<"/people/[id]">, "params">) {
       batches={batches
         .filter((b) => b.phase !== "closed" || employee.batchIds.includes(b.id))
         .map((b) => ({ id: b.id, code: b.code }))}
-      today={today()}
+      today={now}
       canWrite={can(user.role, "people.write")}
       canInvite={can(user.role, "settings.manage")}
     />

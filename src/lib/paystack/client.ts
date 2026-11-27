@@ -58,7 +58,8 @@ export async function paystack<T>(
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
+  } catch (e) {
+    console.warn(`[paystack] ${method} ${path}: no answer (${(e as Error)?.name ?? "error"})`);
     throw unavailable();
   }
   const json = (await response.json().catch(() => ({}))) as Partial<PaystackResponse<T>>;
@@ -74,3 +75,32 @@ export async function paystack<T>(
 /** True for answers that are Paystack's own trouble (5xx, rate limits), not a verdict on the request. */
 export const isProviderTrouble = (res: PaystackResponse<unknown>) =>
   res.httpStatus >= 500 || res.httpStatus === 429 || /limit|too many/i.test(res.message);
+
+/**
+ * Why Paystack said no to something that isn't about the request itself, as the error to show.
+ * Each cause gets words someone can act on: a key Paystack won't accept, a server address it
+ * blocks, test mode's daily limit, or Paystack's own trouble. Paystack's answer is logged (never
+ * the key), so the server's logs say what really happened.
+ */
+export function paystackTrouble(res: PaystackResponse<unknown>, what: string): HttpError {
+  console.warn(`[paystack] ${what}: HTTP ${res.httpStatus} ${JSON.stringify(res.message)}`);
+  if (res.httpStatus === 401 || /invalid key|authorization|secret key/i.test(res.message))
+    return new HttpError(
+      503,
+      "paystack_key",
+      "Paystack didn't accept the farm's Paystack key, so bank checks and payments can't work. Whoever set up Fowlex needs to put in the right secret key.",
+    );
+  if (res.httpStatus === 403 || /\bip\b|whitelist/i.test(res.message))
+    return new HttpError(
+      503,
+      "paystack_blocked",
+      "Paystack is blocking Fowlex's server. In Paystack's settings, turn off IP whitelisting for the API key, or allow Fowlex's server.",
+    );
+  if (paystackMode() === "test" && /limit|exceed/i.test(res.message))
+    return new HttpError(
+      503,
+      "paystack_test_limit",
+      "Paystack's test mode only checks a few bank accounts a day, and today's are used up. Try again tomorrow, or switch to live keys.",
+    );
+  return unavailable();
+}

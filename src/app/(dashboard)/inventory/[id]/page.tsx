@@ -6,8 +6,7 @@ import { ItemDetail } from "./_components/item-detail";
 import { PageSkeleton, RequirePermission } from "../../_components/require-permission";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadItems, loadMovements, loadSuppliers, loadCategories } from "@/lib/page-data";
+import { loadBatches, loadCategories, loadItems, loadMovements, loadSuppliers, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Stock item" };
 
@@ -23,6 +22,7 @@ export default function ItemPage({ params, searchParams }: PageProps<"/inventory
 
 async function Item({ params, searchParams }: PageProps<"/inventory/[id]">) {
   const user = await requireUser();
+  const now = await requestToday();
   const [{ id }, { buy }] = await Promise.all([params, searchParams]);
   const canBuy = can(user.role, "expense.write");
   const [items, movements, batches, suppliers, categories] = await Promise.all([
@@ -42,7 +42,7 @@ async function Item({ params, searchParams }: PageProps<"/inventory/[id]">) {
         .filter((b) => b.phase === "active" || b.phase === "selling")
         .map((b) => ({ id: b.id, code: b.code }))}
       allBatches={Object.fromEntries(batches.map((b) => [b.id, b.code]))}
-      today={today()}
+      today={now}
       canWrite={can(user.role, "inventory.write")}
       showMoney={can(user.role, "expense.read")}
       buyNow={buy === "1" && canBuy}
@@ -53,7 +53,7 @@ async function Item({ params, searchParams }: PageProps<"/inventory/[id]">) {
               suppliers,
               items,
               batches: batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code })),
-              today: today(),
+              today: now,
               canWrite: true,
               canPay: can(user.role, "payout.send"),
             }

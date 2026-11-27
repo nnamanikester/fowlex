@@ -1,11 +1,11 @@
 import "server-only";
 
-import { isProviderTrouble, paystack, unavailable } from "./client";
+import { isProviderTrouble, paystack, paystackTrouble } from "./client";
 
 /** Naira the Paystack balance holds, in kobo. */
 export async function getBalance() {
   const res = await paystack<{ currency: string; balance: number }[]>("/balance");
-  if (!res.status || !Array.isArray(res.data)) throw unavailable();
+  if (!res.status || !Array.isArray(res.data)) throw paystackTrouble(res, "reading the balance");
   return res.data.find((b) => b.currency === "NGN")?.balance ?? 0;
 }
 
@@ -36,7 +36,7 @@ export const finalizeTransfer = (transferCode: string, otp: string) =>
 export async function verifyTransfer(reference: string) {
   const res = await paystack<TransferData>(`/transfer/verify/${encodeURIComponent(reference)}`);
   if (res.httpStatus === 404) return null;
-  if (!res.status || !res.data || isProviderTrouble(res)) throw unavailable();
+  if (!res.status || !res.data || isProviderTrouble(res)) throw paystackTrouble(res, "checking a transfer");
   const fee = Number(res.data.fee_charged ?? 0);
   return {
     status: String(res.data.status ?? ""),

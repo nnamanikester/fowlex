@@ -6,8 +6,7 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadHouses, loadSuppliers } from "@/lib/page-data";
+import { loadBatches, loadHouses, loadSuppliers, requestToday } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Batches" };
 
@@ -24,6 +23,7 @@ export default function BatchesPage() {
 
 async function Batches() {
   const user = await requireUser();
+  const now = await requestToday();
   const [batches, houses, suppliers] = await Promise.all([
     loadBatches(user.farmId),
     loadHouses(user.farmId),
@@ -33,7 +33,7 @@ async function Batches() {
     <BatchesBoard
       batches={batches}
       houses={houses}
-      today={today()}
+      today={now}
       canWrite={can(user.role, "batch.write")}
       canManageHouses={can(user.role, "settings.manage")}
       hatcheries={suppliers

@@ -25,14 +25,15 @@ export async function checkedBank(
   if (!bank) return null;
   if (before && before.bankCode === bank.bankCode && before.accountNumber === bank.accountNumber) return before;
   const account = await resolveAccount(bank.accountNumber, bank.bankCode).catch((error: HttpError) => {
-    throw error.status === 503
-      ? new HttpError(
-          503,
-          error.code,
-          "We couldn't check the bank account just now. Try saving again in a moment.",
-          "bank",
-        )
-      : new HttpError(400, error.code, error.message, "bank");
+    // Paystack down: say it about the account. A key or block problem keeps its own words.
+    if (error.code === "paystack_unavailable")
+      throw new HttpError(
+        503,
+        error.code,
+        "We couldn't check the bank account just now. Try saving again in a moment.",
+        "bank",
+      );
+    throw new HttpError(error.status === 503 ? 503 : 400, error.code, error.message, "bank");
   });
   const recipientCode = await createRecipient(account).catch((error: HttpError) => {
     if (error.status === 503) return null;

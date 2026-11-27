@@ -7,8 +7,15 @@ import { PageSkeleton, RequirePermission } from "../_components/require-permissi
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
-import { today } from "@/lib/dates";
-import { loadBatches, loadCategories, loadExpenses, loadItems, loadRecurring, loadSuppliers } from "@/lib/page-data";
+import {
+  loadBatches,
+  loadCategories,
+  loadExpenses,
+  loadItems,
+  loadRecurring,
+  loadSuppliers,
+  requestToday,
+} from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Expenses" };
 
@@ -31,6 +38,7 @@ async function Expenses({ searchParams }: Pick<PageProps<"/expenses">, "searchPa
   const params = await searchParams;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
   const user = await requireUser();
+  const now = await requestToday();
   const [expenses, suppliers, items, batches, categories, recurring] = await Promise.all([
     loadExpenses(user.farmId),
     loadSuppliers(user.farmId),
@@ -51,7 +59,7 @@ async function Expenses({ searchParams }: Pick<PageProps<"/expenses">, "searchPa
       items={items}
       batches={batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code }))}
       allBatches={batches.map((b) => ({ id: b.id, code: b.code }))}
-      today={today()}
+      today={now}
       canWrite={can(user.role, "expense.write")}
       canPay={can(user.role, "payout.send")}
       canApprove={can(user.role, "expense.approve")}

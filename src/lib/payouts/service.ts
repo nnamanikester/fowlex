@@ -206,7 +206,11 @@ export async function payExpense(actor: CurrentUser, expenseId: string) {
 }
 
 /** Paystack's refusal in words the owner can act on. */
-function refusal(message: string) {
+export function refusal(message: string) {
+  if (/invalid key|authorization|secret key/i.test(message))
+    return "Paystack didn't accept the farm's Paystack key. Whoever set up Fowlex needs to put in the right secret key.";
+  if (/\bip\b|whitelist/i.test(message))
+    return "Paystack is blocking Fowlex's server. Turn off IP whitelisting for the API key in Paystack's settings.";
   if (/balance/i.test(message)) return "Your Paystack balance is too low. Top it up, then try again.";
   if (/otp/i.test(message)) return "Paystack wants an OTP for transfers. Try again, then enter the OTP it sends.";
   return message || "Paystack refused the transfer.";

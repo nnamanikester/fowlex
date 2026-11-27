@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { feeFor, listPayouts, payExpense, payPreview, settle, settlesBySync, submitOtp, syncPayout } from "./service";
+import {
+  feeFor,
+  listPayouts,
+  payExpense,
+  payPreview,
+  settle,
+  settlesBySync,
+  submitOtp,
+  syncPayout,
+  refusal as transferRefusal,
+} from "./service";
 import { createExpense, getExpense, listExpenses, supplierBalances } from "@/lib/expenses/service";
 import { today as lagosToday } from "@/lib/dates";
 import { HttpError } from "@/lib/auth/guard";
@@ -103,6 +113,13 @@ describe("paying a supplier through Paystack", () => {
       status: "failed",
       failure: "Your Paystack balance is too low. Top it up, then try again.",
     });
+  });
+
+  it("puts a refused key or a blocked server in words an owner can act on", () => {
+    expect(transferRefusal("Invalid key")).toMatch(/didn't accept the farm's Paystack key/);
+    expect(transferRefusal("Your IP address is not allowed")).toMatch(/blocking Fowlex's server/);
+    expect(transferRefusal("")).toBe("Paystack refused the transfer.");
+    expect(transferRefusal("Recipient is invalid")).toBe("Recipient is invalid");
   });
 
   it("waits for an OTP, refuses a wrong one, and sends with the right one", async () => {
