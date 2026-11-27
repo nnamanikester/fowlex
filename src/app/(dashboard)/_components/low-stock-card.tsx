@@ -16,14 +16,14 @@ export function LowStockCard({ items }: { items: ItemView[] }) {
           <PackageX className="size-4 text-warning-fg" aria-hidden /> Running low
         </span>
       }
-      description="At or under their reorder level."
+      description="At or under their reorder level. Tap one to buy more."
       flush
     >
       <ul className="divide-y divide-line">
         {items.map((i) => (
           <li key={i.id}>
             <Link
-              href={`/inventory/${i.id}`}
+              href={`/inventory/${i.id}?buy=1`}
               className="focus-ring flex items-center gap-3 px-5 py-3 hover:bg-surface-subtle"
             >
               <span className="min-w-0 flex-1">

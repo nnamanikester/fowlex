@@ -51,6 +51,8 @@ export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   automatic: boolean;
   /** A batch's chicks: its cost and hatchery change with the batch, not here. */
   fromBatch: boolean;
+  /** Bought for a health record: its cost changes there. */
+  fromHealth: boolean;
   /** Equipment: counted as depreciation over its life. */
   capital: boolean;
   createdAt: string;
@@ -111,6 +113,7 @@ const view = (e: Doc): ExpenseView => ({
   receipt: e.receipt ? { url: e.receipt.url, name: e.receipt.name ?? "" } : null,
   automatic: e.source?.kind === "payout-fee",
   fromBatch: e.source?.kind === "batch",
+  fromHealth: e.source?.kind === "health",
   capital: e.capital ?? false,
   createdAt: (e.createdAt ?? new Date(0)).toISOString(),
 });
@@ -485,6 +488,8 @@ export async function deleteExpense(actor: CurrentUser, id: string) {
     throw new HttpError(409, "automatic", "Fowlex keeps this one in step with its transfer.");
   if (doc.source?.kind === "batch")
     throw new HttpError(409, "from_batch", "These are a batch's chicks: change or delete the batch instead.");
+  if (doc.source?.kind === "health")
+    throw new HttpError(409, "from_health", "This came from a health record: change or delete it there.");
   if (await PayoutModel.exists({ expenseId: doc._id, status: { $in: ["pending", "otp", "success"] } }))
     throw new HttpError(409, "has_payout", "Money for this went through Paystack, so it stays on record.");
   await withTransaction(async (session) => {

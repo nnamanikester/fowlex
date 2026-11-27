@@ -80,7 +80,12 @@ export function SpendSheet({
 }) {
   const active = items.filter((i) => !i.archived);
   const [kind, setKind] = React.useState<"stock" | "other">(defaults.kind ?? "stock");
-  const [supplierId, setSupplierId] = React.useState(defaults.supplierId ?? "");
+  // Buying an item again: from whoever sold it last, at the price paid then.
+  const again = active.find((i) => i.id === defaults.itemId)?.lastBought;
+  const [supplierId, setSupplierId] = React.useState(
+    defaults.supplierId ??
+      (again?.supplierId && suppliers.some((s) => s.id === again.supplierId) ? again.supplierId : ""),
+  );
   const [rows, setRows] = React.useState<Row[]>(() => {
     const item = active.find((i) => i.id === defaults.itemId);
     // Nothing in stock yet: the first line is a new item.
@@ -90,7 +95,7 @@ export function SpendSheet({
         itemId: item?.id ?? "",
         newItem: active.length ? null : freshItem(),
         quantity: "",
-        unitCostKobo: item?.avgCostKobo ?? null,
+        unitCostKobo: item?.lastBought?.unitCostKobo ?? item?.avgCostKobo ?? null,
       },
     ];
   });
@@ -294,7 +299,8 @@ export function SpendSheet({
                             setRow(r.key, {
                               itemId: e.target.value,
                               newItem: null,
-                              unitCostKobo: r.unitCostKobo ?? chosen?.avgCostKobo ?? null,
+                              unitCostKobo:
+                                r.unitCostKobo ?? chosen?.lastBought?.unitCostKobo ?? chosen?.avgCostKobo ?? null,
                             });
                           }}
                         >

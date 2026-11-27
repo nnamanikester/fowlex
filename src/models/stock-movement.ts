@@ -17,7 +17,7 @@ const schema = new Schema({
   batchId: { type: Schema.Types.ObjectId, ref: "Batch", default: null },
   /** The record that made this movement: a daily log's feed, a purchase line. */
   source: {
-    kind: { type: String, enum: ["daily-log", "purchase", null], default: null },
+    kind: { type: String, enum: ["daily-log", "purchase", "health", null], default: null },
     id: { type: Schema.Types.ObjectId, default: null },
   },
   notes: { type: String, trim: true, default: "" },
