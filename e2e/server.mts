@@ -71,7 +71,7 @@ const app = spawn(command[0], command.slice(1), {
     // Receipts are kept in memory.
     BLOB_READ_WRITE_TOKEN: "",
     UPLOADS_LOCAL: "1",
-    CRON_SECRET: "",
+    CRON_SECRET: "e2e-cron-secret",
   },
 });
 

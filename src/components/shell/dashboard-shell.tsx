@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight, Menu as MenuIcon, Search, X } from "lucide-r
 import { CommandPalette } from "./command-palette";
 import { isActive, navFor, pageFor } from "./nav";
 import { ShellContext, useModKey } from "./shell-context";
-import { Sidebar } from "./sidebar";
+import { badgeLabel, NavBadge, Sidebar } from "./sidebar";
 import { useStored } from "@/lib/use-stored";
 import { useWorkspace } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
@@ -245,7 +245,7 @@ function Header({
 /** Phones and tablets: the pages along the bottom, in thumb's reach, and the rest under More. */
 function TabBar({ onMore }: { onMore: () => void }) {
   const pathname = usePathname();
-  const { me } = useWorkspace();
+  const { me, badges } = useWorkspace();
   const items = navFor(me.role)
     .flatMap((g) => g.items)
     .slice(0, 4);
@@ -263,6 +263,7 @@ function TabBar({ onMore }: { onMore: () => void }) {
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}
+                aria-label={badgeLabel(label, badges[href])}
                 className={cn(
                   "focus-ring relative flex h-16 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors",
                   active ? "text-brand-fg" : "text-fg-subtle hover:text-fg",
@@ -271,6 +272,9 @@ function TabBar({ onMore }: { onMore: () => void }) {
                 {active && <span aria-hidden className="absolute top-0 h-[3px] w-8 rounded-b-full bg-brand" />}
                 <Icon className="size-[22px]" aria-hidden strokeWidth={active ? 2.25 : 1.75} />
                 {label}
+                {badges[href] ? (
+                  <NavBadge count={badges[href]} className="absolute right-[calc(50%-1.75rem)] top-1.5" />
+                ) : null}
               </Link>
             </li>
           );

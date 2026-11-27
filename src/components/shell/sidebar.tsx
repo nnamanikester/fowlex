@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
  */
 export function Sidebar({ rail = false }: { rail?: boolean }) {
   const pathname = usePathname();
-  const { me } = useWorkspace();
+  const { me, badges } = useWorkspace();
   const { openPalette } = useShell();
   const mod = useModKey();
   const groups = navFor(me.role);
@@ -127,6 +127,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                     <Link
                       href={href}
                       aria-current={active ? "page" : undefined}
+                      aria-label={badgeLabel(label, badges[href])}
                       aria-keyshortcuts={`G ${key.toUpperCase()}`}
                       className={cn(
                         "focus-ring group relative flex h-10 items-center gap-3 rounded-xl text-sm font-semibold transition-colors duration-150",
@@ -143,6 +144,7 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                       ) : (
                         <>
                           <span className="flex-1 truncate">{label}</span>
+                          {badges[href] ? <NavBadge count={badges[href]} /> : null}
                           <span
                             aria-hidden
                             className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
@@ -152,6 +154,9 @@ export function Sidebar({ rail = false }: { rail?: boolean }) {
                           </span>
                         </>
                       )}
+                      {rail && badges[href] ? (
+                        <span aria-hidden className="absolute right-1.5 top-1.5 size-2 rounded-full bg-warning" />
+                      ) : null}
                       {rail && <RailTip>{label}</RailTip>}
                     </Link>
                   </li>
@@ -176,5 +181,24 @@ function Key({ children }: { children: React.ReactNode }) {
     <kbd className="grid h-5 min-w-5 place-items-center rounded bg-white/[0.08] px-1 font-sans text-[10px] font-bold text-nav-subtle">
       {children}
     </kbd>
+  );
+}
+
+/** "Inventory, 3 need attention": a nav item's name when it has a badge. */
+export const badgeLabel = (label: string, count: number | undefined) =>
+  count ? `${label}, ${count} need attention` : undefined;
+
+/** How many need attention, on a nav item: low stock, say. Its link carries the words (`badgeLabel`). */
+export function NavBadge({ count, className }: { count: number; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "num grid h-5 min-w-5 place-items-center rounded-full bg-warning px-1.5 text-[11px] font-bold text-fg-inverse",
+        className,
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }

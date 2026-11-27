@@ -50,7 +50,9 @@ test.describe("desktop", () => {
   test("the sidebar shows every page and marks the current one", async ({ page }) => {
     await page.goto("/invoices");
     const sidebar = page.getByRole("complementary", { name: "Sidebar" });
-    for (const [label] of PAGES) await expect(sidebar.getByRole("link", { name: label, exact: true })).toBeVisible();
+    // A badge adds its count to the name ("Inventory, 2 need attention").
+    for (const [label] of PAGES)
+      await expect(sidebar.getByRole("link", { name: new RegExp(`^${label}(, \\d+ need attention)?$`) })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Invoices", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Fowlex Farms");
   });
@@ -99,7 +101,9 @@ test.describe("phone", () => {
     const tabs = page.getByRole("navigation", { name: "Tabs" });
     await expect(tabs).toBeVisible();
     for (const label of ["Overview", "Batches", "Daily log", "Inventory", "More"])
-      await expect(tabs.getByText(label, { exact: true })).toBeVisible();
+      await expect(
+        tabs.getByText(label, { exact: true }).or(tabs.getByRole("link", { name: new RegExp(`^${label},`) })),
+      ).toBeVisible();
 
     await tabs.getByRole("link", { name: "Daily log" }).click();
     await expect(page).toHaveURL("/log");

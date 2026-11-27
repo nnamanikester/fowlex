@@ -26,18 +26,23 @@ type Workspace = {
   /** The batch the farm pages focus on; null when there are none. */
   batch: BatchSummary | null;
   setBatch: (id: string) => void;
+  /** Counts that need attention, by page: `{ "/inventory": 3 }` for three items running low. */
+  badges: Record<string, number>;
 };
 
 const WorkspaceContext = React.createContext<Workspace | null>(null);
+const NO_BADGES: Record<string, number> = {};
 
 /** Who is signed in, what they can do, and the batch the pages look at (remembered per browser). */
 export function WorkspaceProvider({
   me,
   batches,
+  badges = NO_BADGES,
   children,
 }: {
   me: Me;
   batches: BatchSummary[];
+  badges?: Record<string, number>;
   children: React.ReactNode;
 }) {
   const [chosen, setChosen] = useStored("fowlex_batch", "");
@@ -49,8 +54,9 @@ export function WorkspaceProvider({
       batches,
       batch,
       setBatch: setChosen,
+      badges,
     }),
-    [me, batches, batch, setChosen],
+    [me, batches, batch, setChosen, badges],
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
