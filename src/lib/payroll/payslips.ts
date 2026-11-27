@@ -1,10 +1,11 @@
 import "server-only";
 
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf-lib";
+
+import { ascii, BRAND, INK, LINE, MUTED, naira, pdfDay as day } from "@/lib/pdf";
 import { Types } from "mongoose";
 
 import { HttpError } from "@/lib/auth/guard";
-import { formatRange } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { monthName } from "@/lib/people/advance-rules";
@@ -201,18 +202,6 @@ export async function resendPayslip(farmId: string, runId: string, lineId: strin
   return { to: slip.email };
 }
 
-// PDF text: the standard fonts cover Latin-1 and a few more, so ₦ becomes NGN and accents drop.
-const ascii = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/₦/g, "NGN ")
-    .replace(/[−–]/g, "-")
-    .replace(/[^\x20-\x7E\xA0-\xFF•—×½]/g, "");
-const naira = (kobo: number) =>
-  `NGN ${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const day = (d: string) => formatRange({ from: d, to: d });
-
 async function render(slips: Payslip[]) {
   const pdf = await PDFDocument.create();
   pdf.setTitle(slips.length === 1 ? `Payslip ${slips[0].number}` : `Payslips ${slips[0].period}`);
@@ -221,11 +210,6 @@ async function render(slips: Payslip[]) {
   for (const slip of slips) drawPayslip(pdf.addPage([595.28, 841.89]), slip, regular, bold);
   return pdf.save();
 }
-
-const INK = rgb(0.11, 0.13, 0.12);
-const MUTED = rgb(0.42, 0.45, 0.43);
-const LINE = rgb(0.86, 0.87, 0.86);
-const BRAND = rgb(0.13, 0.42, 0.25);
 
 function drawPayslip(page: PDFPage, s: Payslip, regular: PDFFont, bold: PDFFont) {
   const left = 56;

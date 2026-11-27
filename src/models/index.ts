@@ -16,6 +16,7 @@ import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
 import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
+import { InvoiceModel } from "./invoice";
 import { PasswordResetModel } from "./password-reset";
 import { PaystackAccountModel } from "./paystack-account";
 import { PayoutModel } from "./payout";
@@ -49,6 +50,7 @@ export const ALL_MODELS = [
   HouseModel,
   InventoryItemModel,
   InviteModel,
+  InvoiceModel,
   PasswordResetModel,
   PaystackAccountModel,
   PayoutModel,

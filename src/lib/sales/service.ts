@@ -16,6 +16,7 @@ import { BatchModel } from "@/models/batch";
 import { ContractModel } from "@/models/contract";
 import { nextSequence } from "@/models/counter";
 import { CustomerModel } from "@/models/customer";
+import { InvoiceModel } from "@/models/invoice";
 import { SalesOrderModel } from "@/models/sales-order";
 
 export type OrderView = OrderInput & {
@@ -139,23 +140,29 @@ export async function priceFor(farmId: string, customerId: string, day: string):
 }
 
 /**
- * What a customer owes or has coming: orders not yet on an invoice (to deliver or delivered).
- * Invoices that aren't paid join this in step 6.4.
+ * What a customer owes or has coming: orders not yet on an invoice (to deliver or delivered),
+ * and what's left to pay on their invoices (drafts too: the birds have gone).
  */
 export async function outstanding(farmId: string, customerId: string, exceptOrderId?: unknown) {
   await connectDb();
-  const [row] = await SalesOrderModel.aggregate<{ kobo: number }>([
-    {
-      $match: {
-        farmId: new Types.ObjectId(farmId),
-        customerId: new Types.ObjectId(customerId),
-        status: { $in: ["pending", "delivered"] },
-        ...(exceptOrderId ? { _id: { $ne: exceptOrderId } } : {}),
+  const match = { farmId: new Types.ObjectId(farmId), customerId: new Types.ObjectId(customerId) };
+  const [[orders], [invoices]] = await Promise.all([
+    SalesOrderModel.aggregate<{ kobo: number }>([
+      {
+        $match: {
+          ...match,
+          status: { $in: ["pending", "delivered"] },
+          ...(exceptOrderId ? { _id: { $ne: exceptOrderId } } : {}),
+        },
       },
-    },
-    { $group: { _id: null, kobo: { $sum: "$totalKobo" } } },
+      { $group: { _id: null, kobo: { $sum: "$totalKobo" } } },
+    ]),
+    InvoiceModel.aggregate<{ kobo: number }>([
+      { $match: { ...match, state: { $ne: "void" } } },
+      { $group: { _id: null, kobo: { $sum: { $max: [0, { $subtract: ["$totalKobo", "$paidKobo"] }] } } } },
+    ]),
   ]);
-  return row?.kobo ?? 0;
+  return (orders?.kobo ?? 0) + (invoices?.kobo ?? 0);
 }
 
 export type Quote = Price & { owedKobo: number; limitKobo: number | null; termsDays: number };

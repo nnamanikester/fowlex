@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { CircleAlert, Plus, Truck, X } from "lucide-react";
+import Link from "next/link";
+import { CircleAlert, Plus, ReceiptText, Truck, X } from "lucide-react";
 
 import { Field } from "@/components/auth";
 import { ConfirmDialog } from "@/components/kit";
 import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
@@ -526,6 +527,19 @@ function OrderSummary({ order }: { order: OrderView }) {
         </ul>
       </div>
       {order.notes && <p className="text-sm text-fg-muted">{order.notes}</p>}
+      {order.status === "delivered" && (
+        <LinkButton href={`/invoices?new=${order.customerId}&orders=${order.id}`} fullWidth>
+          <ReceiptText /> Make an invoice
+        </LinkButton>
+      )}
+      {order.status === "invoiced" && (
+        <p className="text-sm text-fg-muted">
+          On an invoice:{" "}
+          <Link href="/invoices" className="focus-ring rounded font-semibold text-brand-fg">
+            see Invoices
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
