@@ -1056,7 +1056,11 @@ describe("Paystack balance routes", () => {
     expect((await funded.json()).summary.differenceKobo).toBe(0);
     expect((await testMoney(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
     const topUp = await saveTopUpRoute(
-      req("PATCH", "/api/balance/top-up", { bankName: "Wema Bank", accountNumber: "0123456789", accountName: "Fowlex" }),
+      req("PATCH", "/api/balance/top-up", {
+        bankName: "Wema Bank",
+        accountNumber: "0123456789",
+        accountName: "Fowlex",
+      }),
     );
     expect(await topUp.json()).toEqual({ bankName: "Wema Bank", accountNumber: "0123456789", accountName: "Fowlex" });
     expect((await saveTopUpRoute(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }))).status).toBe(400);

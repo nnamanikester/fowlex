@@ -11,7 +11,9 @@ import {
   syncBalance,
 } from "./service";
 import { createExpense } from "@/lib/expenses/service";
+import * as email from "@/lib/email";
 import { outbox } from "@/lib/email";
+import * as transfers from "@/lib/paystack/transfers";
 import { clearBankCache } from "@/lib/paystack/banks";
 import { configureSimulator, resetSimulator, simulate, simulateLedger } from "@/lib/paystack/simulator";
 import { payExpense, settle, submitOtp } from "@/lib/payouts/service";
@@ -49,12 +51,7 @@ async function farm({ open = true } = {}) {
   });
   if (open) await syncBalance(f.owner.farmId);
   const pay = async (supplierId = f.mill.id) => {
-    const { expense } = await createExpense(
-      f.owner,
-      f.purchase({ method: "paystack", supplierId }),
-      {},
-      TODAY,
-    );
+    const { expense } = await createExpense(f.owner, f.purchase({ method: "paystack", supplierId }), {}, TODAY);
     await payExpense(f.owner, expense.id);
     return expense;
   };
@@ -137,7 +134,12 @@ describe("the Paystack balance book", () => {
 
     await settle(held.reference, "reversed", { failure: "Returned" });
     const [back] = await listEntries(owner.farmId);
-    expect(back).toMatchObject({ category: "transfer_reversal", direction: "credit", amountKobo: 36_000_000, confirmed: false });
+    expect(back).toMatchObject({
+      category: "transfer_reversal",
+      direction: "credit",
+      amountKobo: 36_000_000,
+      confirmed: false,
+    });
     // Recording it again changes nothing.
     await recordTransferUndone(held.reference, "reversed");
     expect(await listEntries(owner.farmId)).toHaveLength(4);
@@ -164,7 +166,10 @@ describe("the Paystack balance book", () => {
       description: "Balance top-up",
       balanceAfterKobo: 1_005_000_000,
     });
-    expect(outbox().at(-1)).toMatchObject({ to: `ada-${owner.id}@fowlex.com`, subject: "Paystack balance funded: ₦50,000.00" });
+    expect(outbox().at(-1)).toMatchObject({
+      to: `ada-${owner.id}@fowlex.com`,
+      subject: "Paystack balance funded: ₦50,000.00",
+    });
     expect(await balanceSummary(owner.farmId)).toMatchObject({ differenceKobo: 0 });
     expect(await refusal(addTestMoney(owner, 0))).toMatchObject({ code: "invalid_amount", field: "amountKobo" });
   });
@@ -209,12 +214,18 @@ describe("the Paystack balance book", () => {
 
   it("keeps the top-up account the Dashboard shows, checked", async () => {
     const { owner } = await farm();
-    expect(await refusal(saveTopUp(owner, { bankName: "Wema", accountNumber: "123", accountName: "x" }))).toMatchObject({
-      code: "invalid",
-      field: "accountNumber",
-    });
+    expect(await refusal(saveTopUp(owner, { bankName: "Wema", accountNumber: "123", accountName: "x" }))).toMatchObject(
+      {
+        code: "invalid",
+        field: "accountNumber",
+      },
+    );
     expect(
-      await saveTopUp(owner, { bankName: " Wema Bank ", accountNumber: "012 345 6789", accountName: "Paystack-Fowlex" }),
+      await saveTopUp(owner, {
+        bankName: " Wema Bank ",
+        accountNumber: "012 345 6789",
+        accountName: "Paystack-Fowlex",
+      }),
     ).toEqual({ bankName: "Wema Bank", accountNumber: "0123456789", accountName: "Paystack-Fowlex" });
     expect((await balanceSummary(owner.farmId)).topUp?.accountNumber).toBe("0123456789");
   });
@@ -240,5 +251,60 @@ describe("the Paystack balance book", () => {
     expect(await syncAllBalances()).toBe(1);
     expect((await listEntries(owner.farmId))[0].category).toBe("funding");
     expect(await BalanceEntryModel.countDocuments()).toBe(2);
+  });
+
+  it("guesses Paystack's fee by size until its ledger says, and ignores a ledger note it can't place", async () => {
+    const { owner, mill, feed, purchase } = await farm();
+    for (const unitCostKobo of [100_000, 1_000_000]) {
+      const { expense } = await createExpense(
+        owner,
+        purchase({ method: "paystack", supplierId: mill.id, lines: [{ itemId: feed.id, quantity: 1, unitCostKobo }] }),
+        {},
+        TODAY,
+      );
+      await payExpense(owner, expense.id);
+    }
+    const fees = (await listEntries(owner.farmId))
+      .filter((e) => e.category === "transfer_fee")
+      .map((e) => e.amountKobo);
+    expect(fees.sort()).toEqual([1_000, 2_500]);
+    simulateLedger(-500, "Fowlex EXP-2026-9999 to nobody", "Transfer");
+    await syncBalance(owner.farmId);
+    expect((await listEntries(owner.farmId))[0]).toMatchObject({ category: "transfer", channel: "paystack" });
+  });
+
+  it("never stands in the way of a payment, and keeps going past one farm's trouble", async () => {
+    const { owner } = await farm();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(PayoutModel, "findOne").mockImplementationOnce(() => {
+      throw new Error("db down");
+    });
+    await recordTransferSent("x");
+    vi.spyOn(PayoutModel, "findOne").mockImplementationOnce(() => {
+      throw new Error("db down");
+    });
+    await recordTransferUndone("x", "reversed");
+    expect(error).toHaveBeenCalledWith("[balance] recording a transfer", expect.any(Error));
+    expect(error).toHaveBeenCalledWith("[balance] recording a returned transfer", expect.any(Error));
+
+    vi.spyOn(email, "sendEmail").mockRejectedValueOnce(new Error("mail down"));
+    simulateLedger(10_000, "Balance top-up", "Topup");
+    expect((await syncBalance(owner.farmId)).fundedKobo).toEqual([10_000]);
+    expect(error).toHaveBeenCalledWith("[balance] funding email", expect.any(Error));
+
+    vi.spyOn(transfers, "getBalance").mockRejectedValueOnce(new Error("Paystack down"));
+    expect(await syncAllBalances()).toBe(0);
+    expect(error).toHaveBeenCalledWith("[balance] sync", owner.farmId, expect.any(Error));
+
+    // Off, nothing is booked at all; a returned transfer before the book opens waits for the opening.
+    vi.stubEnv("PAYSTACK_SIMULATE", "");
+    await recordTransferSent("x");
+    await recordTransferUndone("x", "failed");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    const closed = await farm({ open: false });
+    const expense = await closed.pay();
+    const payout = await PayoutModel.findOne({ expenseId: expense.id }).lean();
+    await recordTransferUndone(payout!.reference, "reversed");
+    expect(await listEntries(closed.owner.farmId)).toEqual([]);
   });
 });

@@ -2,14 +2,7 @@ import "server-only";
 
 import { Types } from "mongoose";
 
-import {
-  type Channel,
-  type Direction,
-  type EntryCategory,
-  signed,
-  type TopUpAccount,
-  validateTopUp,
-} from "./rules";
+import { type Channel, type Direction, type EntryCategory, signed, type TopUpAccount, validateTopUp } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { connectDb } from "@/lib/db";
@@ -29,7 +22,8 @@ type Mode = "live" | "test" | "simulated";
 /** The Paystack this server talks to, or a plain refusal when payments aren't set up. */
 function modeNow(): Mode {
   const mode = paystackMode();
-  if (mode === "off") throw new HttpError(503, "paystack_off", "Payments aren't set up yet: add the Paystack secret key.");
+  if (mode === "off")
+    throw new HttpError(503, "paystack_off", "Payments aren't set up yet: add the Paystack secret key.");
   return mode;
 }
 
@@ -161,7 +155,9 @@ export async function balanceSummary(farmId: string): Promise<BalanceSummary> {
       {
         $group: {
           _id: null,
-          kobo: { $sum: { $cond: [{ $eq: ["$direction", "credit"] }, "$amountKobo", { $multiply: ["$amountKobo", -1] }] } },
+          kobo: {
+            $sum: { $cond: [{ $eq: ["$direction", "credit"] }, "$amountKobo", { $multiply: ["$amountKobo", -1] }] },
+          },
           pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
         },
       },
@@ -337,15 +333,19 @@ function classify(row: LedgerRow, payout: PayoutDoc | null, mode: Mode): { categ
   if (/transfer/i.test(row.model)) {
     const channel = payout ? "fowlex" : "paystack";
     if (credit) return { category: "transfer_reversal", channel };
-    if (payout) return { category: Math.abs(row.differenceKobo) === payout.amountKobo ? "transfer" : "transfer_fee", channel };
+    if (payout)
+      return { category: Math.abs(row.differenceKobo) === payout.amountKobo ? "transfer" : "transfer_fee", channel };
     return { category: /charge|fee/i.test(row.reason) ? "transfer_fee" : "transfer", channel };
   }
   if (/top.?up|external|funding/i.test(text) && credit)
     return { category: "funding", channel: mode === "simulated" ? "simulator" : "bank-transfer" };
   if (/refund/i.test(text)) return { category: "refund", channel: "paystack" };
   if (/transaction|payment/i.test(row.model))
-    return credit ? { category: "collection", channel: "paystack" } : { category: "collection_fee", channel: "paystack" };
-  if (!credit && /charge|fee|verification|service/i.test(text)) return { category: "service_charge", channel: "paystack" };
+    return credit
+      ? { category: "collection", channel: "paystack" }
+      : { category: "collection_fee", channel: "paystack" };
+  if (!credit && /charge|fee|verification|service/i.test(text))
+    return { category: "service_charge", channel: "paystack" };
   return { category: "other", channel: "paystack" };
 }
 
@@ -360,9 +360,9 @@ async function payoutFor(farmId: Types.ObjectId, row: LedgerRow): Promise<Payout
   if (!number) return null;
   const expense = await ExpenseModel.findOne({ farmId, number }, { _id: 1 }).setOptions({ withDeleted: true }).lean();
   if (!expense) return null;
-  return (await PayoutModel.findOne({ farmId, expenseId: expense._id }).sort({ createdAt: -1 }).lean()) as unknown as
-    | PayoutDoc
-    | null;
+  return (await PayoutModel.findOne({ farmId, expenseId: expense._id })
+    .sort({ createdAt: -1 })
+    .lean()) as unknown as PayoutDoc | null;
 }
 
 /**
@@ -555,7 +555,12 @@ export async function addTestMoney(actor: CurrentUser, amountKobo: unknown) {
       "paystack_test",
       "In test mode, top up from your Paystack test Dashboard (Balance, then Top up) with a test card. Fowlex picks it up within a minute of you checking.",
     );
-  if (typeof amountKobo !== "number" || !Number.isInteger(amountKobo) || amountKobo < 100 || amountKobo > 100_000_000_00)
+  if (
+    typeof amountKobo !== "number" ||
+    !Number.isInteger(amountKobo) ||
+    amountKobo < 100 ||
+    amountKobo > 100_000_000_00
+  )
     throw new HttpError(400, "invalid_amount", "Enter an amount from ₦1 to ₦100,000,000.", "amountKobo");
   await syncBalance(actor.farmId); // Opens the book first, so the top-up counts as funding.
   topUpSimulator(amountKobo);

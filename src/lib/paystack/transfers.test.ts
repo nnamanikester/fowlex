@@ -68,7 +68,10 @@ describe("paystack transfers", () => {
       .mockResolvedValueOnce(
         json(200, {
           status: true,
-          data: [row(3, "2026-11-27T10:00:00Z"), ...Array.from({ length: 99 }, (_, i) => row(100 + i, "2026-11-27T09:00:00Z"))],
+          data: [
+            row(3, "2026-11-27T10:00:00Z"),
+            ...Array.from({ length: 99 }, (_, i) => row(100 + i, "2026-11-27T09:00:00Z")),
+          ],
           meta: { pageCount: 2 },
         }),
       )
@@ -86,7 +89,10 @@ describe("paystack transfers", () => {
     expect(rows).toHaveLength(101);
     expect(String(fetch.mock.calls[0][0])).toContain("from=2026-11-01T00%3A00%3A00.000Z");
 
-    vi.stubGlobal("fetch", vi.fn(async () => json(401, { status: false, message: "Invalid key" })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json(401, { status: false, message: "Invalid key" })),
+    );
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     await expect(readLedger(null)).rejects.toMatchObject({ code: "paystack_key" });
   });

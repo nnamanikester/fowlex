@@ -35,5 +35,4 @@ schema.index({ farmId: 1, mode: 1 }, { unique: true });
 
 export type PaystackAccount = InferSchemaType<typeof schema> & Base;
 export const PaystackAccountModel =
-  (models.PaystackAccount as Model<PaystackAccount, object, SoftDeleteMethods>) ??
-  model("PaystackAccount", schema);
+  (models.PaystackAccount as Model<PaystackAccount, object, SoftDeleteMethods>) ?? model("PaystackAccount", schema);
