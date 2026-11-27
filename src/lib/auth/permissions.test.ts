@@ -16,6 +16,7 @@ const EXPECTED: Record<(typeof PERMISSIONS)[number], string[]> = {
   "inventory.read": [O, M, S],
   "inventory.write": [O, M],
   "supplier.read": [O, M],
+  "supplier.write": [O, M],
   "customer.read": [O, M],
   "contract.read": [O, M],
   "sales.read": [O, M],

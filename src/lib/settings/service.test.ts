@@ -34,6 +34,8 @@ describe("settings", () => {
       expenseApprovalLimitKobo: 10_000_000,
       defaultPricePerKgKobo: null,
       overheadMethod: "bird-days",
+      stockingDensity: 10,
+      houseRestDays: 14,
     });
     await Promise.all([getSettings(farmId), getSettings(farmId), getSettings(farmId)]);
     expect(await SettingsModel.countDocuments({ farmId })).toBe(1);
@@ -93,6 +95,8 @@ describe("validateSettings", () => {
     accountName: "",
     expenseApprovalLimitKobo: 10_000_000,
     defaultPricePerKgKobo: null,
+    stockingDensity: 10,
+    houseRestDays: 14,
   };
   it("accepts the defaults", () => expect(validateSettings(base)).toEqual({}));
   it.each([
@@ -107,6 +111,11 @@ describe("validateSettings", () => {
     ["businessName", " "],
     ["expenseApprovalLimitKobo", 10.5],
     ["defaultPricePerKgKobo", -100],
+    ["stockingDensity", 0],
+    ["stockingDensity", 41],
+    ["stockingDensity", 10.25],
+    ["houseRestDays", -1],
+    ["houseRestDays", 3.5],
   ])("refuses %s = %j", (field, value) => {
     expect(validateSettings({ ...base, [field]: value })).toHaveProperty(field);
   });

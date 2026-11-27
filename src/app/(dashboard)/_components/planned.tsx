@@ -13,15 +13,19 @@ export function Planned({
   description,
   step,
   permission,
+  children,
 }: {
   title: string;
   description: string;
   step: string;
   permission: Permission;
+  /** What's already built here, shown above the placeholder. */
+  children?: React.ReactNode;
 }) {
   return (
     <RequirePermission permission={permission}>
       <PageHeader title={title} description={description} />
+      {children}
       <Panel>
         <EmptyState
           icon={<Hammer />}

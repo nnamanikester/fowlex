@@ -1,16 +1,48 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 
-import { Planned } from "../_components/planned";
+import { ExpensesBoard } from "./_components/expenses-board";
+import { PageSkeleton, RequirePermission } from "../_components/require-permission";
+import { PageHeader } from "@/components/kit";
+import { requireUser } from "@/lib/auth/current-user";
+import { can } from "@/lib/auth/permissions";
+import { today } from "@/lib/dates";
+import { loadBatches, loadExpenses, loadItems, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Expenses" };
 
 export default function ExpensesPage() {
   return (
-    <Planned
-      title="Expenses"
-      description="Every naira spent, with a category, a receipt and, where it belongs, a batch."
-      step="4.2"
-      permission="expense.read"
+    <RequirePermission permission="expense.read">
+      <PageHeader
+        title="Expenses"
+        description="Everything the farm spends: stock bought, transport, repairs, and who you owe."
+      />
+      <Suspense fallback={<PageSkeleton />}>
+        <Expenses />
+      </Suspense>
+    </RequirePermission>
+  );
+}
+
+async function Expenses() {
+  const user = await requireUser();
+  const [expenses, suppliers, items, batches] = await Promise.all([
+    loadExpenses(user.farmId),
+    loadSuppliers(user.farmId),
+    loadItems(user.farmId),
+    loadBatches(user.farmId),
+  ]);
+  return (
+    <ExpensesBoard
+      expenses={expenses}
+      suppliers={suppliers}
+      items={items}
+      batches={batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code }))}
+      allBatches={batches.map((b) => ({ id: b.id, code: b.code }))}
+      today={today()}
+      canWrite={can(user.role, "expense.write")}
+      canPay={can(user.role, "payout.send")}
     />
   );
 }

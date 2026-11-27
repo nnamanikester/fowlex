@@ -16,10 +16,13 @@ export async function signInAs(page: Page, email: string) {
   await expect(page).not.toHaveURL(/\/auth\//);
 }
 
-/** Collects console errors and uncaught exceptions; assert it's empty at the end. */
-export function watchErrors(page: Page) {
+/**
+ * Collects console errors and uncaught exceptions; assert it's empty at the end. `expected` lists
+ * errors a test causes on purpose (the browser logs a refused request, such as a 409, as an error).
+ */
+export function watchErrors(page: Page, expected: RegExp[] = []) {
   const errors: string[] = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !expected.some((re) => re.test(m.text())) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   return errors;
 }

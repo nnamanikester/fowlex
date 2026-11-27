@@ -1,10 +1,13 @@
 import { Suspense } from "react";
 
 import { ShellFallback } from "./_components/shell-fallback";
+import { TestModeBanner } from "@/components/kit";
 import { DashboardShell } from "@/components/shell";
 import { requireUser } from "@/lib/auth/current-user";
+import { can } from "@/lib/auth/permissions";
+import { loadBatchSummaries, loadItems } from "@/lib/page-data";
+import { paystackMode } from "@/lib/paystack/client";
 import { WorkspaceProvider } from "@/lib/workspace";
-import { PREVIEW_BATCHES } from "@/lib/workspace-preview";
 
 /**
  * Every signed-in page sits in the shell. The session is read at request time, so it streams in
@@ -19,10 +22,24 @@ export default function DashboardLayout({ children }: LayoutProps<"/">) {
 }
 
 async function SignedIn({ children }: { children: React.ReactNode }) {
-  const { id, name, email, role } = await requireUser();
+  const { id, name, email, role, farmId } = await requireUser();
+  // The batches the switcher offers; roles that can't see batches get none.
+  const [batches, items] = await Promise.all([
+    can(role, "batch.read") ? loadBatchSummaries(farmId) : [],
+    can(role, "inventory.read") ? loadItems(farmId) : [],
+  ]);
+  // Items at or under their reorder level, on the Inventory menu item.
+  const low = items.filter((i) => i.low).length;
+  const badges = low ? { "/inventory": low } : undefined;
+  // Anyone who sees money is told when it isn't real.
+  const mode = paystackMode();
+  const banner =
+    can(role, "expense.read") && (mode === "test" || mode === "simulated") ? (
+      <TestModeBanner simulated={mode === "simulated"} />
+    ) : undefined;
   return (
-    <WorkspaceProvider me={{ id, name, email, role }} batches={PREVIEW_BATCHES}>
-      <DashboardShell>{children}</DashboardShell>
+    <WorkspaceProvider me={{ id, name, email, role }} batches={batches} badges={badges}>
+      <DashboardShell banner={banner}>{children}</DashboardShell>
     </WorkspaceProvider>
   );
 }

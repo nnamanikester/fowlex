@@ -27,4 +27,13 @@ describe("connectDb", () => {
     expect(connect).toHaveBeenCalledTimes(2);
     vi.spyOn(mongoose, "disconnect").mockResolvedValue(undefined);
   });
+
+  it("doesn't build indexes at runtime in production (yarn db:indexes does, at deploy)", async () => {
+    vi.stubEnv("MONGODB_URI", "mongodb://example.invalid/fowlex");
+    const connect = vi.spyOn(mongoose, "connect").mockResolvedValue(mongoose);
+    vi.stubEnv("NODE_ENV", "production");
+    await connectDb();
+    expect(connect.mock.calls[0][1]).toMatchObject({ autoIndex: false, autoCreate: false, bufferCommands: false });
+    vi.spyOn(mongoose, "disconnect").mockResolvedValue(undefined);
+  });
 });

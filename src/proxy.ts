@@ -4,7 +4,8 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth/jwt";
 import { homeFor } from "@/lib/auth/permissions";
 
 /** Pages and APIs anyone may reach: sign-in, the design system, and the auth endpoints. */
-const PUBLIC = ["/auth", "/design", "/api/auth", "/api/dev"];
+// Webhooks prove who they are with a signature, not a session; cron jobs with CRON_SECRET.
+const PUBLIC = ["/auth", "/design", "/api/auth", "/api/dev", "/api/webhooks", "/api/cron"];
 /** Where customers may go, and nobody else. */
 const PORTAL = ["/portal", "/api/portal"];
 

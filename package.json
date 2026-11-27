@@ -14,10 +14,14 @@
     "format": "prettier --write .",
     "prepare": "husky",
     "db": "node scripts/dev-db.mjs",
-    "user:create": "tsx scripts/create-user.mts"
+    "user:create": "tsx scripts/create-user.mts",
+    "db:indexes": "tsx scripts/db-indexes.mts",
+    "vercel-build": "yarn db:indexes && next build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.108.4",
+    "@vercel/blob": "^2.9.0",
+    "@vercel/functions": "^3.11.4",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "formik": "^2.4.9",

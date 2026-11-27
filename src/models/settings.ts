@@ -31,6 +31,11 @@ const schema = new Schema({
   defaultPricePerKgKobo: { type: Number, default: null, min: 0 },
   /** How shared costs are split across batches (step 8.2). Bird-days is the only method so far. */
   overheadMethod: { type: String, enum: ["bird-days"], default: "bird-days" },
+
+  /** Birds per m² a house's capacity is suggested from: 10 suits open-sided houses in Nigeria. */
+  stockingDensity: { type: Number, default: 10, min: 1, max: 40 },
+  /** Days a house rests after a batch leaves, for cleaning, disinfection and downtime. */
+  houseRestDays: { type: Number, default: 14, min: 0, max: 120 },
 });
 schema.plugin(basePlugin, {
   uniquePerFarm: true,

@@ -15,7 +15,8 @@ import {
 } from "./chart-kit";
 
 export type TrendRow = { label: string } & Record<string, number | string | null>;
-export type TrendSeries = { key: string; label: string };
+/** `dots` marks each value: for sparse readings (weighings) rather than a continuous line. */
+export type TrendSeries = { key: string; label: string; dots?: boolean };
 
 /**
  * Change over time: one to six lines (revenue and expenses by month, feed used by day) on one
@@ -104,7 +105,7 @@ export function TrendChart({
                   strokeWidth={2}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  dot={false}
+                  dot={s.dots ? { r: 4, fill: color(i), stroke: theme.surface, strokeWidth: 2 } : false}
                   activeDot={{ r: 4, fill: color(i), stroke: theme.surface, strokeWidth: 2 }}
                   connectNulls
                   isAnimationActive={false}

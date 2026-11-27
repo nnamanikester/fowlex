@@ -71,7 +71,7 @@ export function Field({
   return (
     // A grid, so `action` sits on the label's line but comes after the control in tab order:
     // Tab from the field above lands in this input, not on "Forgot password?".
-    <div className={cn("grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1.5", className)}>
+    <div className={cn("grid grid-cols-[1fr_auto] content-start items-center gap-x-2 gap-y-1.5", className)}>
       <label htmlFor={id} className="col-start-1 row-start-1 text-sm font-semibold text-fg">
         {label}
       </label>

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { watchErrors } from "./helpers";
+import { E2E_BATCHES } from "./users";
 
 const PAGES = [
   ["Overview", "/"],
@@ -49,7 +50,9 @@ test.describe("desktop", () => {
   test("the sidebar shows every page and marks the current one", async ({ page }) => {
     await page.goto("/invoices");
     const sidebar = page.getByRole("complementary", { name: "Sidebar" });
-    for (const [label] of PAGES) await expect(sidebar.getByRole("link", { name: label, exact: true })).toBeVisible();
+    // A badge adds its count to the name ("Inventory, 2 need attention").
+    for (const [label] of PAGES)
+      await expect(sidebar.getByRole("link", { name: new RegExp(`^${label}(, \\d+ need attention)?$`) })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Invoices", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Fowlex Farms");
   });
@@ -72,14 +75,17 @@ test.describe("desktop", () => {
     await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
   });
 
-  test("the batch switcher changes batch and remembers it", async ({ page }) => {
+  test("the batch switcher lists the real batches, changes batch and remembers it", async ({ page }) => {
     const errors = watchErrors(page);
+    const [older] = E2E_BATCHES;
     await page.goto("/batches");
-    await page.getByRole("button", { name: "Batch: B-2026-07. Switch batch" }).click();
-    await page.getByRole("menuitem", { name: /B-2026-06/ }).click();
-    await expect(page.getByRole("button", { name: "Batch: B-2026-06. Switch batch" })).toBeVisible();
+    // The newest placement is chosen first; other tests may have placed newer ones, so open it as it is.
+    await page.getByRole("button", { name: /^Batch: B-\d{4}-\d{2}\. Switch batch$/ }).click();
+    await page.getByRole("menuitem", { name: new RegExp(older.code) }).click();
+    await expect(page.getByRole("button", { name: `Batch: ${older.code}. Switch batch` })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Sidebar" })).toContainText(`Day ${older.day}`);
     await page.reload();
-    await expect(page.getByRole("button", { name: "Batch: B-2026-06. Switch batch" })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Batch: ${older.code}. Switch batch` })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -95,7 +101,9 @@ test.describe("phone", () => {
     const tabs = page.getByRole("navigation", { name: "Tabs" });
     await expect(tabs).toBeVisible();
     for (const label of ["Overview", "Batches", "Daily log", "Inventory", "More"])
-      await expect(tabs.getByText(label, { exact: true })).toBeVisible();
+      await expect(
+        tabs.getByText(label, { exact: true }).or(tabs.getByRole("link", { name: new RegExp(`^${label},`) })),
+      ).toBeVisible();
 
     await tabs.getByRole("link", { name: "Daily log" }).click();
     await expect(page).toHaveURL("/log");

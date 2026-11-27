@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-import { type CurrentUser, getCurrentUser } from "./current-user";
+import { type CurrentUser, getSessionUser } from "./current-user";
 import { setActor, withAuditContext } from "@/lib/audit/context";
 import { can, type Permission, type Role } from "./permissions";
 
@@ -14,6 +14,8 @@ export class HttpError extends Error {
     message: string,
     /** The form field the problem is about, so the form can show it there. */
     readonly field?: string,
+    /** More for the client, e.g. the warnings to confirm. */
+    readonly details?: unknown,
   ) {
     super(message);
   }
@@ -21,7 +23,7 @@ export class HttpError extends Error {
 
 /** The signed-in person, or a 401. */
 export async function requireSession(): Promise<CurrentUser> {
-  const user = await getCurrentUser();
+  const user = await getSessionUser();
   if (!user) throw new HttpError(401, "unauthenticated", "Sign in first.");
   // Every change for the rest of this request is logged as theirs.
   setActor({ id: user.id, name: user.name });
@@ -55,7 +57,7 @@ export function apiRoute<Args extends unknown[]>(handler: (...args: Args) => Pro
       } catch (error) {
         if (error instanceof HttpError)
           return NextResponse.json(
-            { error: { code: error.code, message: error.message, field: error.field } },
+            { error: { code: error.code, message: error.message, field: error.field, details: error.details } },
             { status: error.status },
           );
         throw error;

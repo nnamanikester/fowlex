@@ -20,6 +20,7 @@ export const PERMISSIONS = [
   "inventory.read",
   "inventory.write",
   "supplier.read",
+  "supplier.write",
   // Sales
   "customer.read",
   "contract.read",
