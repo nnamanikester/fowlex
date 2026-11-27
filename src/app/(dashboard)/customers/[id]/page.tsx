@@ -10,6 +10,7 @@ import { OrdersList } from "../../sales/_components/orders-list";
 import { sellable } from "../../sales/_components/sellable";
 import { PageSkeleton, RequirePermission } from "../../_components/require-permission";
 import { requireUser } from "@/lib/auth/current-user";
+import { paystackMode } from "@/lib/paystack/client";
 import { can } from "@/lib/auth/permissions";
 import { listContracts, listTemplates } from "@/lib/contracts/service";
 import { getCustomer } from "@/lib/customers/service";
@@ -65,6 +66,7 @@ async function Customer({ params }: Pick<PageProps<"/customers/[id]">, "params">
           today={now}
           canWrite={can(user.role, "invoice.write")}
           canPay={can(user.role, "payment.write")}
+          simulated={paystackMode() === "simulated"}
           showCustomer={false}
         />
       )}
@@ -79,7 +81,7 @@ async function Customer({ params }: Pick<PageProps<"/customers/[id]">, "params">
           showCustomer={false}
         />
       )}
-      {seesContracts && (
+      {seesContracts && !customer.walkIn && (
         <ContractsList
           contracts={contracts}
           customers={customer.status === "active" ? [customer] : []}

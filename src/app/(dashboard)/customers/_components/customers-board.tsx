@@ -93,7 +93,9 @@ export function CustomersBoard({
                           {c.contactName && ` · ${c.contactName}`}
                         </span>
                       </span>
-                      {c.status === "archived" ? (
+                      {c.walkIn ? (
+                        <Badge tone="brand">No details needed</Badge>
+                      ) : c.status === "archived" ? (
                         <Badge>Archived</Badge>
                       ) : (
                         c.hasLogin && <Badge tone="info">Uses the portal</Badge>

@@ -30,6 +30,7 @@ export function InvoicesList({
   today,
   canWrite,
   canPay = false,
+  simulated = false,
   start,
   title = "Invoices",
   description,
@@ -44,6 +45,7 @@ export function InvoicesList({
   today: string;
   canWrite: boolean;
   canPay?: boolean;
+  simulated?: boolean;
   /** Open "New invoice" at once, for a customer and orders (from an order's "Make an invoice"). */
   start?: { customerId?: string; orderIds?: string[] };
   title?: string;
@@ -156,6 +158,7 @@ export function InvoicesList({
             invoice={open}
             canWrite={canWrite}
             canPay={canPay}
+            simulated={simulated}
             today={today}
             onClose={() => setOpen(null)}
             onSaved={done}

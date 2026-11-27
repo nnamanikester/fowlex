@@ -82,10 +82,11 @@ test("invite a customer to the portal: they set a password and see only their ow
   await expect(them.getByRole("link", { name: new RegExp(theirs.number) })).toHaveCount(0);
   await row.click();
   await expect(them.getByRole("heading", { name: new RegExp(mine.number) })).toBeVisible();
-  const pay = them.getByRole("button", { name: "Pay now" });
-  await expect(pay).toBeDisabled();
-  await pay.click({ force: true });
-  await expect(them.getByRole("tooltip")).toContainText("Paying online with Paystack is coming soon");
+  // Pay now: an account for this invoice, paid (with the simulator's test money) and marked so by itself.
+  await them.getByRole("button", { name: "Pay now by transfer" }).click();
+  await expect(them.getByText("Transfer exactly")).toBeVisible();
+  await them.getByRole("button", { name: "They've paid (test money)" }).click();
+  await expect(them.getByText("Paid", { exact: true })).toBeVisible({ timeout: 15_000 });
   const download = them.waitForEvent("download");
   await them.getByRole("link", { name: "PDF" }).click();
   expect((await download).suggestedFilename()).toBe(`Invoice ${mine.number}.pdf`);

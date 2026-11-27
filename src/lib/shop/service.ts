@@ -73,13 +73,13 @@ export async function updateShop(actor: CurrentUser, input: Record<string, unkno
   return shopSettings(actor.farmId);
 }
 
-type Sellable = { id: string; code: string; free: number; readyOn: string; weightGrams: number };
+export type Sellable = { id: string; code: string; free: number; readyOn: string; weightGrams: number };
 
 /**
  * The birds on offer: each batch growing or selling, its live birds less those already booked on
  * orders still to deliver, from the day it's ready (a week before its selling age), oldest first.
  */
-async function sellable(farmId: string, today: string): Promise<Sellable[]> {
+export async function sellable(farmId: string, today: string): Promise<Sellable[]> {
   const batches = (await listBatches(farmId, today)).filter(
     (b) => (b.phase === "active" || b.phase === "selling") && b.liveBirds > 0,
   );
@@ -316,7 +316,7 @@ function placedView(
 }
 
 /** The customer who ordered: the one with this phone or email, or a new one. */
-async function findOrAddCustomer(farmId: string, v: OnlineOrderInput & { phone: string }) {
+export async function findOrAddCustomer(farmId: string, v: OnlineOrderInput & { phone: string }) {
   const found = await CustomerModel.findOne({
     farmId,
     $or: [{ phone: v.phone }, ...(v.email ? [{ email: v.email }] : [])],

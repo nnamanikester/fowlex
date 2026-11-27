@@ -121,7 +121,7 @@ describe("the order page", () => {
       [young.id, 100],
     ]);
     expect(order.lines[0]).toMatchObject({ pricing: "perKg", priceKobo: 320_000, weightGrams: 0 });
-    const [customer] = await listCustomers(owner.farmId);
+    const [customer] = (await listCustomers(owner.farmId)).filter((c) => !c.walkIn);
     expect(customer).toMatchObject({
       name: "The Grill",
       contactName: "Chidi Okafor",
@@ -170,7 +170,7 @@ describe("the order page", () => {
     const [order] = await listOrders(owner.farmId);
     expect(order).toMatchObject({ customerId: grill.id, contract: { number: "CON-2026-0001" }, totalKobo: 9_000_000 });
     expect(order.notes).toBe("Deliver to: 12 Allen Avenue");
-    expect(await listCustomers(owner.farmId)).toHaveLength(1);
+    expect((await listCustomers(owner.farmId)).filter((c) => !c.walkIn)).toHaveLength(1);
   });
 
   it("refuses what can't be booked, in words a customer understands", async () => {

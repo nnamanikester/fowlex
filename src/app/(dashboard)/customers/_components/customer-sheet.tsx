@@ -94,7 +94,7 @@ export function CustomerSheet({
             <Button size="lg" fullWidth loading={action.isPending("save")} disabled={action.busy} onClick={save}>
               {customer ? "Save changes" : "Add customer"}
             </Button>
-            {customer && (
+            {customer && !customer.walkIn && (
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="ghost"

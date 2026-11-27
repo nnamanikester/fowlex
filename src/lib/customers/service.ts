@@ -23,12 +23,15 @@ export type CustomerView = CustomerInput & {
   hasLogin: boolean;
   /** An invite to the portal is waiting to be accepted. */
   invited: boolean;
+  /** The farm's account for buyers who give no details. */
+  walkIn: boolean;
 };
 
 /** As stored: every field has a default, so nothing is missing. */
 type Doc = CustomerInput & {
   _id: unknown;
   __v: number;
+  walkIn?: boolean;
   status: "active" | "archived";
   userId?: unknown;
 };
@@ -47,6 +50,7 @@ const view = (c: Doc, invited = new Set<string>()): CustomerView => ({
   status: c.status,
   hasLogin: !!c.userId,
   invited: !c.userId && invited.has(String(c._id)),
+  walkIn: !!c.walkIn,
 });
 
 /** Customers with a portal invite still waiting. */
@@ -58,14 +62,46 @@ async function waiting(farmId: string) {
   return new Set(invites.map((i) => String(i.customerId)));
 }
 
-/** The farm's customers: active first, A to Z. */
+export const WALK_IN_NAME = "Walk-in customers";
+
+/**
+ * The farm's account for buyers who give no name, phone or email: one-off buyers of a bird or
+ * two. Made the first time it's needed, so a sale or an invoice never waits for a customer.
+ */
+export async function walkInCustomer(farmId: string) {
+  await connectDb();
+  const found = await CustomerModel.findOne({ farmId, walkIn: true }).lean();
+  if (found) return found;
+  try {
+    return (
+      await CustomerModel.create({
+        farmId,
+        createdBy: null,
+        walkIn: true,
+        name: WALK_IN_NAME,
+        type: "individual",
+        termsDays: 0,
+        notes: "Everyone who buys without giving their details.",
+      })
+    ).toObject();
+  } catch (error) {
+    // Made by another request a moment ago.
+    if ((error as { code?: number }).code === 11000)
+      return (await CustomerModel.findOne({ farmId, walkIn: true }).lean())!;
+    throw error;
+  }
+}
+
+/** The farm's customers: walk-ins first, then active ones, A to Z. */
 export async function listCustomers(farmId: string): Promise<CustomerView[]> {
   await connectDb();
+  await walkInCustomer(farmId);
   const [docs, invited] = await Promise.all([
     CustomerModel.find({ farmId }).collation({ locale: "en" }).sort({ status: 1, name: 1 }).lean(),
     waiting(farmId),
   ]);
-  return docs.map((d) => view(d as unknown as Doc, invited));
+  const views = docs.map((d) => view(d as unknown as Doc, invited));
+  return [...views.filter((c) => c.walkIn), ...views.filter((c) => !c.walkIn)];
 }
 
 export async function getCustomer(farmId: string, id: string): Promise<CustomerView | null> {
@@ -124,6 +160,8 @@ async function load(actor: CurrentUser, id: string) {
   return doc;
 }
 
+const walkInStays = () => new HttpError(409, "walk_in", "Walk-in customers holds every sale without a name: it stays.");
+
 const stale = () => new HttpError(409, "stale", "Someone changed this customer while you were editing. Open it again.");
 
 /** Saves a customer's details from a form no older than the last save. */
@@ -145,6 +183,7 @@ export async function updateCustomer(actor: CurrentUser, id: string, input: Reco
 /** Archived customers leave the lists for new orders but keep their history; they can come back. */
 export async function setCustomerStatus(actor: CurrentUser, id: string, status: unknown) {
   const doc = await load(actor, id);
+  if (doc.walkIn) throw walkInStays();
   if (status !== "active" && status !== "archived")
     throw new HttpError(400, "invalid_customer", "Choose active or archived.", "status");
   if (status === "active") await assertUnique(actor.farmId, doc.name, doc._id);
@@ -156,6 +195,7 @@ export async function setCustomerStatus(actor: CurrentUser, id: string, status: 
 /** Removes a customer added by mistake (kept, hidden and audited). */
 export async function deleteCustomer(actor: CurrentUser, id: string) {
   const doc = await load(actor, id);
+  if (doc.walkIn) throw walkInStays();
   await doc.softDelete();
 }
 
@@ -166,6 +206,12 @@ export async function deleteCustomer(actor: CurrentUser, id: string) {
  */
 export async function inviteCustomer(actor: CurrentUser, id: string, origin: string) {
   const doc = await load(actor, id);
+  if (doc.walkIn)
+    throw new HttpError(
+      409,
+      "walk_in",
+      "Walk-in customers is for buyers who give no details: there's no one to invite.",
+    );
   if (doc.status !== "active") throw new HttpError(409, "archived", `${doc.name} is archived: bring them back first.`);
   if (doc.userId) throw new HttpError(409, "has_login", `${doc.name} already uses the portal.`);
   if (!doc.email)

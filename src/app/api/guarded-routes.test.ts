@@ -100,6 +100,12 @@ import { GET as portalStatement } from "./portal/statement/route";
 import { POST as placePublicOrder } from "./public/shop/[slug]/orders/route";
 import { GET as publicOffer } from "./public/shop/[slug]/route";
 import { GET as getShop, PATCH as updateShopRoute } from "./shop/route";
+import { GET as checkCollectionRoute } from "./collections/[id]/route";
+import { POST as devPay } from "./dev/paystack/pay/route";
+import { POST as collectInvoice } from "./invoices/[id]/collect/route";
+import { GET as portalCollection } from "./portal/collections/[id]/route";
+import { POST as portalCollect } from "./portal/invoices/[id]/collect/route";
+import { POST as quickSaleRoute } from "./sales/quick/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1142,7 +1148,11 @@ describe("customer routes", () => {
     const created = await createCustomer(req("POST", "/api/customers", { name: "Grill", type: "lounge" }));
     expect(created.status).toBe(201);
     const c = await created.json();
-    expect((await (await listCustomers()).json()).map((x: { id: string }) => x.id)).toEqual([c.id]);
+    expect(
+      (await (await listCustomers()).json())
+        .filter((x: { walkIn: boolean }) => !x.walkIn)
+        .map((x: { id: string }) => x.id),
+    ).toEqual([c.id]);
     expect((await (await getCustomer(req("GET", "/x"), ctx(c.id))).json()).name).toBe("Grill");
     expect((await getCustomer(req("GET", "/x"), ctx("nope"))).status).toBe(404);
     const saved = await updateCustomer(
@@ -1487,5 +1497,73 @@ describe("order page routes", () => {
     await signInAs("staff");
     expect((await getShop()).status).toBe(403);
     expect((await updateShopRoute(req("PATCH", "/x", {}))).status).toBe(403);
+  });
+});
+
+describe("selling now and transfer accounts", () => {
+  it("sells to a walk-in, gives an account, and it's paid when the simulator's buyer pays; customers pay their own", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    await signInAs("owner");
+    const owner = session.user!;
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    await createBatch(
+      req("POST", "/api/batches", {
+        houseId: house.id,
+        placedOn: new Date(Date.parse(today) - 40 * 86_400_000).toISOString().slice(0, 10),
+        breed: "Ross 308",
+        delivered: 50,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      }),
+    );
+    const sold = await quickSaleRoute(
+      req("POST", "/x", { birds: 1, pricing: "perBird", priceKobo: 700_000, paidBy: "transfer" }),
+    );
+    expect(sold.status).toBe(201);
+    const { invoice, collection } = await sold.json();
+    expect(invoice.customerName).toBe("Walk-in customers");
+    expect((await quickSaleRoute(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    const again = await (await collectInvoice(req("POST", "/x"), ctx(invoice.id))).json();
+    expect(again.id).toBe(collection.id);
+    expect(await (await devPay(req("POST", "/x", { reference: collection.reference }))).json()).toEqual({ paid: true });
+    expect((await (await checkCollectionRoute(req("GET", "/x"), ctx(collection.id))).json()).status).toBe("paid");
+
+    // A customer in the portal pays their own invoice; another's is refused.
+    const mine = await (
+      await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge", email: "g@f.com" }))
+    ).json();
+    const sale = await (
+      await quickSaleRoute(
+        req("POST", "/x", {
+          birds: 1,
+          pricing: "perBird",
+          priceKobo: 700_000,
+          paidBy: "later",
+          phone: "0803 111 2222",
+          email: "g@f.com",
+        }),
+      )
+    ).json();
+    expect(sale.invoice.customerId).toBe(mine.id);
+    const buyer = await UserModel.create({ farmId: owner.farmId, email: "g@f.com", name: "Grill", role: "customer" });
+    const { CustomerModel } = await import("@/models/customer");
+    await CustomerModel.updateOne({ _id: mine.id }, { $set: { userId: buyer._id } });
+    session.user = { id: String(buyer._id), farmId: owner.farmId, name: "Grill", email: "g@f.com", role: "customer" };
+    const theirs = await (await portalCollect(req("POST", "/x"), ctx(sale.invoice.id))).json();
+    expect(theirs.status).toBe("waiting");
+    expect((await (await portalCollection(req("GET", "/x"), ctx(theirs.id))).json()).id).toBe(theirs.id);
+    expect((await portalCollect(req("POST", "/x"), ctx(invoice.id))).status).toBe(404);
+    expect((await portalCollection(req("GET", "/x"), ctx(collection.id))).status).toBe(404);
+
+    session.user = { ...owner, role: "staff" };
+    expect((await quickSaleRoute(req("POST", "/x", {}))).status).toBe(403);
+    expect((await collectInvoice(req("POST", "/x"), ctx(invoice.id))).status).toBe(403);
+    vi.stubEnv("PAYSTACK_SIMULATE", "");
+    expect((await devPay(req("POST", "/x", {}))).status).toBe(404);
+    vi.unstubAllEnvs();
   });
 });

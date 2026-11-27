@@ -2,11 +2,12 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, CreditCard, FileDown } from "lucide-react";
+import { ChevronLeft, FileDown } from "lucide-react";
+
+import { PayNow } from "../../_components/pay-now";
 
 import { Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { buttonClasses } from "@/components/ui/button-classes";
 import { HttpError } from "@/lib/auth/guard";
 import { requireUser } from "@/lib/auth/current-user";
@@ -17,6 +18,7 @@ import { formatNaira } from "@/lib/money";
 import { requestToday } from "@/lib/page-data";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments/rules";
 import { portalInvoice } from "@/lib/portal/service";
+import { paystackMode } from "@/lib/paystack/client";
 import { readSettings } from "@/lib/settings/service";
 
 export const metadata: Metadata = { title: "Invoice" };
@@ -78,17 +80,10 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
         </p>
         {owed && (
           <>
-            <Button
-              fullWidth
-              size="lg"
-              disabled
-              reason="Paying online with Paystack is coming soon. For now, pay by transfer."
-            >
-              <CreditCard /> Pay now
-            </Button>
+            <PayNow invoiceId={i.id} simulated={paystackMode() === "simulated"} />
             {settings.bankName && settings.accountNumber && (
               <p className="text-sm text-fg">
-                Transfer to <strong>{settings.accountName || settings.businessName}</strong>, {settings.bankName}{" "}
+                Or transfer to <strong>{settings.accountName || settings.businessName}</strong>, {settings.bankName}{" "}
                 <strong className="num">{settings.accountNumber}</strong>, with <strong>{i.number}</strong> as the
                 reference.
               </p>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Ban, FileDown, HandCoins, Send } from "lucide-react";
+import { Ban, FileDown, HandCoins, Landmark, Send } from "lucide-react";
 
 import { PaymentSheet, PaymentsList } from "./payments-panel";
 
@@ -19,6 +19,8 @@ import { formatRange } from "@/lib/dates";
 import { INVOICE_STATUS_LABELS, INVOICE_TONE } from "@/lib/invoices/rules";
 import type { InvoiceView } from "@/lib/invoices/service";
 import { formatNaira } from "@/lib/money";
+import type { CollectionView } from "@/lib/collections/service";
+import { TransferAccount } from "@/components/payments/transfer-account";
 import { useAction } from "@/lib/use-action";
 
 const day = (d: string) => formatRange({ from: d, to: d });
@@ -29,9 +31,12 @@ export function InvoiceSheet({
   canWrite,
   canPay,
   today,
+  simulated = false,
   onClose,
   onSaved,
 }: {
+  /** Paystack is simulated: transfer accounts can be paid from the screen, to try it. */
+  simulated?: boolean;
   invoice: InvoiceView;
   canWrite: boolean;
   /** Can record the customer's payments. */
@@ -46,6 +51,7 @@ export function InvoiceSheet({
   const [voiding, setVoiding] = React.useState(false);
   const [why, setWhy] = React.useState("");
   const [paying, setPaying] = React.useState(false);
+  const [account, setAccount] = React.useState<CollectionView | null>(null);
   const action = useAction();
   const draft = i.state === "draft";
   const changed = draft && (discount !== i.discountKobo || dueDate !== i.dueDate || notes !== i.notes);
@@ -66,9 +72,24 @@ export function InvoiceSheet({
           <div className="space-y-2">
             <ActionFeedback action={action} />
             {canPay && i.state !== "void" && i.balanceKobo > 0 && (
-              <Button size="lg" fullWidth disabled={action.busy} onClick={() => setPaying(true)}>
-                <HandCoins /> Record a payment
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="lg"
+                  loading={action.isPending("collect")}
+                  disabled={action.busy}
+                  onClick={() =>
+                    void action.run(() => apiRequest<CollectionView>(`/api/invoices/${i.id}/collect`, "POST"), {
+                      key: "collect",
+                      onSuccess: setAccount,
+                    })
+                  }
+                >
+                  <Landmark /> Pay by transfer
+                </Button>
+                <Button size="lg" variant="secondary" disabled={action.busy} onClick={() => setPaying(true)}>
+                  <HandCoins /> Record a payment
+                </Button>
+              </div>
             )}
             <div className="grid grid-cols-2 gap-2">
               <a
@@ -219,6 +240,33 @@ export function InvoiceSheet({
           {!draft && i.notes && <p className="text-sm text-fg-muted">{i.notes}</p>}
         </div>
       </Sheet>
+      {account && (
+        <Sheet
+          open
+          onClose={() => setAccount(null)}
+          title="Pay by transfer"
+          subtitle={`${i.number} · ${i.customerName}`}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-fg-muted">
+              Give them this account: it&apos;s for this invoice only, and it&apos;s marked paid by itself when the
+              money lands.
+            </p>
+            <TransferAccount
+              collection={account}
+              checkUrl={(id) => `/api/collections/${id}`}
+              simulated={simulated}
+              onPaid={(c) => onSaved(`Paid by transfer: ${formatNaira(c.amountKobo)} for ${c.invoiceNumber}.`)}
+              onNew={() =>
+                void action.run(() => apiRequest<CollectionView>(`/api/invoices/${i.id}/collect`, "POST"), {
+                  toastError: true,
+                  onSuccess: setAccount,
+                })
+              }
+            />
+          </div>
+        </Sheet>
+      )}
       {paying && <PaymentSheet invoice={i} today={today} onClose={() => setPaying(false)} onSaved={onSaved} />}
       <ConfirmDialog
         open={voiding}
