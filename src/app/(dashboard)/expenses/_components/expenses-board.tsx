@@ -6,6 +6,7 @@ import { Download, Plus, Receipt, Search, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { ExpenseSheet, PAYMENT_TONE } from "./expense-sheet";
+import { BudgetsPanel } from "./budget-bars";
 import { RepeatsPanel } from "./repeats-panel";
 import { type SpendDefaults, SpendSheet } from "./spend-sheet";
 import { EmptyState, Fab, Panel, StatCard } from "@/components/kit";
@@ -15,6 +16,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { formatRange } from "@/lib/dates";
 import { APPROVAL_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
 import { type CategoryView, categoryName } from "@/lib/expenses/categories";
+import { budgetRows } from "@/lib/expenses/budget";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { RecurringView } from "@/lib/recurring/service";
 import type { ItemView } from "@/lib/inventory/items";
@@ -135,6 +137,7 @@ export function ExpensesBoard({
         )}
       </div>
 
+      <BudgetsPanel rows={budgetRows(categories, expenses, month)} />
       <RepeatsPanel recurring={recurring} categories={categories} canWrite={props.canWrite} />
 
       {props.canApprove && waiting.length > 0 && (

@@ -14,6 +14,8 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { type CategoryView, SYSTEM_CATEGORIES, validateCategory } from "@/lib/expenses/categories";
+import { BudgetBar } from "../../_components/budget-bars";
+import { budgetRows } from "@/lib/expenses/budget";
 import type { ExpenseView } from "@/lib/expenses/service";
 import { formatNaira } from "@/lib/money";
 
@@ -33,9 +35,12 @@ export function CategoriesBoard({
   const [editing, setEditing] = React.useState<CategoryView | "new" | null>(null);
   const [showArchived, setShowArchived] = React.useState(false);
   const month = today.slice(0, 7);
+  // Approved spending only: waiting and rejected spending doesn't count.
   const spent = new Map<string, number>();
   for (const e of expenses)
-    if (e.date.slice(0, 7) === month) spent.set(e.category, (spent.get(e.category) ?? 0) + e.amountKobo);
+    if (e.approval === "approved" && e.date.slice(0, 7) === month)
+      spent.set(e.category, (spent.get(e.category) ?? 0) + e.amountKobo);
+  const budgets = new Map(budgetRows(categories, expenses, month).map((r) => [r.key, r]));
   const shown = categories.filter((c) => showArchived || !c.archived);
 
   return (
@@ -68,11 +73,18 @@ export function CategoriesBoard({
                         : `Budget ${formatNaira(c.monthlyBudgetKobo)} a month`}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
-                    <span className="block font-semibold text-fg">{formatNaira(spent.get(c.key) ?? 0)}</span>
-                    <span className="block text-xs text-fg-subtle">this month</span>
-                  </span>
+                  {!budgets.has(c.key) && (
+                    <span className="num shrink-0 text-right">
+                      <span className="block font-semibold text-fg">{formatNaira(spent.get(c.key) ?? 0)}</span>
+                      <span className="block text-xs text-fg-subtle">this month</span>
+                    </span>
+                  )}
                 </button>
+                {budgets.has(c.key) && (
+                  <div className="px-5 pb-3.5">
+                    <BudgetBar row={budgets.get(c.key)!} />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
