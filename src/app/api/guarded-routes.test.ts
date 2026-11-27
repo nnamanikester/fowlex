@@ -61,6 +61,11 @@ import { PATCH as updateMember } from "./users/[id]/route";
 import { POST as resend } from "./users/invites/[id]/resend/route";
 import { DELETE as revoke } from "./users/invites/[id]/route";
 import { POST as invite } from "./users/invites/route";
+import { GET as balance } from "./balance/route";
+import { POST as syncBalanceRoute } from "./balance/sync/route";
+import { POST as testMoney } from "./balance/test-money/route";
+import { PATCH as saveTopUpRoute } from "./balance/top-up/route";
+import { GET as balanceCron } from "./cron/balance/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1037,5 +1042,46 @@ describe("payslip routes", () => {
     await signInAs("staff");
     expect((await payslips(req("GET", `/api/payroll/${run.id}/payslips`), ctx(run.id))).status).toBe(403);
     expect((await emailPayslip(req("POST", "/x", {}), ctx(run.id))).status).toBe(403);
+  });
+});
+
+describe("Paystack balance routes", () => {
+  it("open the book, fund it with test money, keep the top-up account; staff can't, the cron needs its secret", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    await signInAs("owner");
+    expect((await (await syncBalanceRoute()).json()).opened).toBe(true);
+    const funded = await testMoney(req("POST", "/api/balance/test-money", { amountKobo: 500_000 }));
+    expect(funded.status).toBe(201);
+    expect((await funded.json()).summary.differenceKobo).toBe(0);
+    expect((await testMoney(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    const topUp = await saveTopUpRoute(
+      req("PATCH", "/api/balance/top-up", {
+        bankName: "Wema Bank",
+        accountNumber: "0123456789",
+        accountName: "Fowlex",
+      }),
+    );
+    expect(await topUp.json()).toEqual({ bankName: "Wema Bank", accountNumber: "0123456789", accountName: "Fowlex" });
+    expect((await saveTopUpRoute(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }))).status).toBe(400);
+    const book = await (await balance()).json();
+    expect(book.entries.map((e: { category: string }) => e.category)).toEqual(["funding", "opening"]);
+    expect(book.summary.topUp.accountNumber).toBe("0123456789");
+
+    await signInAs("staff");
+    expect((await balance()).status).toBe(403);
+    expect((await syncBalanceRoute()).status).toBe(403);
+    expect((await testMoney(req("POST", "/x", {}))).status).toBe(403);
+    await signInAs("manager");
+    expect((await saveTopUpRoute(req("PATCH", "/x", {}))).status).toBe(403);
+    expect((await balance()).status).toBe(200);
+
+    expect((await balanceCron(new Request(`${BASE}/api/cron/balance`))).status).toBe(401);
+    vi.stubEnv("CRON_SECRET", "s3cret");
+    const cron = await balanceCron(
+      new Request(`${BASE}/api/cron/balance`, { headers: { authorization: "Bearer s3cret" } }),
+    );
+    expect(await cron.json()).toEqual({ synced: 1 });
+    vi.unstubAllEnvs();
   });
 });

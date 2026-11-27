@@ -16,6 +16,8 @@ const schema = new Schema(
     amountKobo: { type: Number, required: true, min: 1 },
     reference: { type: String, required: true },
     transferCode: { type: String, default: null },
+    /** Paystack's id for the transfer: its balance ledger names transfers by it. */
+    transferId: { type: String, default: null },
     status: { type: String, enum: PAYOUT_STATUSES, default: "pending" },
     feeKobo: { type: Number, default: 0 },
     /** Who it went to, as it was when sent. */

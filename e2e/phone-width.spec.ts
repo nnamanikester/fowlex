@@ -36,6 +36,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/people/attendance",
     `/people/${(await person.json()).id}`,
     "/payroll",
+    "/balance",
     ...(run.ok() ? [`/payroll/${(await run.json()).id}`] : []),
   ]) {
     await page.goto(path);

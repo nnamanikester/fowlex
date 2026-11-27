@@ -9,7 +9,7 @@ export type PaystackResponse<T> = {
   status: boolean;
   message: string;
   data: T | null;
-  meta?: { next?: string | null };
+  meta?: { next?: string | null; page?: number; pageCount?: number; total?: number };
 };
 
 export type PaystackMode = "live" | "test" | "simulated" | "off";

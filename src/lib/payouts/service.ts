@@ -15,6 +15,7 @@ import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
 import { PayoutModel } from "@/models/payout";
 import { emailPayslip } from "@/lib/payroll/payslips";
+import { recordTransferSent, recordTransferUndone } from "@/lib/balance/service";
 
 export type PayoutView = {
   id: string;
@@ -192,10 +193,14 @@ export async function payExpense(actor: CurrentUser, expenseId: string) {
     // No answer: the transfer may or may not exist. Leave it pending to be checked.
     return view((await PayoutModel.findById(payout._id).lean()) as unknown as Doc);
   }
+  const transferId = res.data?.id === undefined || res.data?.id === null ? null : String(res.data.id);
   if (res.status && res.data?.status === "otp") {
+    await PayoutModel.updateOne({ reference }, { $set: { transferId } });
     await settle(reference, "otp", { transferCode: res.data.transfer_code ?? null });
   } else if (res.status) {
-    await PayoutModel.updateOne({ reference }, { $set: { transferCode: res.data?.transfer_code ?? null } });
+    await PayoutModel.updateOne({ reference }, { $set: { transferCode: res.data?.transfer_code ?? null, transferId } });
+    // Paystack took it: the money and fee leave the balance now.
+    await recordTransferSent(reference);
     await syncPayout(reference).catch(() => undefined);
   } else if (/reference already exists/i.test(res.message) || isProviderTrouble(res)) {
     await syncPayout(reference).catch(() => undefined);
@@ -233,6 +238,7 @@ export async function submitOtp(actor: CurrentUser, payoutId: string, otp: unkno
     throw new HttpError(400, "invalid_otp", res.message || "Paystack didn't accept that OTP.", "otp");
   }
   await settle(payout.reference, "pending", {});
+  await recordTransferSent(payout.reference);
   await syncPayout(payout.reference).catch(() => undefined);
   return view((await PayoutModel.findById(payout._id).lean()) as unknown as Doc);
 }
@@ -254,6 +260,8 @@ export async function syncPayout(reference: string) {
       });
     return view((await PayoutModel.findOne({ reference }).lean()) as unknown as Doc);
   }
+  if (found.transferId && !payout.transferId)
+    await PayoutModel.updateOne({ reference }, { $set: { transferId: found.transferId } });
   if (found.status === "success")
     await settle(reference, "success", { feeKobo: found.feeKobo, transferCode: found.transferCode });
   else if (found.status === "failed" || found.status === "abandoned" || found.status === "rejected")
@@ -336,6 +344,8 @@ export async function settle(
       { session },
     );
   });
+  // The book follows: a failed transfer's money never left; a returned one came back.
+  if (status === "failed" || status === "reversed") await recordTransferUndone(reference, status);
   // Someone's pay landed: their payslip goes to them.
   if (paidExpense) await emailPayslip(paidExpense).catch((error) => console.error("[payslip email]", error));
 }

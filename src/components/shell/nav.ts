@@ -5,6 +5,7 @@ import {
   FileSignature,
   HandCoins,
   House,
+  Landmark,
   ReceiptText,
   Settings,
   ShoppingCart,
@@ -130,6 +131,14 @@ export const NAV: NavGroup[] = [
         permission: "expense.read",
         key: "e",
         keywords: "spend costs receipts transport fuel approvals budget",
+      },
+      {
+        href: "/balance",
+        label: "Paystack balance",
+        icon: Landmark,
+        permission: "finance.read",
+        key: "k",
+        keywords: "paystack balance fund top up ledger transfers fees reconcile",
       },
       {
         href: "/reports",

@@ -14,6 +14,7 @@ const PAGES = [
   ["Sales", "/sales"],
   ["Invoices", "/invoices"],
   ["Expenses", "/expenses"],
+  ["Paystack balance", "/balance"],
   ["Reports", "/reports"],
   ["Forecasts", "/forecasts"],
   ["People", "/people"],

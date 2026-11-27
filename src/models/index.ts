@@ -2,6 +2,7 @@ import { AdvanceModel } from "./advance";
 import { AssetModel } from "./asset";
 import { AttendanceModel } from "./attendance";
 import { AuditLogModel } from "./audit-log";
+import { BalanceEntryModel } from "./balance-entry";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { DailyLogModel } from "./daily-log";
@@ -14,6 +15,7 @@ import { HouseModel } from "./house";
 import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
+import { PaystackAccountModel } from "./paystack-account";
 import { PayoutModel } from "./payout";
 import { PayrollRunModel } from "./payroll-run";
 import { RecurringExpenseModel } from "./recurring-expense";
@@ -29,6 +31,7 @@ export const ALL_MODELS = [
   AssetModel,
   AttendanceModel,
   AuditLogModel,
+  BalanceEntryModel,
   BatchModel,
   CounterModel,
   DailyLogModel,
@@ -41,6 +44,7 @@ export const ALL_MODELS = [
   InventoryItemModel,
   InviteModel,
   PasswordResetModel,
+  PaystackAccountModel,
   PayoutModel,
   PayrollRunModel,
   RecurringExpenseModel,
