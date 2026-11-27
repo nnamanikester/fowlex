@@ -47,10 +47,15 @@ export type SpendProps = {
 };
 
 /** Opens the spend sheet, then the pay step when Paystack was chosen; and any expense's sheet. */
-export function useSpending(props: SpendProps) {
+export function useSpending(
+  props: SpendProps,
+  initial: { spend?: SpendDefaults | null; open?: ExpenseView | null } = {},
+) {
   const router = useRouter();
-  const [spending, setSpending] = React.useState<SpendDefaults | null>(null);
-  const [open, setOpen] = React.useState<{ expense: ExpenseView; pay: boolean } | null>(null);
+  const [spending, setSpending] = React.useState<SpendDefaults | null>(initial.spend ?? null);
+  const [open, setOpen] = React.useState<{ expense: ExpenseView; pay: boolean } | null>(
+    initial.open ? { expense: initial.open, pay: false } : null,
+  );
   const sheets = (
     <>
       {spending && (
@@ -90,14 +95,26 @@ export function useSpending(props: SpendProps) {
 export function ExpensesBoard({
   expenses,
   recurring = [],
+  openId,
+  spendForBatch,
   ...props
-}: SpendProps & { expenses: ExpenseView[]; recurring?: RecurringView[] }) {
+}: SpendProps & {
+  expenses: ExpenseView[];
+  recurring?: RecurringView[];
+  /** Opens this expense (a link from a batch or elsewhere). */
+  openId?: string;
+  /** Opens Spend money charged to this batch. */
+  spendForBatch?: string;
+}) {
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
   const [monthFilter, setMonthFilter] = React.useState("");
   const [categoryFilter, setCategoryFilter] = React.useState("");
   const { categories } = props;
-  const { spend, show, sheets } = useSpending(props);
+  const { spend, show, sheets } = useSpending(props, {
+    open: expenses.find((e) => e.id === openId) ?? null,
+    spend: spendForBatch ? { kind: "other", batchId: spendForBatch } : null,
+  });
   const month = props.today.slice(0, 7);
   // Only approved spending counts; rejected spending isn't owed.
   const counted = expenses.filter((e) => e.approval === "approved");

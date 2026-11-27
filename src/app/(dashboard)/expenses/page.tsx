@@ -12,7 +12,7 @@ import { loadBatches, loadCategories, loadExpenses, loadItems, loadRecurring, lo
 
 export const metadata: Metadata = { title: "Expenses" };
 
-export default function ExpensesPage() {
+export default function ExpensesPage({ searchParams }: PageProps<"/expenses">) {
   return (
     <RequirePermission permission="expense.read">
       <PageHeader
@@ -21,13 +21,15 @@ export default function ExpensesPage() {
       />
       <ExpensesTabs current="expenses" />
       <Suspense fallback={<PageSkeleton />}>
-        <Expenses />
+        <Expenses searchParams={searchParams} />
       </Suspense>
     </RequirePermission>
   );
 }
 
-async function Expenses() {
+async function Expenses({ searchParams }: Pick<PageProps<"/expenses">, "searchParams">) {
+  const params = await searchParams;
+  const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
   const user = await requireUser();
   const [expenses, suppliers, items, batches, categories, recurring] = await Promise.all([
     loadExpenses(user.farmId),
@@ -41,6 +43,8 @@ async function Expenses() {
     <ExpensesBoard
       expenses={expenses}
       recurring={recurring}
+      openId={one(params.open)}
+      spendForBatch={one(params.spend) ? (one(params.batch) ?? "") : undefined}
       categories={categories}
       suppliers={suppliers}
       items={items}

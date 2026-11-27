@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadBatches, loadHouses } from "@/lib/page-data";
+import { loadBatches, loadHouses, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Batches" };
 
@@ -24,7 +24,11 @@ export default function BatchesPage() {
 
 async function Batches() {
   const user = await requireUser();
-  const [batches, houses] = await Promise.all([loadBatches(user.farmId), loadHouses(user.farmId)]);
+  const [batches, houses, suppliers] = await Promise.all([
+    loadBatches(user.farmId),
+    loadHouses(user.farmId),
+    can(user.role, "supplier.read") ? loadSuppliers(user.farmId) : Promise.resolve([]),
+  ]);
   return (
     <BatchesBoard
       batches={batches}
@@ -32,6 +36,9 @@ async function Batches() {
       today={today()}
       canWrite={can(user.role, "batch.write")}
       canManageHouses={can(user.role, "settings.manage")}
+      hatcheries={suppliers
+        .filter((s) => !s.archived)
+        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks") }))}
     />
   );
 }

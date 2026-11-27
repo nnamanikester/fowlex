@@ -34,12 +34,14 @@ export function BatchesBoard({
   today,
   canWrite,
   canManageHouses,
+  hatcheries = [],
 }: {
   batches: BatchView[];
   houses: HouseView[];
   today: string;
   canWrite: boolean;
   canManageHouses: boolean;
+  hatcheries?: { id: string; name: string; chicks: boolean }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,6 +136,7 @@ export function BatchesBoard({
         houses={houses}
         today={today}
         canManageHouses={canManageHouses}
+        hatcheries={hatcheries}
         onSaved={(batch) => {
           toast.success(`${batch.code} placed: ${n(batch.placed)} birds in ${batch.houseName}.`);
           router.replace(pathname, { scroll: false });

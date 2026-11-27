@@ -7,7 +7,15 @@ import { PageSkeleton, RequirePermission } from "../../_components/require-permi
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadBatch, loadHealth, loadHouses, loadLogs } from "@/lib/page-data";
+import {
+  loadBatch,
+  loadBatchCosts,
+  loadCategories,
+  loadHealth,
+  loadHouses,
+  loadLogs,
+  loadSuppliers,
+} from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Batch" };
 
@@ -26,11 +34,15 @@ const TABS = ["overview", "logs", "health", "costs", "sales"] as const;
 async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
   const user = await requireUser();
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
-  const [batch, houses, logs, health] = await Promise.all([
+  const money = can(user.role, "expense.read");
+  const [batch, houses, logs, health, costs, categories, suppliers] = await Promise.all([
     loadBatch(user.farmId, id),
     loadHouses(user.farmId),
     loadLogs(user.farmId, id),
     loadHealth(user.farmId, id),
+    money ? loadBatchCosts(user.farmId, id) : Promise.resolve(null),
+    money ? loadCategories(user.farmId) : Promise.resolve([]),
+    can(user.role, "supplier.read") ? loadSuppliers(user.farmId) : Promise.resolve([]),
   ]);
   if (!batch) notFound();
   return (
@@ -44,6 +56,12 @@ async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
       canWrite={can(user.role, "batch.write")}
       canLog={can(user.role, "log.write")}
       canManageHouses={can(user.role, "settings.manage")}
+      costs={costs}
+      categories={categories}
+      canSpend={can(user.role, "expense.write")}
+      hatcheries={suppliers
+        .filter((s) => !s.archived)
+        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks") }))}
     />
   );
 }

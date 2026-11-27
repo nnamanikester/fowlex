@@ -62,9 +62,12 @@ const schema = new Schema(
       type: new Schema({ url: { type: String, required: true }, name: { type: String, default: "" } }, { _id: false }),
       default: null,
     },
-    /** A cost Fowlex recorded itself, like the fee Paystack charged for a transfer. */
+    /**
+     * A cost Fowlex recorded itself: the fee Paystack charged for a transfer, or a batch's chicks
+     * (kept in step with the batch).
+     */
     source: {
-      kind: { type: String, enum: ["payout-fee", null], default: null },
+      kind: { type: String, enum: ["payout-fee", "batch", null], default: null },
       id: { type: Schema.Types.ObjectId, default: null },
     },
     clientRequestId: { type: String, default: null },
