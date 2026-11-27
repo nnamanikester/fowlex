@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadBatches, loadCategories, loadExpenses, loadItems, loadSuppliers } from "@/lib/page-data";
+import { loadBatches, loadCategories, loadExpenses, loadItems, loadRecurring, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Expenses" };
 
@@ -29,16 +29,18 @@ export default function ExpensesPage() {
 
 async function Expenses() {
   const user = await requireUser();
-  const [expenses, suppliers, items, batches, categories] = await Promise.all([
+  const [expenses, suppliers, items, batches, categories, recurring] = await Promise.all([
     loadExpenses(user.farmId),
     loadSuppliers(user.farmId),
     loadItems(user.farmId),
     loadBatches(user.farmId),
     loadCategories(user.farmId),
+    loadRecurring(user.farmId),
   ]);
   return (
     <ExpensesBoard
       expenses={expenses}
+      recurring={recurring}
       categories={categories}
       suppliers={suppliers}
       items={items}

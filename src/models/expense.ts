@@ -68,6 +68,9 @@ const schema = new Schema(
       id: { type: Schema.Types.ObjectId, default: null },
     },
     clientRequestId: { type: String, default: null },
+    /** Made from a monthly repeat, for this month ("2027-01"): each month is made once. */
+    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringExpense", default: null },
+    period: { type: String, default: null },
   },
   { optimisticConcurrency: true },
 );
@@ -77,6 +80,10 @@ schema.plugin(basePlugin, {
 });
 schema.index({ farmId: 1, number: 1 }, { unique: true });
 schema.index({ farmId: 1, date: -1 });
+schema.index(
+  { recurringId: 1, period: 1 },
+  { unique: true, partialFilterExpression: { recurringId: { $type: "objectId" }, deletedAt: null } },
+);
 schema.index({ farmId: 1, supplierId: 1 });
 schema.index(
   { farmId: 1, clientRequestId: 1 },

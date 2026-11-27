@@ -29,6 +29,7 @@ import {
 import { formatNaira } from "@/lib/money";
 import { type BankAccount, maskAccount } from "@/lib/suppliers/rules";
 import type { SupplierView } from "@/lib/suppliers/service";
+import { ordinal } from "@/lib/recurring/rules";
 import { uploadReceipt } from "@/lib/upload-client";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +107,7 @@ export function SpendSheet({
   const [notes, setNotes] = React.useState("");
   // Equipment bought outright can be tracked and its cost spread over its life.
   const [track, setTrack] = React.useState(true);
+  const [repeat, setRepeat] = React.useState(false);
   const [assetKind, setAssetKind] = React.useState<AssetKind>("generator");
   const [life, setLife] = React.useState(String(DEFAULT_LIFE.generator));
   const [busy, setBusy] = React.useState(false);
@@ -161,6 +163,7 @@ export function SpendSheet({
     }
     const body: Partial<ExpenseInput> & {
       requestId: string;
+      repeat?: boolean;
       saveSupplier?: boolean;
       asset?: Record<string, unknown>;
     } = {
@@ -182,6 +185,7 @@ export function SpendSheet({
         }),
       payeeBank: askBank && bank ? { bankCode: bank.bankCode, accountNumber: bank.accountNumber } : null,
       saveSupplier: askBank && !!bank && saveSupplier,
+      repeat: kind === "other" && category !== "equipment" && repeat,
     };
     if (kind === "stock" && !parsed.length) {
       setFailure({ status: 400, code: "invalid", message: "Add what was bought.", field: "lines.0" });
@@ -416,6 +420,24 @@ export function SpendSheet({
               </Field>
             </div>
           </>
+        )}
+
+        {kind === "other" && category !== "equipment" && (
+          <label className="flex items-start gap-3 rounded-xl border border-line p-4 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-5 accent-[rgb(var(--brand))]"
+              checked={repeat}
+              onChange={(e) => setRepeat(e.target.checked)}
+            />
+            <span>
+              <span className="block font-semibold text-fg">Repeats every month</span>
+              <span className="text-fg-muted">
+                Rent, security, internet: made again on the {ordinal(Number(date.slice(8, 10)))} of each month, waiting
+                for an owner to approve it.
+              </span>
+            </span>
+          </label>
         )}
 
         {kind === "other" && category === "equipment" && (

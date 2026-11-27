@@ -14,6 +14,7 @@ import {
 } from "./rules";
 import { checkAssetFromExpense, createAssetFromExpense } from "@/lib/assets/service";
 import { assertCategory } from "./categories-service";
+import { repeatMonthly } from "@/lib/recurring/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
@@ -394,6 +395,8 @@ export async function createExpense(
           { session, ordered: true },
         );
       if (asset) await createAssetFromExpense(session, actor, asset, expense._id);
+      // Rent, security, internet: made again each month from now on.
+      if (input.repeat === true && !values.lines.length) await repeatMonthly(session, actor, expense);
       return expense;
     });
     const expense = view(doc.toObject() as unknown as Doc);
