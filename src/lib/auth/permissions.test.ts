@@ -26,6 +26,7 @@ const EXPECTED: Record<(typeof PERMISSIONS)[number], string[]> = {
   "expense.approve": [O],
   "finance.read": [O, M],
   "people.read": [O, M],
+  "people.write": [O, M],
   "payroll.read": [O, M],
   "payroll.run": [O],
   "payout.send": [O],

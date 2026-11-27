@@ -33,6 +33,7 @@ export const PERMISSIONS = [
   "finance.read",
   // Team
   "people.read",
+  "people.write",
   "payroll.read",
   "payroll.run",
   "payout.send",

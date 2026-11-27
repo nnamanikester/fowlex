@@ -15,6 +15,9 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
       method: "cash",
     },
   });
+  await page.request.post("/api/employees", {
+    data: { name: "Oluwaseun Adebayo-Okonkwo Chukwuemeka", payType: "monthly", rateKobo: 999_999_999_00 },
+  });
   const width = page.viewportSize()!.width;
   for (const path of [
     "/",
@@ -25,6 +28,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/suppliers",
     "/batches",
     "/log",
+    "/people",
   ]) {
     await page.goto(path);
     await expect(page.getByRole("main")).toBeVisible();
