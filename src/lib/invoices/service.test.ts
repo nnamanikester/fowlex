@@ -283,6 +283,7 @@ describe("invoice rules", () => {
     expect(invoiceStatus({ ...i, paidKobo: 100 }, "2030-01-01")).toBe("paid");
     expect(invoiceStatus(i, "2026-11-28")).toBe("overdue");
     expect(invoiceStatus({ ...i, state: "draft" }, "2030-01-01")).toBe("draft");
+    expect(invoiceStatus({ ...i, state: "draft", paidKobo: 10 }, TODAY)).toBe("part-paid");
     expect(invoiceStatus({ ...i, state: "void" }, TODAY)).toBe("void");
     expect(invoiceTotals([{ amountKobo: 1000 }], 100, 750)).toEqual({
       subtotalKobo: 1000,

@@ -63,6 +63,7 @@ async function Customer({ params }: Pick<PageProps<"/customers/[id]">, "params">
           vatRateBps={settings.vatEnabled ? settings.vatRateBps : null}
           today={now}
           canWrite={can(user.role, "invoice.write")}
+          canPay={can(user.role, "payment.write")}
           showCustomer={false}
         />
       )}

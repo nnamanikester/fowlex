@@ -115,3 +115,53 @@ test("a draft invoice is checked, then voided: its orders can be billed again", 
   await expect(page.getByRole("dialog", { name: "New invoice" }).getByRole("checkbox")).toHaveCount(2);
   expect(errors).toEqual([]);
 });
+
+test("₦300,000 paid on a ₦500,000 invoice leaves it part paid with ₦200,000 left; the rest pays it", async ({
+  page,
+}, info) => {
+  const errors = watchErrors(page);
+  const { customer, orders } = await delivered(page, `pay ${info.project.name}`, 1);
+  // 10 birds at ₦8,500 plus a ₦415,000 charge on a second order: ₦500,000 in all.
+  const extra = await (
+    await page.request.post("/api/sales", {
+      data: {
+        customerId: customer.id,
+        deliveryDate: lagos(),
+        lines: [{ batchId: orders[0].lines[0].batchId, birds: 1, weightGrams: 0, priceKobo: 1, pricing: "perBird" }],
+        deliveryKobo: 41_499_999,
+      },
+    })
+  ).json();
+  await page.request.post(`/api/sales/${extra.id}/deliver`, { data: { version: extra.version } });
+  const invoice = await (
+    await page.request.post("/api/invoices", { data: { orderIds: [orders[0].id, extra.id] } })
+  ).json();
+  expect(invoice.totalKobo).toBe(50_000_000);
+
+  await page.goto("/invoices");
+  const main = page.getByRole("main");
+  const row = main.getByRole("listitem").filter({ hasText: invoice.number });
+  await row.getByRole("button").click();
+  const sheet = page.getByRole("dialog", { name: new RegExp(invoice.number) });
+  await sheet.getByRole("button", { name: "Record a payment" }).click();
+  const pay = page.getByRole("dialog", { name: "Record a payment" });
+  await expect(pay.getByLabel("Amount paid")).toHaveValue("500,000.00");
+  await pay.getByLabel("Amount paid").fill("300000");
+  await expect(pay.getByText("₦200,000.00 will be left to pay")).toBeVisible();
+  await pay.getByLabel("Reference").fill("GTB-77821");
+  await pay.getByRole("button", { name: "Record ₦300,000.00" }).click();
+  await expect(page.getByText(`₦300,000.00 recorded: ₦200,000.00 left on ${invoice.number}.`)).toBeVisible();
+  await expect(row).toContainText("Part paid");
+  await expect(row).toContainText("₦200,000.00");
+
+  await row.getByRole("button").click();
+  await expect(sheet.getByRole("listitem").filter({ hasText: "GTB-77821" })).toContainText("Bank transfer");
+  await expect(sheet.getByRole("button", { name: "Void it" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Record a payment" }).click();
+  await pay.getByRole("radio", { name: "Cash" }).click();
+  await pay.getByRole("button", { name: "Record ₦200,000.00" }).click();
+  await expect(page.getByText(`₦200,000.00 recorded: ${invoice.number} is paid in full.`)).toBeVisible();
+  await page.getByRole("radio", { name: "Paid", exact: true }).click();
+  await expect(row).toContainText("Paid");
+  expect(errors).toEqual([]);
+});

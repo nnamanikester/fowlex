@@ -48,6 +48,7 @@ async function Invoices({ searchParams }: Pick<PageProps<"/invoices">, "searchPa
       vatRateBps={settings.vatEnabled ? settings.vatRateBps : null}
       today={now}
       canWrite={canWrite}
+      canPay={can(user.role, "payment.write")}
       start={canWrite && forCustomer ? { customerId: forCustomer, orderIds: orders } : undefined}
       filters
       fab

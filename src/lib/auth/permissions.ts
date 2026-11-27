@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   "sales.write",
   "invoice.read",
   "invoice.write",
+  "payment.write",
   // Money
   "expense.read",
   "expense.write",
@@ -54,11 +55,12 @@ const STAFF: Permission[] = ["batch.read", "log.write", "inventory.read"];
 /** Every page's read permission: what anyone who needs the whole picture can open. */
 const READ_ALL = PERMISSIONS.filter((p) => p.endsWith(".read"));
 /**
- * Finance keeps the books: records and edits spending (expenses, categories, repeats) and sees
+ * Finance keeps the books: records and edits spending (expenses, categories, repeats) and the
+ * payments customers make, and sees
  * everything that makes or costs money (batches, stock, suppliers, sales, invoices, pay) without
  * changing it. Approving, paying out and approving payroll stay with the owners.
  */
-const FINANCE: Permission[] = [...READ_ALL, "expense.write"];
+const FINANCE: Permission[] = [...READ_ALL, "expense.write", "payment.write"];
 /**
  * Sales runs customers, contracts, sales and invoices, and sees the birds and stock there are to
  * sell. No costs, pay or the farm's books.
@@ -72,6 +74,7 @@ const SALES: Permission[] = [
   "sales.write",
   "invoice.read",
   "invoice.write",
+  "payment.write",
   "batch.read",
   "inventory.read",
 ];
