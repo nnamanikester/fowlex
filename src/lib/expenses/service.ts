@@ -3,6 +3,7 @@ import "server-only";
 import { Types } from "mongoose";
 
 import {
+  type Approval,
   CATEGORY_FOR_ITEM,
   describeLines,
   type ExpenseCategory,
@@ -18,6 +19,10 @@ import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
+import { sendEmail } from "@/lib/email";
+import { formatNaira } from "@/lib/money";
+import { readSettings } from "@/lib/settings/service";
+import { UserModel } from "@/models/user";
 import { type Category, type ItemInput, nameKey, tidyName } from "@/lib/inventory/rules";
 import { AssetModel } from "@/models/asset";
 import { BatchModel } from "@/models/batch";
@@ -38,6 +43,9 @@ export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   amountKobo: number;
   paymentStatus: PaymentStatus;
   paidOn: string | null;
+  /** Only approved expenses count; a rejected one carries the owner's reason. */
+  approval: Approval;
+  approvalNote: string;
   /** Fowlex recorded it itself (a Paystack fee): it changes with its transfer, not by hand. */
   automatic: boolean;
   /** Equipment: counted as depreciation over its life. */
@@ -62,6 +70,8 @@ type Doc = {
   method: ExpenseInput["method"];
   paymentStatus: PaymentStatus;
   paidOn?: string | null;
+  approval?: Approval;
+  approvalNote?: string;
   notes?: string;
   receipt?: { url: string; name?: string } | null;
   source?: { kind?: string | null };
@@ -92,6 +102,8 @@ const view = (e: Doc): ExpenseView => ({
   method: e.method,
   paymentStatus: e.paymentStatus,
   paidOn: e.paidOn ?? null,
+  approval: e.approval ?? "approved",
+  approvalNote: e.approvalNote ?? "",
   notes: e.notes ?? "",
   receipt: e.receipt ? { url: e.receipt.url, name: e.receipt.name ?? "" } : null,
   automatic: !!e.source?.kind,
@@ -123,7 +135,8 @@ export async function supplierBalances(farmId: string) {
     sendingKobo: number;
     count: number;
   }>([
-    { $match: { farmId: new Types.ObjectId(farmId), supplierId: { $ne: null } } },
+    // A rejected expense isn't owed; one waiting for approval is (the goods came).
+    { $match: { farmId: new Types.ObjectId(farmId), supplierId: { $ne: null }, approval: { $ne: "rejected" } } },
     {
       $group: {
         _id: "$supplierId",
@@ -336,6 +349,9 @@ export async function createExpense(
       ? checkAssetFromExpense(input.asset, values, today)
       : null;
   const paid = ["cash", "transfer", "pos"].includes(values.method);
+  // Above the approval limit, a manager's spending waits for an owner before it counts.
+  const limit = (await readSettings(actor.farmId)).expenseApprovalLimitKobo;
+  const pending = !can(actor.role, "expense.approve") && values.amountKobo > limit;
   try {
     const doc = await withTransaction(async (session) => {
       const year = values.date.slice(0, 4);
@@ -352,6 +368,7 @@ export async function createExpense(
             payeeBank,
             number: `EXP-${year}-${String(seq).padStart(4, "0")}`,
             paymentStatus: paid ? "paid" : "unpaid",
+            approval: pending ? "pending" : "approved",
             paidOn: paid ? values.date : null,
             capital: !!asset,
             farmId: actor.farmId,
@@ -379,7 +396,9 @@ export async function createExpense(
       if (asset) await createAssetFromExpense(session, actor, asset, expense._id);
       return expense;
     });
-    return { expense: view(doc.toObject() as unknown as Doc), created: true };
+    const expense = view(doc.toObject() as unknown as Doc);
+    if (pending) await askOwners(actor, expense).catch(() => undefined);
+    return { expense, created: true };
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
       const again = await sent();
@@ -431,6 +450,8 @@ export async function markPaid(actor: CurrentUser, id: string, input: Record<str
   if (doc.paymentStatus === "paid") throw new HttpError(409, "paid", `${doc.number} is already paid.`);
   if (doc.paymentStatus === "paying" || doc.paymentStatus === "otp")
     throw new HttpError(409, "paying", "A Paystack transfer for this is on its way. Wait for it to land or fail.");
+  if (doc.approval === "rejected")
+    throw new HttpError(409, "rejected", `${doc.number} was rejected, so it isn't owed.`);
   const method = input.method;
   if (method !== "cash" && method !== "transfer" && method !== "pos")
     throw new HttpError(400, "invalid_expense", "Choose how it was paid.", "method");
@@ -466,4 +487,64 @@ export async function deleteExpense(actor: CurrentUser, id: string) {
     const assets = await AssetModel.find({ expenseId: doc._id }).session(session);
     for (const a of assets) await a.softDelete();
   });
+}
+
+/** Tells the owners an expense is waiting for their approval. */
+async function askOwners(actor: CurrentUser, expense: ExpenseView) {
+  const owners = await UserModel.find(
+    { farmId: actor.farmId, role: "owner", status: "active" },
+    { email: 1, name: 1 },
+  ).lean();
+  for (const owner of owners)
+    await sendEmail({
+      to: owner.email,
+      subject: `${actor.name} spent ${formatNaira(expense.amountKobo)}: approve it?`,
+      text: [
+        `Hi ${owner.name},`,
+        "",
+        `${actor.name} recorded ${expense.number}: ${expense.description} (${formatNaira(expense.amountKobo)}).`,
+        "It's above your approval limit, so it doesn't count until you approve it.",
+        "",
+        "Approve or reject it under Expenses in Fowlex.",
+      ].join("\n"),
+    });
+}
+
+/** An owner approves an expense waiting for approval: it counts from now. */
+export async function approveExpense(actor: CurrentUser, id: string) {
+  const doc = await load(actor, id);
+  if (doc.approval !== "pending") throw new HttpError(409, "not_pending", `${doc.number} isn't waiting for approval.`);
+  doc.set({ approval: "approved", approvalNote: "", decidedBy: actor.id, decidedAt: new Date() });
+  await doc.save();
+  return view(doc.toObject() as unknown as Doc);
+}
+
+/**
+ * An owner rejects an expense, with a reason: it doesn't count, isn't owed, can't be paid, and a
+ * purchase's stock and equipment come off again. To fix one, record it again.
+ */
+export async function rejectExpense(actor: CurrentUser, id: string, reason: unknown) {
+  const doc = await load(actor, id);
+  if (doc.approval !== "pending") throw new HttpError(409, "not_pending", `${doc.number} isn't waiting for approval.`);
+  const note = typeof reason === "string" ? reason.trim() : "";
+  if (!note || note.length > 300)
+    throw new HttpError(400, "invalid_reason", "Say why, so they can put it right (up to 300 characters).", "reason");
+  await withTransaction(async (session) => {
+    doc.$session(session);
+    doc.set({ approval: "rejected", approvalNote: note, decidedBy: actor.id, decidedAt: new Date() });
+    await doc.save();
+    const movements = await StockMovementModel.find({ "source.kind": "purchase", "source.id": doc._id }).session(
+      session,
+    );
+    for (const m of movements) await m.softDelete();
+    const assets = await AssetModel.find({ expenseId: doc._id }).session(session);
+    for (const a of assets) await a.softDelete();
+  });
+  return view(doc.toObject() as unknown as Doc);
+}
+
+/** How many expenses are waiting for an owner. */
+export async function pendingApprovals(farmId: string) {
+  await connectDb();
+  return ExpenseModel.countDocuments({ farmId, approval: "pending" });
 }

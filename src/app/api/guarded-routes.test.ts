@@ -13,7 +13,9 @@ import { GET as listAssets, POST as createAsset } from "./assets/route";
 import { GET as listBanks } from "./banks/route";
 import { PATCH as updateCategory } from "./expense-categories/[key]/route";
 import { GET as listCategories, POST as createCategory } from "./expense-categories/route";
+import { POST as approveExpense } from "./expenses/[id]/approve/route";
 import { POST as markPaid } from "./expenses/[id]/paid/route";
+import { POST as rejectExpense } from "./expenses/[id]/reject/route";
 import { GET as payPreview, POST as payExpense } from "./expenses/[id]/pay/route";
 import { GET as listPayouts } from "./expenses/[id]/payouts/route";
 import { DELETE as deleteExpense, PATCH as updateExpense } from "./expenses/[id]/route";
@@ -707,5 +709,34 @@ describe("expense category routes", () => {
     session.user = { ...owner, role: "manager" };
     expect((await listCategories()).status).toBe(200);
     expect((await createCategory(req("POST", "/api/expense-categories", { name: "X" }))).status).toBe(403);
+  });
+});
+
+describe("approval routes", () => {
+  it("only owners approve or reject", async () => {
+    const owner = await signInAs("owner");
+    session.user = { ...owner, role: "manager" };
+    const body = { category: "repairs", amountKobo: 25_000_000, description: "Pump", method: "later" };
+    const first = await (await createExpense(req("POST", "/api/expenses", body))).json();
+    const second = await (await createExpense(req("POST", "/api/expenses", body))).json();
+    expect(first.approval).toBe("pending");
+    expect((await approveExpense(req("POST", `/api/expenses/${first.id}/approve`), ctx(first.id))).status).toBe(403);
+    session.user = owner;
+    expect(
+      (await (await approveExpense(req("POST", `/api/expenses/${first.id}/approve`), ctx(first.id))).json()).approval,
+    ).toBe("approved");
+    expect(
+      (
+        await rejectExpense(
+          new Request(`${BASE}/api/expenses/${second.id}/reject`, { method: "POST", body: "{oops" }),
+          ctx(second.id),
+        )
+      ).status,
+    ).toBe(400);
+    const rejected = await rejectExpense(
+      req("POST", `/api/expenses/${second.id}/reject`, { reason: "Wrong price" }),
+      ctx(second.id),
+    );
+    expect((await rejected.json()).approval).toBe("rejected");
   });
 });

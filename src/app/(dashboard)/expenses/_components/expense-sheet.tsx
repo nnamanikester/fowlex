@@ -53,8 +53,10 @@ export function ExpenseSheet({
   canWrite,
   canPay,
   startPay = false,
+  canApprove = false,
   onClose,
 }: {
+  canApprove?: boolean;
   expense: ExpenseView;
   categories: CategoryView[];
   suppliers: SupplierView[];
@@ -71,6 +73,7 @@ export function ExpenseSheet({
   const [paying, setPaying] = React.useState(startPay);
   const [marking, setMarking] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [rejecting, setRejecting] = React.useState(false);
   const [notes, setNotes] = React.useState(expense.notes);
   const supplier = suppliers.find((s) => s.id === current.supplierId);
   const byId = new Map(items.map((i) => [i.id, i]));
@@ -97,7 +100,20 @@ export function ExpenseSheet({
     };
   }, [expense.id]);
 
-  const owed = current.paymentStatus === "unpaid" || current.paymentStatus === "failed";
+  // Waiting for approval: it can be approved, rejected or paid in cash, but not sent through Paystack.
+  const approved = current.approval === "approved";
+  const owed =
+    current.approval !== "rejected" && (current.paymentStatus === "unpaid" || current.paymentStatus === "failed");
+  const decide = async (path: "approve" | "reject", body?: unknown) => {
+    try {
+      setCurrent(await apiRequest<ExpenseView>(`/api/expenses/${current.id}/${path}`, "POST", body));
+      toast.success(path === "approve" ? `${current.number} approved.` : `${current.number} rejected.`);
+      setRejecting(false);
+      router.refresh();
+    } catch (e) {
+      toast.error((e as AuthError).message);
+    }
+  };
   const latest = payouts[0];
 
   return (
@@ -110,14 +126,28 @@ export function ExpenseSheet({
         footer={
           paying && canPay && owed ? undefined : (
             <div className="space-y-2">
-              {canPay && owed && (supplier?.bank || current.payeeBank) && (
+              {canApprove && current.approval === "pending" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button size="lg" onClick={() => void decide("approve")}>
+                    <CircleCheck /> Approve
+                  </Button>
+                  <Button size="lg" variant="secondary" onClick={() => setRejecting(true)}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+              {canPay && owed && approved && (supplier?.bank || current.payeeBank) && (
                 <Button size="lg" fullWidth onClick={() => setPaying(true)}>
                   <Send /> Pay {formatNaira(current.amountKobo)} with Paystack
                 </Button>
               )}
               {canWrite && owed && (
                 <Button
-                  variant={canPay && (supplier?.bank || current.payeeBank) ? "secondary" : "primary"}
+                  variant={
+                    (canPay && approved && (supplier?.bank || current.payeeBank)) || (canApprove && !approved)
+                      ? "secondary"
+                      : "primary"
+                  }
                   size="lg"
                   fullWidth
                   onClick={() => setMarking(true)}
@@ -177,6 +207,18 @@ export function ExpenseSheet({
             />
           ) : (
             <>
+              {current.approval === "pending" && (
+                <p className="rounded-xl border border-info-line bg-info-subtle px-3 py-2.5 text-sm text-fg">
+                  Above the approval limit: it doesn&apos;t count until an owner approves it
+                  {canPay ? ", and can't be sent through Paystack before then." : "."}
+                </p>
+              )}
+              {current.approval === "rejected" && (
+                <p className="rounded-xl border border-danger-line bg-danger-subtle px-3 py-2.5 text-sm text-fg">
+                  <strong>Rejected:</strong> {current.approvalNote} It doesn&apos;t count and isn&apos;t owed; record it
+                  again to put it right.
+                </p>
+              )}
               {latest && <TransferStatus payout={latest} canPay={canPay} onChange={refresh} />}
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -272,6 +314,13 @@ export function ExpenseSheet({
             toast.success(`${saved.number} marked paid.`);
             router.refresh();
           }}
+        />
+      )}
+      {rejecting && (
+        <RejectSheet
+          expense={current}
+          onClose={() => setRejecting(false)}
+          onReject={(reason) => decide("reject", { reason })}
         />
       )}
       <ConfirmDialog
@@ -580,5 +629,67 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-xs font-semibold text-fg-muted">{label}</dt>
       <dd className="text-fg">{value}</dd>
     </div>
+  );
+}
+
+/** Rejecting needs a reason, so the person who spent it can put it right. */
+function RejectSheet({
+  expense,
+  onClose,
+  onReject,
+}: {
+  expense: ExpenseView;
+  onClose: () => void;
+  onReject: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [tried, setTried] = React.useState(false);
+  return (
+    <Sheet
+      open
+      onClose={() => !busy && onClose()}
+      title={`Reject ${expense.number}?`}
+      subtitle={formatNaira(expense.amountKobo)}
+      footer={
+        <Button
+          size="lg"
+          variant="danger"
+          fullWidth
+          loading={busy}
+          onClick={async () => {
+            setTried(true);
+            if (!reason.trim()) return;
+            setBusy(true);
+            await onReject(reason);
+            setBusy(false);
+          }}
+        >
+          Reject
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-fg-muted">
+          It won&apos;t count or be owed{expense.lines.length ? ", and the stock it brought in comes off" : ""}.
+        </p>
+        <Field
+          id="reason"
+          label="Why"
+          error={tried && !reason.trim() ? "Say why, so they can put it right." : undefined}
+        >
+          {(a11y) => (
+            <Textarea
+              {...a11y}
+              rows={3}
+              maxLength={300}
+              placeholder="The price was ₦17,000 a bag, not ₦19,000."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          )}
+        </Field>
+      </div>
+    </Sheet>
   );
 }

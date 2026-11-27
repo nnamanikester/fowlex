@@ -68,6 +68,15 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   failed: "Transfer failed",
 };
 
+/** Whether an expense counts: approved, waiting for an owner (above the approval limit), or rejected. */
+export const APPROVALS = ["approved", "pending", "rejected"] as const;
+export type Approval = (typeof APPROVALS)[number];
+export const APPROVAL_LABELS: Record<Approval, string> = {
+  approved: "Approved",
+  pending: "Waiting for approval",
+  rejected: "Rejected",
+};
+
 export type Line = {
   itemId: string;
   quantity: number;
