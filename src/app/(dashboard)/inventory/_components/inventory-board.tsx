@@ -78,12 +78,21 @@ export function InventoryBoard({
           <EmptyState
             icon={<Boxes />}
             title="Nothing in stock yet"
-            description="Add the feed, drugs, litter and fuel you keep. Purchases add to them, and daily logs take feed off."
+            description="Buy what you need, or add the feed, drugs, litter and fuel you already keep. Daily logs take feed off."
             action={
-              canWrite ? (
-                <Button size="sm" onClick={() => setEditing(BLANK)}>
-                  <Plus /> Add an item
-                </Button>
+              spending || canWrite ? (
+                <div className="flex flex-wrap justify-center gap-2">
+                  {spending && (
+                    <Button size="sm" onClick={() => buying.spend({ kind: "stock" })}>
+                      <ShoppingCart /> Buy stock
+                    </Button>
+                  )}
+                  {canWrite && (
+                    <Button size="sm" variant="secondary" onClick={() => setEditing(BLANK)}>
+                      <Plus /> Add an item
+                    </Button>
+                  )}
+                </div>
               ) : undefined
             }
           />

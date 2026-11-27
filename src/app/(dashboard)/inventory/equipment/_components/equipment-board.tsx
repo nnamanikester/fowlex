@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Wrench } from "lucide-react";
+import { Plus, ShoppingCart, Trash2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
+import { type SpendProps, useSpending } from "../../../expenses/_components/expenses-board";
 import { Field, FormAlert } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Fab, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +35,20 @@ export const lifeLabel = (months: number) =>
   months % 12 === 0 ? `${months / 12} year${months === 12 ? "" : "s"}` : `${months} months`;
 
 /** The farm's equipment: what it cost, what it's worth now, and what it costs each month. */
-export function EquipmentBoard({ assets, today, canWrite }: { assets: AssetView[]; today: string; canWrite: boolean }) {
+export function EquipmentBoard({
+  assets,
+  today,
+  canWrite,
+  spending,
+}: {
+  assets: AssetView[];
+  today: string;
+  canWrite: boolean;
+  spending: SpendProps;
+}) {
   const router = useRouter();
+  const buying = useSpending(spending);
+  const buy = () => buying.spend({ kind: "other", category: "equipment" });
   const [editing, setEditing] = React.useState<AssetView | "new" | null>(null);
   const inUse = assets.filter((a) => a.status === "in-use");
   const saved = (message: string) => {
@@ -61,9 +74,14 @@ export function EquipmentBoard({ assets, today, canWrite }: { assets: AssetView[
         </div>
       )}
       {canWrite && (
-        <Button size="sm" className="hidden lg:inline-flex" onClick={() => setEditing("new")}>
-          <Plus /> Add equipment
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={buy}>
+            <ShoppingCart /> Buy equipment
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
+            <Plus /> Add what you already have
+          </Button>
+        </div>
       )}
       {assets.length ? (
         <Panel flush>
@@ -103,15 +121,21 @@ export function EquipmentBoard({ assets, today, canWrite }: { assets: AssetView[
             description="Generators, drinkers, feeders, brooders: their cost is spread over the years they last. Buy them through Spend money, or add what you already have."
             action={
               canWrite ? (
-                <Button size="sm" onClick={() => setEditing("new")}>
-                  <Plus /> Add equipment
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={buy}>
+                    <ShoppingCart /> Buy equipment
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
+                    <Plus /> Add what you already have
+                  </Button>
+                </div>
               ) : undefined
             }
           />
         </Panel>
       )}
-      {canWrite && <Fab label="Add equipment" icon={<Plus />} onClick={() => setEditing("new")} />}
+      {canWrite && <Fab label="Buy equipment" icon={<ShoppingCart />} onClick={buy} />}
+      {canWrite && buying.sheets}
       {editing && (
         <AssetSheet
           key={editing === "new" ? "new" : editing.id}

@@ -1,5 +1,5 @@
 // Safe for the browser: no model or database imports here.
-import type { Category as ItemCategory } from "@/lib/inventory/rules";
+import { type Category as ItemCategory, type ItemInput, validateItem } from "@/lib/inventory/rules";
 
 /** What money was spent on. Phase 4 adds budgets and approvals to these. */
 export const EXPENSE_CATEGORIES = [
@@ -68,7 +68,13 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   failed: "Transfer failed",
 };
 
-export type Line = { itemId: string; quantity: number; unitCostKobo: number };
+export type Line = {
+  itemId: string;
+  quantity: number;
+  unitCostKobo: number;
+  /** A stock item made with the purchase, instead of `itemId`: for buying something new. */
+  newItem?: ItemInput;
+};
 
 export type ExpenseInput = {
   date: string;
@@ -78,6 +84,8 @@ export type ExpenseInput = {
   supplierId: string | null;
   /** Who was paid when they aren't a saved supplier ("okada rider"). */
   payeeName: string;
+  /** Their bank account, to pay someone who isn't a saved supplier through Paystack. */
+  payeeBank: { bankCode: string; accountNumber: string; bankName?: string; accountName?: string } | null;
   batchId: string | null;
   /** Stock bought. Empty for an expense that isn't stock. */
   lines: Line[];
@@ -115,7 +123,10 @@ export function validateExpense(v: Partial<Record<keyof ExpenseInput, unknown>>,
   else if (lines.length > LIMITS.lines) errors.lines = `Use at most ${LIMITS.lines} lines; split it in two.`;
   else
     lines.forEach((l: Partial<Line>, i) => {
-      if (!l || typeof l.itemId !== "string" || !l.itemId) errors[`lines.${i}`] = "Choose the item.";
+      const fresh = l?.newItem && Object.values(validateItem(l.newItem))[0];
+      if (l?.newItem && fresh) errors[`lines.${i}`] = fresh;
+      else if (!l || (!l.newItem && (typeof l.itemId !== "string" || !l.itemId)))
+        errors[`lines.${i}`] = "Choose the item.";
       else if (typeof l.quantity !== "number" || !(l.quantity > 0) || l.quantity > LIMITS.quantity)
         errors[`lines.${i}`] = "Enter how many.";
       else if (!money(l.unitCostKobo)) errors[`lines.${i}`] = "Enter the price for one.";
@@ -125,7 +136,15 @@ export function validateExpense(v: Partial<Record<keyof ExpenseInput, unknown>>,
     if (!money(v.amountKobo) || v.amountKobo === 0) errors.amountKobo = "Enter how much was spent.";
     if (!errors.description && !(v.description as string).trim()) errors.description = "Say what it was for.";
   }
-  if (v.method === "paystack" && !v.supplierId) errors.supplierId = "Choose a supplier with a bank account to pay.";
+  const bank = v.payeeBank as ExpenseInput["payeeBank"] | undefined;
+  if (
+    bank !== null &&
+    bank !== undefined &&
+    (typeof bank !== "object" || !bank.bankCode || !/^\d{10}$/.test(String(bank.accountNumber)))
+  )
+    errors.payeeBank = "Check the bank account.";
+  if (v.method === "paystack" && !v.supplierId && !bank)
+    errors.payeeBank = "Enter the bank account to pay, or choose a supplier.";
   return errors;
 }
 
