@@ -24,9 +24,11 @@ type Member = Team["users"][number];
 const ROLE_HELP: Record<TeamRole, string> = {
   owner: "Everything, including payouts, approvals, payroll runs and settings.",
   manager: "Runs the farm day to day: batches, stock, sales, expenses and payroll drafts.",
+  finance: "Keeps the books: records expenses, and sees everything about money without changing it.",
+  sales: "Runs customers, contracts, sales and invoices, and sees the birds and stock to sell.",
   staff: "Logs the daily numbers and sees batches and stock. No money.",
 };
-const ROLE_ORDER: TeamRole[] = ["owner", "manager", "staff"];
+const ROLE_ORDER: TeamRole[] = ["owner", "manager", "finance", "sales", "staff"];
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const when = (iso: string | null) => (iso ? DATE.format(new Date(iso)) : "Never");

@@ -17,7 +17,7 @@ import { type UserDocument, UserModel } from "@/models/user";
 export const INVITE_DAYS = 7;
 
 /** Roles an owner can invite into the dashboard. Customers are invited from their customer page (6.7). */
-export const TEAM_ROLES = ["owner", "manager", "staff"] as const satisfies readonly Role[];
+export const TEAM_ROLES = ["owner", "manager", "finance", "sales", "staff"] as const satisfies readonly Role[];
 type TeamRole = (typeof TEAM_ROLES)[number];
 
 const isTeamRole = (role: unknown): role is TeamRole => TEAM_ROLES.includes(role as TeamRole);
