@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Receipt, Wallet } from "lucide-react";
+import { Download, Plus, Receipt, Search, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { ExpenseSheet, PAYMENT_TONE } from "./expense-sheet";
@@ -17,6 +17,10 @@ import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { formatNaira } from "@/lib/money";
+import { downloadCsv, toCsv } from "@/lib/csv";
+import { CSV_HEADER, expenseMonths, expenseRows, filterExpenses } from "@/lib/expenses/filter";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { SupplierView } from "@/lib/suppliers/service";
 
 type Filter = "all" | "owed" | "paid";
@@ -77,13 +81,23 @@ export function useSpending(props: SpendProps) {
 /** Every expense, newest first, with what's owed and spent this month. */
 export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: ExpenseView[] }) {
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [query, setQuery] = React.useState("");
+  const [monthFilter, setMonthFilter] = React.useState("");
+  const [categoryFilter, setCategoryFilter] = React.useState("");
   const { categories } = props;
   const { spend, show, sheets } = useSpending(props);
   const month = props.today.slice(0, 7);
   const owed = expenses.filter((e) => e.paymentStatus === "unpaid" || e.paymentStatus === "failed");
   const sending = expenses.filter((e) => e.paymentStatus === "paying" || e.paymentStatus === "otp");
-  const shown = expenses.filter(
-    (e) => filter === "all" || (filter === "paid" ? e.paymentStatus === "paid" : e.paymentStatus !== "paid"),
+  const lookups = {
+    categories,
+    suppliers: new Map(props.suppliers.map((s) => [s.id, s.name])),
+    batches: new Map((props.allBatches ?? props.batches).map((b) => [b.id, b.code])),
+  };
+  const shown = filterExpenses(
+    expenses,
+    { query, month: monthFilter, category: categoryFilter, status: filter },
+    lookups,
   );
   const suppliers = new Map(props.suppliers.map((s) => [s.id, s.name]));
   const sum = (list: ExpenseView[]) => list.reduce((n, e) => n + e.amountKobo, 0);
@@ -102,6 +116,57 @@ export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: E
         )}
       </div>
 
+      {expenses.length > 0 && (
+        <div className="space-y-2">
+          <label className="relative block">
+            <span className="sr-only">Search expenses</span>
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle"
+              aria-hidden
+            />
+            <Input
+              type="search"
+              placeholder="Search by what, who or number"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <Select
+              aria-label="Month"
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="sm:w-48"
+            >
+              <option value="">Every month</option>
+              {expenseMonths(expenses).map((m) => (
+                <option key={m} value={m}>
+                  {new Intl.DateTimeFormat("en-NG", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+                    new Date(`${m}-01T00:00:00Z`),
+                  )}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Category"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="sm:w-56"
+            >
+              <option value="">Every category</option>
+              {categories
+                .filter((c) => expenses.some((e) => e.category === c.key))
+                .map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.name}
+                  </option>
+                ))}
+            </Select>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented
           label="Show"
@@ -113,12 +178,33 @@ export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: E
             { value: "paid", label: "Paid" },
           ]}
         />
-        {props.canWrite && (
-          <Button size="sm" className="hidden lg:inline-flex" onClick={() => spend({})}>
-            <Plus /> Spend money
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {shown.length > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                downloadCsv(
+                  `fowlex-expenses-${monthFilter || props.today}.csv`,
+                  toCsv(CSV_HEADER, expenseRows(shown, lookups)),
+                )
+              }
+            >
+              <Download /> Export
+            </Button>
+          )}
+          {props.canWrite && (
+            <Button size="sm" className="hidden lg:inline-flex" onClick={() => spend({})}>
+              <Plus /> Spend money
+            </Button>
+          )}
+        </div>
       </div>
+      {shown.length > 0 && shown.length !== expenses.length && (
+        <p className="num text-sm text-fg-muted" aria-live="polite">
+          {shown.length} expense{shown.length === 1 ? "" : "s"} · {formatNaira(sum(shown))}
+        </p>
+      )}
 
       {shown.length ? (
         <Panel flush>
@@ -158,11 +244,19 @@ export function ExpensesBoard({ expenses, ...props }: SpendProps & { expenses: E
         <Panel>
           <EmptyState
             icon={filter === "owed" ? <Wallet /> : <Receipt />}
-            title={filter === "owed" ? "Nothing owed" : "No expenses yet"}
+            title={
+              expenses.length && (query || monthFilter || categoryFilter)
+                ? "No matching expenses"
+                : filter === "owed"
+                  ? "Nothing owed"
+                  : "No expenses yet"
+            }
             description={
-              filter === "owed"
-                ? "Every expense is paid."
-                : "Record stock you buy and every other cost, paid or owed. Receipts are optional."
+              expenses.length && (query || monthFilter || categoryFilter)
+                ? "Try other words, or every month and category."
+                : filter === "owed"
+                  ? "Every expense is paid."
+                  : "Record stock you buy and every other cost, paid or owed. Receipts are optional."
             }
             action={
               props.canWrite && filter !== "owed" ? (
