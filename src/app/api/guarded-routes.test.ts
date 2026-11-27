@@ -81,6 +81,11 @@ import { POST as deliverOrder } from "./sales/[id]/deliver/route";
 import { PATCH as updateOrder } from "./sales/[id]/route";
 import { GET as salesQuote } from "./sales/quote/route";
 import { GET as listOrders, POST as createOrder } from "./sales/route";
+import { GET as invoicePdf } from "./invoices/[id]/pdf/route";
+import { GET as getInvoice, PATCH as updateInvoice } from "./invoices/[id]/route";
+import { POST as sendInvoice } from "./invoices/[id]/send/route";
+import { POST as voidInvoice } from "./invoices/[id]/void/route";
+import { GET as listInvoices, POST as createInvoice } from "./invoices/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1257,5 +1262,65 @@ describe("sales order routes", () => {
     for (const r of [listOrders(req("GET", "/api/sales")), salesQuote(req("GET", "/api/sales/quote"))])
       expect((await r).status).toBe(403);
     expect((await deliverOrder(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
+  });
+});
+
+describe("invoice routes", () => {
+  it("bill a delivered order, change, send, download and void it; finance reads, staff can't", async () => {
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const placed = new Date(Date.parse(today) - 30 * 86_400_000).toISOString().slice(0, 10);
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: placed,
+          breed: "Ross 308",
+          delivered: 500,
+          pricePerChickKobo: 85_000,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    const customer = await (
+      await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge", email: "grill@f.com" }))
+    ).json();
+    const order = await (
+      await createOrder(
+        req("POST", "/x", {
+          customerId: customer.id,
+          deliveryDate: today,
+          lines: [{ batchId: batch.id, birds: 10, weightGrams: 0, priceKobo: 850_000, pricing: "perBird" }],
+        }),
+      )
+    ).json();
+    await deliverOrder(req("POST", "/x", { version: order.version }), ctx(order.id));
+    const made = await createInvoice(req("POST", "/x", { orderIds: [order.id] }));
+    expect(made.status).toBe(201);
+    const inv = await made.json();
+    expect((await (await getInvoice(req("GET", "/x"), ctx(inv.id))).json()).number).toBe(inv.number);
+    expect((await getInvoice(req("GET", "/x"), ctx("nope"))).status).toBe(404);
+    const changed = await (
+      await updateInvoice(req("PATCH", "/x", { discountKobo: 100, version: inv.version }), ctx(inv.id))
+    ).json();
+    expect(changed.totalKobo).toBe(8_499_900);
+    expect((await (await sendInvoice(req("POST", "/x"), ctx(inv.id))).json()).state).toBe("sent");
+    const pdf = await invoicePdf(req("GET", "/x"), ctx(inv.id));
+    expect(pdf.headers.get("Content-Type")).toBe("application/pdf");
+    expect((await (await voidInvoice(req("POST", "/x", { reason: "Mistake" }), ctx(inv.id))).json()).state).toBe(
+      "void",
+    );
+    expect(await (await listInvoices(req("GET", `/api/invoices?customerId=${customer.id}`))).json()).toHaveLength(1);
+    expect((await createInvoice(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+
+    await signInAs("finance");
+    expect((await listInvoices(req("GET", "/api/invoices"))).status).toBe(200);
+    expect((await createInvoice(req("POST", "/x", {}))).status).toBe(403);
+    await signInAs("staff");
+    expect((await listInvoices(req("GET", "/api/invoices"))).status).toBe(403);
+    expect((await invoicePdf(req("GET", "/x"), ctx("x"))).status).toBe(403);
   });
 });
