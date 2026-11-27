@@ -9,6 +9,7 @@ import { listHouses } from "@/lib/houses/service";
 import { listItems } from "@/lib/inventory/items";
 import { listMovements } from "@/lib/inventory/movements";
 import { listLogs } from "@/lib/logs/service";
+import { listSuppliers } from "@/lib/suppliers/service";
 import { listHealth } from "@/lib/health/service";
 import { readSettings } from "@/lib/settings/service";
 import { listTeam } from "@/lib/users/service";
@@ -94,6 +95,13 @@ async function movementsCached(farmId: string, itemId: string) {
 export const loadMovements = PRODUCTION
   ? movementsCached
   : (farmId: string, itemId: string) => listMovements(farmId, itemId);
+async function suppliersCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listSuppliers(farmId);
+}
+
+export const loadSuppliers = PRODUCTION ? suppliersCached : (farmId: string) => listSuppliers(farmId);
 export const loadItems = PRODUCTION ? itemsCached : (farmId: string) => listItems(farmId);
 export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;

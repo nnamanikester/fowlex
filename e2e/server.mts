@@ -66,6 +66,8 @@ const app = spawn(command[0], command.slice(1), {
     // isn't overridden by .env files.) Emails go to the outbox instead.
     RESEND_API_KEY: "",
     PAYSTACK_SECRET_KEY: "",
+    // Payments go to the built-in Paystack simulator, never Paystack.
+    PAYSTACK_SIMULATE: "1",
     BLOB_READ_WRITE_TOKEN: "",
     CRON_SECRET: "",
   },

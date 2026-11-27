@@ -10,6 +10,7 @@ import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
 import { SettingsModel } from "./settings";
 import { StockMovementModel } from "./stock-movement";
+import { SupplierModel } from "./supplier";
 import { UserModel } from "./user";
 
 /** Every model. A new model joins this list so its indexes are built at deploy time. */
@@ -26,6 +27,7 @@ export const ALL_MODELS = [
   PasswordResetModel,
   SettingsModel,
   StockMovementModel,
+  SupplierModel,
   UserModel,
 ];
 
