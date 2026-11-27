@@ -88,7 +88,12 @@ test("a batch's page: stats, tabs, selling, editing and deleting", async ({ page
   await page.getByRole("button", { name: `${seeded.code} actions` }).click();
   await page.getByRole("menuitem", { name: "Edit batch" }).click();
   const sheet = page.getByRole("dialog", { name: `Edit ${seeded.code}` });
-  await sheet.getByLabel("Hatchery").fill("Zartech");
+  // A picker once the farm has suppliers, else a name.
+  const hatchery = sheet.getByLabel("Hatchery", { exact: true });
+  if ((await hatchery.evaluate((e) => e.tagName)) === "SELECT") {
+    await hatchery.selectOption("__other");
+    await sheet.getByLabel("Hatchery's name").fill("Zartech");
+  } else await hatchery.fill("Zartech");
   await sheet.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(`${seeded.code} saved.`)).toBeVisible();
   await expect(main.getByText("Zartech")).toBeVisible();

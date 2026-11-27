@@ -53,7 +53,7 @@ describe("purchases", () => {
     );
     expect(created).toBe(true);
     expect(expense).toMatchObject({
-      number: "EXP-2026-0001",
+      number: "EXP-2026-0002", // 0001 is the batch's chicks
       category: "feed",
       description: "20 bags Starter feed, 4 sachets Amprolium",
       amountKobo: 36_000_000 + 600_000 + 500_000,
@@ -61,14 +61,14 @@ describe("purchases", () => {
       method: "later",
     });
     expect((await stockLevels(owner.farmId)).get(feed.id)).toMatchObject({ onHand: 20, avgCostKobo: 1_800_000 });
-    expect((await createExpense(owner, purchase(), {}, TODAY)).expense.number).toBe("EXP-2026-0002");
+    expect((await createExpense(owner, purchase(), {}, TODAY)).expense.number).toBe("EXP-2026-0003");
   });
 
   it("saves neither the expense nor the stock if either fails", async () => {
     const { owner, feed, purchase } = await moneyFarm();
     vi.spyOn(StockMovementModel, "create").mockRejectedValueOnce(new Error("disk full"));
     await expect(createExpense(owner, purchase(), {}, TODAY)).rejects.toThrow("disk full");
-    expect(await ExpenseModel.countDocuments({ farmId: owner.farmId })).toBe(0);
+    expect(await ExpenseModel.countDocuments({ farmId: owner.farmId, category: { $ne: "chicks" } })).toBe(0);
     expect((await stockLevels(owner.farmId)).get(feed.id)).toBeUndefined();
   });
 
@@ -97,7 +97,7 @@ describe("purchases", () => {
       createExpense(owner, purchase(), { requestId: "spend-0001-abcd" }, TODAY),
     ]);
     expect(a.expense.id).toBe(b.expense.id);
-    expect(await ExpenseModel.countDocuments({ farmId: owner.farmId })).toBe(1);
+    expect(await ExpenseModel.countDocuments({ farmId: owner.farmId, category: { $ne: "chicks" } })).toBe(1);
     expect(await StockMovementModel.countDocuments({ farmId: owner.farmId })).toBe(1);
   });
 });
@@ -302,7 +302,7 @@ describe("after saving", () => {
     const { expense } = await createExpense(owner, purchase(), {}, TODAY);
     await deleteExpense(owner, expense.id);
     expect((await stockLevels(owner.farmId)).get(feed.id)).toBeUndefined();
-    expect(await listExpenses(owner.farmId)).toEqual([]);
+    expect((await listExpenses(owner.farmId)).filter((e) => !e.fromBatch)).toEqual([]);
 
     const paid = (await createExpense(owner, purchase(), {}, TODAY)).expense;
     await PayoutModel.create({

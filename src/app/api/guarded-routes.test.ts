@@ -4,6 +4,7 @@ import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/rout
 import { POST as batchStatus } from "./batches/[id]/status/route";
 import { POST as createBatch } from "./batches/route";
 import { GET as outbox } from "./dev/outbox/route";
+import { POST as recordChicks } from "./batches/[id]/chicks/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
@@ -769,5 +770,45 @@ describe("repeat routes", () => {
     ).toBe(200);
     session.user = { ...manager, role: "staff" };
     expect((await listRecurring()).status).toBe(403);
+  });
+});
+
+describe("batch chicks route", () => {
+  it("records an older batch's chicks once; staff can't", async () => {
+    const owner = await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const batch = await (
+      await createBatch(
+        req("POST", "/api/batches", {
+          houseId: house.id,
+          placedOn: "2026-11-01",
+          breed: "Ross 308",
+          delivered: 100,
+          pricePerChickKobo: 0,
+          targetSellAgeDays: 42,
+          targetWeightGrams: 2200,
+          confirm: true,
+        }),
+      )
+    ).json();
+    // Free chicks: nothing recorded, so a price set later can be recorded by hand.
+    const { BatchModel } = await import("@/models/batch");
+    await BatchModel.updateOne({ _id: batch.id }, { pricePerChickKobo: 50_000 });
+    const recorded = await recordChicks(
+      req("POST", `/api/batches/${batch.id}/chicks`, { paidBy: "cash" }),
+      ctx(batch.id),
+    );
+    expect(recorded.status).toBe(201);
+    expect((await recorded.json()).chickExpense.paymentStatus).toBe("paid");
+    expect(
+      (
+        await recordChicks(
+          new Request(`${BASE}/api/batches/${batch.id}/chicks`, { method: "POST", body: "{oops" }),
+          ctx(batch.id),
+        )
+      ).status,
+    ).toBe(409);
+    session.user = { ...owner, role: "staff" };
+    expect((await recordChicks(req("POST", `/api/batches/${batch.id}/chicks`, {}), ctx(batch.id))).status).toBe(403);
   });
 });

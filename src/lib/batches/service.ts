@@ -18,6 +18,17 @@ import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { addDays, isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
+import {
+  assertChicksRemovable,
+  CHICK_PAYMENTS,
+  type ChickPayment,
+  chickExpenseOf,
+  chicksNeedApproval,
+  dropChicks,
+  recordChicks,
+  resolveHatchery,
+  syncChicks,
+} from "@/lib/expenses/chicks";
 import { type LogTotals, logTotals, NO_TOTALS } from "@/lib/logs/service";
 import { getSettings } from "@/lib/settings/service";
 import { BatchModel } from "@/models/batch";
@@ -44,6 +55,8 @@ export type BatchView = BatchInput & {
   ageDays: number;
   /** What the daily logs add up to. */
   totals: LogTotals;
+  /** The expense recording its chicks (from `getBatch` only; undefined in lists). */
+  chickExpense?: { id: string; number: string; paymentStatus: string; approval: string } | null;
 };
 
 type Doc = BatchInput & {
@@ -72,6 +85,7 @@ function view(b: Doc, houseName: string, today: string, totals: LogTotals = NO_T
     freeExtras: b.freeExtras,
     pricePerChickKobo: b.pricePerChickKobo,
     supplierName: b.supplierName ?? "",
+    supplierId: b.supplierId ? String(b.supplierId) : null,
     ageAtPlacementDays: b.ageAtPlacementDays,
     targetSellAgeDays: b.targetSellAgeDays,
     targetWeightGrams: b.targetWeightGrams,
@@ -113,11 +127,22 @@ export async function getBatch(farmId: string, id: string, today = lagosToday())
     .lean()
     .catch(() => null);
   if (!batch) return null;
-  const [house, totals] = await Promise.all([
+  const [house, totals, chicks] = await Promise.all([
     HouseModel.findById(batch.houseId, { name: 1 }).setOptions(WITH_DELETED).lean(),
     logTotals(farmId, [id]),
+    chickExpenseOf(batch._id).lean(),
   ]);
-  return view(batch as unknown as Doc, house?.name ?? "Unknown house", today, totals.get(id));
+  return {
+    ...view(batch as unknown as Doc, house?.name ?? "Unknown house", today, totals.get(id)),
+    chickExpense: chicks
+      ? {
+          id: String(chicks._id),
+          number: chicks.number,
+          paymentStatus: chicks.paymentStatus,
+          approval: chicks.approval,
+        }
+      : null,
+  };
 }
 
 /** The batches the shell's switcher offers: everything not closed. */
@@ -144,6 +169,7 @@ function clean(input: Record<string, unknown>, today: string): BatchInput {
     freeExtras: input.freeExtras ?? 0,
     pricePerChickKobo: input.pricePerChickKobo,
     supplierName: typeof input.supplierName === "string" ? input.supplierName.trim() : (input.supplierName ?? ""),
+    supplierId: input.supplierId === "" || input.supplierId === undefined ? null : input.supplierId,
     ageAtPlacementDays: input.ageAtPlacementDays ?? 0,
     targetSellAgeDays: input.targetSellAgeDays,
     targetWeightGrams: input.targetWeightGrams,
@@ -256,6 +282,12 @@ export async function createBatch(
 
   const warnings = await placementWarnings(actor.farmId, values, today);
   if (warnings.length && !confirm) throw needsConfirmation(warnings);
+  Object.assign(values, await resolveHatchery(actor.farmId, values));
+  // The chicks become an expense with the batch: paid already, or owed to the hatchery.
+  const paidBy = CHICK_PAYMENTS.includes(input.chicksPaidBy as ChickPayment)
+    ? (input.chicksPaidBy as ChickPayment)
+    : "later";
+  const pending = await chicksNeedApproval(actor, values);
 
   const year = Number(values.placedOn.slice(0, 4));
   try {
@@ -275,6 +307,7 @@ export async function createBatch(
         ],
         { session },
       );
+      await recordChicks(session, actor, doc, { paidBy, pending, today });
       return String(doc._id);
     });
     return { batch: (await getBatch(actor.farmId, batchId, today))!, created: true };
@@ -330,13 +363,33 @@ export async function updateBatch(
     const warnings = await placementWarnings(actor.farmId, values, today, id);
     if (warnings.length && !confirm) throw needsConfirmation(warnings);
   }
+  Object.assign(values, await resolveHatchery(actor.farmId, values));
   batch.set(values);
   try {
-    await batch.save();
+    // The chicks expense follows the batch: count, price, hatchery and day.
+    await withTransaction(async (session) => {
+      batch.$session(session);
+      await batch.save();
+      await syncChicks(session, batch, today);
+    });
   } catch (error) {
     if ((error as { name?: string }).name === "VersionError") throw stale();
     throw error;
   }
+  return (await getBatch(actor.farmId, id, today))!;
+}
+
+/**
+ * Records the chicks of a batch placed before Fowlex did it by itself, as an expense charged to it.
+ * Refused if it already has one.
+ */
+export async function recordBatchChicks(actor: CurrentUser, id: string, paidBy: unknown, today = lagosToday()) {
+  const batch = await load(actor, id);
+  if (await chickExpenseOf(batch._id))
+    throw new HttpError(409, "recorded", `${batch.code}'s chicks are already recorded.`);
+  const how = CHICK_PAYMENTS.includes(paidBy as ChickPayment) ? (paidBy as ChickPayment) : "later";
+  const pending = await chicksNeedApproval(actor, batch);
+  await withTransaction((session) => recordChicks(session, actor, batch, { paidBy: how, pending, today }));
   return (await getBatch(actor.farmId, id, today))!;
 }
 
@@ -363,7 +416,12 @@ export async function deleteBatch(actor: CurrentUser, id: string) {
       "has_logs",
       `${batch.code} has ${days} day${days === 1 ? "" : "s"} of logs. Delete those first, or close the batch instead.`,
     );
-  await batch.softDelete();
+  await assertChicksRemovable(batch._id, batch.code);
+  await withTransaction(async (session) => {
+    batch.$session(session);
+    await batch.softDelete();
+    await dropChicks(session, batch._id);
+  });
 }
 
 export type CloseTally = { placed: number; deaths: number; culls: number; sold: number; unaccounted: number };

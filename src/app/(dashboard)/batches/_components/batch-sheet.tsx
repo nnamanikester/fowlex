@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
@@ -57,6 +58,9 @@ const newRequestId = () =>
  * capacity, a resting house…) show inside the sheet to confirm. A retried submission carries the
  * same request id, so a double tap or a dropped connection never creates two batches.
  */
+/** The hatchery isn't a saved supplier: its name is typed in. */
+const OTHER = "__other";
+
 export function BatchSheet({
   open,
   onClose,
@@ -65,7 +69,10 @@ export function BatchSheet({
   today,
   batch,
   canManageHouses,
+  hatcheries = [],
 }: {
+  /** Saved suppliers to pick the hatchery from (chick sellers first). */
+  hatcheries?: { id: string; name: string; chicks: boolean }[];
   open: boolean;
   onClose: () => void;
   onSaved: (batch: BatchView, created: boolean) => void;
@@ -75,6 +82,9 @@ export function BatchSheet({
   canManageHouses: boolean;
 }) {
   const [requestId, setRequestId] = React.useState(newRequestId);
+  // How the chicks were paid for, recorded as an expense with a new batch.
+  const [paidBy, setPaidBy] = React.useState<"transfer" | "cash" | "pos" | "later">("transfer");
+  const [otherHatchery, setOtherHatchery] = React.useState(!batch?.supplierId && !!batch?.supplierName);
   const [warnings, setWarnings] = React.useState<PlacementWarning[] | null>(null);
   const [failure, setFailure] = React.useState<AuthError | null>(null);
 
@@ -100,6 +110,7 @@ export function BatchSheet({
         freeExtras: batch.freeExtras,
         pricePerChickKobo: batch.pricePerChickKobo,
         supplierName: batch.supplierName,
+        supplierId: batch.supplierId ?? null,
         ageAtPlacementDays: batch.ageAtPlacementDays,
         targetSellAgeDays: batch.targetSellAgeDays,
         targetWeightGrams: batch.targetWeightGrams,
@@ -114,6 +125,7 @@ export function BatchSheet({
         freeExtras: 0,
         pricePerChickKobo: Number.NaN,
         supplierName: "",
+        supplierId: null,
         ageAtPlacementDays: 0,
         targetSellAgeDays: DEFAULTS.targetSellAgeDays,
         targetWeightGrams: DEFAULTS.targetWeightGrams,
@@ -129,7 +141,7 @@ export function BatchSheet({
             version: batch.version,
             confirm,
           })
-        : await apiRequest<BatchView>("/api/batches", "POST", { ...values, confirm, requestId });
+        : await apiRequest<BatchView>("/api/batches", "POST", { ...values, confirm, requestId, chicksPaidBy: paidBy });
       setWarnings(null);
       onSaved(saved, !batch);
     } catch (e) {
@@ -330,12 +342,81 @@ export function BatchSheet({
                 />
               )}
             </Field>
-            <Field id="supplierName" label="Hatchery" error={error("supplierName")} hint="Optional">
+            <Field
+              id="supplierId"
+              label="Hatchery"
+              error={error("supplierId") ?? error("supplierName")}
+              hint="Optional"
+            >
+              {(a11y) =>
+                hatcheries.length ? (
+                  <Select
+                    {...a11y}
+                    value={v.supplierId ?? (otherHatchery ? OTHER : "")}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const chosen = hatcheries.find((h) => h.id === id);
+                      setOtherHatchery(id === OTHER);
+                      void form.setValues({
+                        ...v,
+                        supplierId: chosen ? chosen.id : null,
+                        supplierName: chosen ? chosen.name : id === OTHER ? v.supplierName : "",
+                      });
+                    }}
+                  >
+                    <option value="">Not saying</option>
+                    {[...hatcheries]
+                      .sort((a, b) => Number(b.chicks) - Number(a.chicks) || a.name.localeCompare(b.name))
+                      .map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    <option value={OTHER}>Someone else…</option>
+                  </Select>
+                ) : (
+                  <Input {...a11y} {...form.getFieldProps("supplierName")} placeholder="Amo Byng" maxLength={80} />
+                )
+              }
+            </Field>
+          </div>
+          {hatcheries.length > 0 && !v.supplierId && otherHatchery && (
+            <Field id="supplierName" label="Hatchery's name" error={error("supplierName")}>
               {(a11y) => (
                 <Input {...a11y} {...form.getFieldProps("supplierName")} placeholder="Amo Byng" maxLength={80} />
               )}
             </Field>
-          </div>
+          )}
+          {!batch && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-fg">The chicks: paid for?</p>
+              <Segmented
+                label="The chicks: paid for?"
+                className="w-full"
+                value={paidBy === "later" ? "later" : "paid"}
+                onChange={(next) => setPaidBy(next === "later" ? "later" : "transfer")}
+                options={[
+                  { value: "paid", label: "Paid already" },
+                  { value: "later", label: "Owed to the hatchery" },
+                ]}
+              />
+              {paidBy !== "later" && (
+                <Select
+                  aria-label="Paid by"
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value as typeof paidBy)}
+                >
+                  <option value="transfer">Bank transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="pos">POS</option>
+                </Select>
+              )}
+              <p className="text-xs text-fg-muted">
+                Recorded under Expenses as the batch&apos;s chicks.
+                {paidBy === "later" ? " An owner can pay the hatchery from there." : ""}
+              </p>
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="space-y-4">

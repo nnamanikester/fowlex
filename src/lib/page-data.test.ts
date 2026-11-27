@@ -29,6 +29,7 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadAssets,
       loadAudit,
       loadBatch,
+      loadBatchCosts,
       loadBatches,
       loadBatchSummaries,
       loadCategories,
@@ -64,7 +65,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadAssets(actor.farmId)).toEqual([]);
     expect((await loadCategories(actor.farmId)).length).toBe(12);
     expect(await loadRecurring(actor.farmId)).toEqual([]);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 17 : 0);
+    expect((await loadBatchCosts(actor.farmId, actor.id)).totalKobo).toBe(0);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 18 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });

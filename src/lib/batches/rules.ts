@@ -31,6 +31,8 @@ export type BatchInput = {
   freeExtras: number;
   pricePerChickKobo: number;
   supplierName: string;
+  /** The hatchery as a saved supplier; null when only its name is typed in. */
+  supplierId?: string | null;
   ageAtPlacementDays: number;
   targetSellAgeDays: number;
   targetWeightGrams: number;
@@ -111,6 +113,12 @@ export function validateBatch(input: Partial<Record<keyof BatchInput, unknown>>,
   else if (price > LIMITS.pricePerChickKobo)
     errors.pricePerChickKobo = "That's more than any chick costs. Check the amount.";
 
+  if (
+    input.supplierId !== null &&
+    input.supplierId !== undefined &&
+    (typeof input.supplierId !== "string" || !/^[a-f\d]{24}$/i.test(input.supplierId))
+  )
+    errors.supplierId = "Choose the hatchery again.";
   if (typeof input.supplierName !== "string") errors.supplierName = "Enter text.";
   else if (input.supplierName.length > 80) errors.supplierName = "Use at most 80 characters.";
 

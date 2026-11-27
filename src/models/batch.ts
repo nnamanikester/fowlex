@@ -23,6 +23,8 @@ const schema = new Schema(
     freeExtras: { type: Number, default: 0, min: 0 },
     pricePerChickKobo: { type: Number, required: true, min: 0 },
     supplierName: { type: String, trim: true, default: "" },
+    /** The hatchery as a saved supplier, so its chicks can be paid for; null for a name typed in. */
+    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", default: null },
     targetSellAgeDays: { type: Number, default: DEFAULTS.targetSellAgeDays },
     targetWeightGrams: { type: Number, default: DEFAULTS.targetWeightGrams },
     status: { type: String, enum: BATCH_STATUSES, default: "active" },

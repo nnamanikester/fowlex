@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 
 import { CloseSheet } from "./close-sheet";
+import { ChicksExpense, CostsTab } from "./costs-tab";
 import { HealthTab } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
@@ -30,7 +31,9 @@ import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { batchKpis, growthRows, vsStandard } from "@/lib/batches/kpis";
 import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
+import type { BatchCosts } from "@/lib/batches/costs";
 import type { BatchView } from "@/lib/batches/service";
+import type { CategoryView } from "@/lib/expenses/categories";
 import { formatRange } from "@/lib/dates";
 import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
 import type { HealthView } from "@/lib/health/service";
@@ -44,7 +47,7 @@ const TABS = [
   ["overview", "Overview", null],
   ["logs", "Daily logs", null],
   ["health", "Health", null],
-  ["costs", "Costs", "8.1"],
+  ["costs", "Costs", null],
   ["sales", "Sales", "6.3"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
@@ -63,7 +66,16 @@ export function BatchDetail({
   canWrite,
   canLog,
   canManageHouses,
+  costs = null,
+  categories = [],
+  hatcheries = [],
+  canSpend = false,
 }: {
+  /** What the batch has cost (for those who see money); null hides the money. */
+  costs?: BatchCosts | null;
+  categories?: CategoryView[];
+  hatcheries?: { id: string; name: string; chicks: boolean }[];
+  canSpend?: boolean;
   batch: BatchView;
   houses: HouseView[];
   logs: LogView[];
@@ -168,7 +180,7 @@ export function BatchDetail({
         aria-label="Batch sections"
         className="-mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 [scrollbar-width:none] md:mx-0 md:px-0"
       >
-        {TABS.map(([id, label]) => (
+        {TABS.filter(([id]) => id !== "costs" || costs).map(([id, label]) => (
           <Link
             key={id}
             href={id === "overview" ? `/batches/${b.id}` : `/batches/${b.id}?tab=${id}`}
@@ -248,7 +260,19 @@ export function BatchDetail({
                 <Fact label="Placed alive" value={n(b.placed)} />
                 <Fact label="Price per chick" value={formatNaira(b.pricePerChickKobo)} />
                 <Fact label={`Chicks cost (${n(b.paid)} paid)`} value={formatNaira(b.chickCostKobo)} />
-                <Fact label="Hatchery" value={b.supplierName || "–"} />
+                <Fact
+                  label="Hatchery"
+                  value={
+                    b.supplierId ? (
+                      <Link href={`/suppliers/${b.supplierId}`} className="focus-ring rounded-md text-brand-fg">
+                        {b.supplierName}
+                      </Link>
+                    ) : (
+                      b.supplierName || "–"
+                    )
+                  }
+                />
+                {costs && <Fact label="Chicks expense" value={<ChicksExpense batch={b} canRecord={canSpend} />} />}
                 <Fact
                   label="Age when placed"
                   value={b.ageAtPlacementDays ? `${b.ageAtPlacementDays} days` : "Day-old"}
@@ -271,6 +295,8 @@ export function BatchDetail({
             </Panel>
           </div>
         </>
+      ) : tab === "costs" && costs ? (
+        <CostsTab batch={b} costs={costs} categories={categories} canSpend={canSpend} />
       ) : tab === "health" ? (
         <HealthTab batch={b} plan={plan} events={health} today={today} canLog={canLog && open} canWrite={canWrite} />
       ) : tab === "logs" ? (
@@ -293,6 +319,7 @@ export function BatchDetail({
           houses={houses}
           today={today}
           canManageHouses={canManageHouses}
+          hatcheries={hatcheries}
           onSaved={(saved) => {
             setEditing(false);
             toast.success(`${saved.code} saved.`);

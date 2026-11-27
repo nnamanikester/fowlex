@@ -54,7 +54,7 @@ describe("paying a supplier through Paystack", () => {
     const payout = await payExpense(owner, expense.id);
     expect(payout).toMatchObject({
       status: "success",
-      reference: "fwx-exp-2026-0001-1",
+      reference: "fwx-exp-2026-0002-1",
       amountKobo: 36_000_000,
       feeKobo: 5_000,
       recipient: { accountName: "CHIOMA EZE", accountNumber: "••••6781" },
