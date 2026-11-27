@@ -4,17 +4,19 @@ import * as React from "react";
 import { UserCheck, UserPlus } from "lucide-react";
 
 import { BankAccountField, type BankState } from "@/components/bank-account-field";
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Sheet } from "@/components/ui/sheet";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { apiRequest } from "@/lib/auth/client";
 import { formatNaira } from "@/lib/money";
 import { type EmployeeInput, PAY_TYPES, type PayType, PER, validateEmployee } from "@/lib/people/rules";
 import type { EmployeeView } from "@/lib/people/service";
 import { formatPhone } from "@/lib/suppliers/rules";
+import { useAction } from "@/lib/use-action";
 import { cn } from "@/lib/utils";
 
 export const payLine = (e: Pick<EmployeeView, "rateKobo" | "payType">) =>
@@ -62,32 +64,32 @@ export function EmployeeSheet({
   );
   const [bankState, setBankState] = React.useState<BankState>(employee?.bank ? "found" : "empty");
   const [submitted, setSubmitted] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [failure, setFailure] = React.useState<AuthError | null>(null);
+  const action = useAction();
   const errors = validateEmployee(v, { today });
-  const show = (f: keyof EmployeeInput) => (submitted ? errors[f] : failure?.field === f ? failure.message : undefined);
+  const show = (f: keyof EmployeeInput) => action.fieldError(f, submitted ? errors[f] : undefined);
   const set = <K extends keyof EmployeeInput>(k: K, value: EmployeeInput[K]) => setV((d) => ({ ...d, [k]: value }));
   const bankUnfinished = ["partial", "checking", "not-found", "unavailable"].includes(bankState);
+  const bankProblem =
+    bankState === "checking"
+      ? "Wait a moment: the bank is still naming this account."
+      : bankState === "unavailable"
+        ? "The bank couldn't be reached to check this account. Tap Retry, or clear both fields to add the bank account later."
+        : "Finish the bank account so the bank can name it, or clear both fields.";
 
-  const call = async (fn: () => Promise<unknown>, message: string) => {
-    setBusy(true);
-    setFailure(null);
-    try {
-      const saved = (await fn()) as { id?: string } | undefined;
-      onSaved(message, saved?.id);
-    } catch (e) {
-      setFailure(e as AuthError);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const call = (key: string, fn: () => Promise<unknown>, message: string) =>
+    action.run(fn as () => Promise<{ id?: string } | undefined>, {
+      key,
+      onSuccess: (saved) => onSaved(message, saved?.id),
+    });
   const save = () => {
     setSubmitted(true);
+    action.clear();
     if (Object.keys(errors).length || bankUnfinished) {
       document.getElementById(Object.keys(errors)[0] ?? "accountNumber")?.focus();
       return;
     }
     void call(
+      "save",
       () =>
         employee
           ? apiRequest(`/api/employees/${employee.id}`, "PATCH", { ...v, version: employee.version })
@@ -99,12 +101,13 @@ export function EmployeeSheet({
   return (
     <Sheet
       open
-      onClose={() => !busy && onClose()}
+      onClose={() => !action.busy && onClose()}
       title={employee ? employee.name : "Add someone"}
       subtitle={employee ? payLine(employee) : "Someone who works on the farm"}
       footer={
         <div className="space-y-2">
-          <Button size="lg" fullWidth loading={busy} onClick={save}>
+          <ActionFeedback action={action} />
+          <Button size="lg" fullWidth loading={action.isPending("save")} disabled={action.busy} onClick={save}>
             {employee ? "Save changes" : "Add"}
           </Button>
           {employee && (
@@ -112,8 +115,11 @@ export function EmployeeSheet({
               {canInvite && employee.status === "active" && employee.email && !employee.hasLogin && (
                 <Button
                   variant="ghost"
+                  loading={action.isPending("invite")}
+                  disabled={action.busy}
                   onClick={() =>
                     void call(
+                      "invite",
                       () => apiRequest("/api/users/invites", "POST", { email: employee.email, role: "staff" }),
                       `Invite sent to ${employee.email}: they can log the farm's days.`,
                     )
@@ -124,8 +130,11 @@ export function EmployeeSheet({
               )}
               <Button
                 variant="ghost"
+                loading={action.isPending("status")}
+                disabled={action.busy}
                 onClick={() =>
                   void call(
+                    "status",
                     () =>
                       apiRequest(`/api/employees/${employee.id}/status`, "POST", {
                         status: employee.status === "active" ? "left" : "active",
@@ -142,7 +151,6 @@ export function EmployeeSheet({
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field id="name" label="Name" error={show("name")}>
             {(a11y) => (
@@ -232,11 +240,7 @@ export function EmployeeSheet({
             value={employee?.bank ?? null}
             onChange={(bank) => set("bank", bank)}
             onState={setBankState}
-            error={
-              submitted && bankUnfinished
-                ? "Finish the bank account so the bank can name it, or clear both fields."
-                : show("bank")
-            }
+            error={submitted && bankUnfinished ? bankProblem : show("bank")}
           />
         </fieldset>
 

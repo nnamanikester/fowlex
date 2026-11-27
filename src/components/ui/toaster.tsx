@@ -17,6 +17,7 @@ export function Toaster() {
           description: "!text-fg-muted",
           success: "[&_[data-icon]]:!text-success",
           error: "[&_[data-icon]]:!text-danger",
+          warning: "[&_[data-icon]]:!text-warning",
         },
       }}
     />

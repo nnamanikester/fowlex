@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Pill, Plus, Stethoscope, Syringe, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Panel } from "@/components/kit";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import type { BatchView } from "@/lib/batches/service";
@@ -298,14 +299,10 @@ function HealthSheet({
   };
 
   const remove = async () => {
-    try {
-      await apiRequest(`/api/health/${event!.id}`, "DELETE");
-      toast.success("Health record deleted.");
-      router.refresh();
-      onClose();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
+    await apiRequest(`/api/health/${event!.id}`, "DELETE");
+    toast.success("Health record deleted.");
+    router.refresh();
+    onClose();
   };
 
   return (
@@ -316,6 +313,7 @@ function HealthSheet({
       subtitle={`${batch.code} · ${batch.houseName}`}
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           <Button type="submit" form="health-form" size="lg" fullWidth loading={busy}>
             {event ? "Save changes" : "Save"}
           </Button>
@@ -336,7 +334,6 @@ function HealthSheet({
           void save();
         }}
       >
-        {failure && <FormAlert title={failure.message} />}
         <Segmented
           label="What happened"
           value={v.kind}

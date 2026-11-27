@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { formatRange } from "@/lib/dates";
@@ -235,13 +236,9 @@ export function ItemDetail({
         description="Stock on hand and its value are worked out again without it. It stays in the audit log."
         confirmLabel="Delete record"
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/inventory/movements/${removing!.id}`, "DELETE");
-            toast.success("Stock record deleted.");
-            router.refresh();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/inventory/movements/${removing!.id}`, "DELETE");
+          toast.success("Stock record deleted.");
+          router.refresh();
         }}
       />
     </div>
@@ -312,13 +309,15 @@ function MovementSheet({
       title={TITLES[action]}
       subtitle={item.name}
       footer={
-        <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
-          {action === "count" ? "Save count" : "Save"}
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
+            {action === "count" ? "Save count" : "Save"}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
-        {failure && <FormAlert title={failure.message} />}
         <div className="grid grid-cols-2 gap-3">
           <Field
             id="amount"

@@ -138,7 +138,14 @@ export function DataTable<T>({
           )}
           {toolbar}
           {csv && (
-            <Button variant="secondary" size="sm" className="ml-auto" onClick={exportCsv} disabled={!sorted.length}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="ml-auto"
+              onClick={exportCsv}
+              disabled={!sorted.length}
+              reason="There's nothing to export."
+            >
               <Download /> Export CSV
             </Button>
           )}

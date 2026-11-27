@@ -4,16 +4,17 @@ import * as React from "react";
 import { CircleCheck, HandCoins, Plus, Send, Trash2 } from "lucide-react";
 
 import { BankAccountField, type BankState } from "@/components/bank-account-field";
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Button } from "@/components/ui/button";
 import { FileDrop } from "@/components/ui/file-drop";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { ASSET_KIND_LABELS, ASSET_KINDS, type AssetKind, DEFAULT_LIFE } from "@/lib/assets/rules";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
 import { type ExpenseInput, expenseTotal, lineTotal, type PayMethod } from "@/lib/expenses/rules";
 import { type CategoryView, SYSTEM_CATEGORIES } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
@@ -202,7 +203,7 @@ export function SpendSheet({
       const expense = await apiRequest<ExpenseView>("/api/expenses", "POST", body);
       onSaved(expense, { pay: choice === "paystack" });
     } catch (e) {
-      setFailure(e as AuthError);
+      setFailure(asProblem(e));
       const field = (e as AuthError).field;
       if (field) document.getElementById(field)?.focus();
     } finally {
@@ -226,6 +227,7 @@ export function SpendSheet({
             <span className="text-fg-muted">Total</span>
             <span className="text-lg font-semibold text-fg">{formatNaira(total)}</span>
           </p>
+          <ActionFeedback action={{ failure }} />
           <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
             {choice === "paystack" && <Send />} {action}
           </Button>
@@ -243,7 +245,6 @@ export function SpendSheet({
             { value: "other", label: "Other expense" },
           ]}
         />
-        {failure && !failure.field && <FormAlert title={failure.message} />}
 
         <Field
           id="supplierId"

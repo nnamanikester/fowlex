@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { CircleCheck, HandCoins, Send, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { DEFAULTS, placedCount } from "@/lib/batches/rules";
@@ -127,6 +128,7 @@ export function BookChicksSheet({
       subtitle="Paid now, picked up later"
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           <p className="num flex items-baseline justify-between text-sm" aria-live="polite">
             <span className="text-fg-muted">{chicks > 0 ? `${n(chicks)} chicks` : "Total"}</span>
             <span className="text-lg font-semibold text-fg">{total === null ? "–" : formatNaira(total)}</span>
@@ -144,7 +146,6 @@ export function BookChicksSheet({
       }
     >
       <div className="space-y-6">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         {warnings && (
           <div role="alert" className="space-y-3 rounded-xl border border-warning-line bg-warning-subtle p-4">
             <p className="flex items-center gap-2 font-bold text-warning-fg">
@@ -410,13 +411,15 @@ export function PickUpSheet({
       title="Chicks picked up"
       subtitle={`${batch.code} · ${n(booked)} paid for${batch.supplierName ? ` from ${batch.supplierName}` : ""}`}
       footer={
-        <Button size="lg" fullWidth loading={busy && !warnings} onClick={() => void save()}>
-          Put {n(placed)} in the house
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button size="lg" fullWidth loading={busy && !warnings} onClick={() => void save()}>
+            Put {n(placed)} in the house
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         {warnings && (
           <div role="alert" className="space-y-3 rounded-xl border border-warning-line bg-warning-subtle p-4 text-sm">
             <ul className="list-disc space-y-1.5 pl-5 text-fg">

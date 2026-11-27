@@ -3,15 +3,18 @@
 import * as React from "react";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 
+import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { asProblem } from "@/lib/auth/client";
 import { cn } from "@/lib/utils";
 
 /**
  * Confirms an action that is hard to take back (deleting, closing a batch, paying out): an icon
  * tile, the action as the title, what happens, then Cancel and the verb. `typeToConfirm` asks for
  * a word before the button wakes up, for the most destructive actions. `onConfirm` may return a
- * promise: the button spins until it settles, then the dialog closes.
+ * promise: the button spins until it settles, then the dialog closes. If it throws, the dialog stays
+ * open with the error, so a failure never looks like it worked.
  */
 export function ConfirmDialog({
   open,
@@ -33,6 +36,7 @@ export function ConfirmDialog({
   typeToConfirm?: string;
 }) {
   const [busy, setBusy] = React.useState(false);
+  const [problem, setProblem] = React.useState<string | null>(null);
   const [typed, setTyped] = React.useState("");
   const unlocked = !typeToConfirm || typed.trim().toLowerCase() === typeToConfirm.trim().toLowerCase();
 
@@ -40,7 +44,10 @@ export function ConfirmDialog({
   const [wasOpen, setWasOpen] = React.useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setTyped("");
+    if (open) {
+      setTyped("");
+      setProblem(null);
+    }
   }
 
   const close = () => !busy && onOpenChange(false);
@@ -82,6 +89,8 @@ export function ConfirmDialog({
           </label>
         )}
 
+        {problem && <FormAlert title={problem} />}
+
         <div className="grid grid-cols-2 gap-2">
           <Button variant="secondary" onClick={close} disabled={busy}>
             Cancel
@@ -89,12 +98,17 @@ export function ConfirmDialog({
           <Button
             variant={destructive ? "danger" : "primary"}
             disabled={!unlocked}
+            reason={typeToConfirm ? `Type ${typeToConfirm} first.` : undefined}
             loading={busy}
             onClick={async () => {
               setBusy(true);
+              setProblem(null);
               try {
                 await onConfirm();
                 onOpenChange(false);
+              } catch (e) {
+                // It didn't happen: stay open and say why, so they can try again or cancel.
+                setProblem(asProblem(e).message);
               } finally {
                 setBusy(false);
               }

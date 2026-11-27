@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { Archive, Plus, Tags } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { type CategoryView, SYSTEM_CATEGORIES, validateCategory } from "@/lib/expenses/categories";
@@ -136,7 +137,7 @@ function CategorySheet({
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const errors = validateCategory({ name, monthlyBudgetKobo: budget });
   const show = (f: "name" | "monthlyBudgetKobo") =>
-    submitted && errors[f] ? errors[f] : failure?.field === f ? failure.message : undefined;
+    failure?.field === f ? failure.message : submitted ? errors[f] : undefined;
 
   const save = async (archived = category?.archived ?? false) => {
     setSubmitted(true);
@@ -171,6 +172,7 @@ function CategorySheet({
       subtitle={category ? "Rename it or set its budget" : "Something the farm spends on"}
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
             {category ? "Save changes" : "Add category"}
           </Button>
@@ -183,7 +185,6 @@ function CategorySheet({
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         <Field
           id="name"
           label="Name"

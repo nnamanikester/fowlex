@@ -14,9 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
 import type { CategoryView } from "@/lib/expenses/categories";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
@@ -80,7 +81,10 @@ export function RunDetail({
       router.refresh();
       return result;
     } catch (e) {
-      setFailure(e as AuthError);
+      // The buttons float at the bottom on a phone, far from the alert at the top: say it there too.
+      const problem = asProblem(e);
+      setFailure(problem);
+      toast.error(problem.message);
     } finally {
       setBusy(null);
     }
@@ -211,6 +215,7 @@ export function RunDetail({
             className="shadow-pop lg:w-auto lg:shadow-none"
             loading={busy === "approve"}
             disabled={run.totals.netKobo === 0 && run.totals.advanceKobo === 0}
+            reason="Nobody has any pay this month, so there's nothing to approve."
             onClick={() =>
               void act(
                 "approve",
@@ -351,7 +356,7 @@ function AdjustSheet({
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const errors = validateAdjustment(v);
-  const show = (f: keyof Adjustment) => (submitted ? errors[f] : failure?.field === f ? failure.message : undefined);
+  const show = (f: keyof Adjustment) => (failure?.field === f ? failure.message : submitted ? errors[f] : undefined);
   const net = Math.max(0, line.grossKobo + v.bonusKobo - v.deductionKobo - line.advanceKobo);
 
   const save = async () => {
@@ -377,13 +382,15 @@ function AdjustSheet({
       title={line.name}
       subtitle={line.basis}
       footer={
-        <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
-          Save
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
+            Save
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         <dl className="num space-y-1.5 rounded-xl bg-surface-subtle p-4 text-sm">
           <div className="flex justify-between">
             <dt className="text-fg-muted">Pay earned</dt>

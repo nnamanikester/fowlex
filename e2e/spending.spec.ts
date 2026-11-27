@@ -74,7 +74,8 @@ test("pay someone who isn't a saved supplier: enter their account, the bank name
   await sheet.getByRole("radio", { name: /Pay now with Paystack/ }).click();
   await expect(sheet.getByText("To any bank account: enter it below.")).toBeVisible();
   await sheet.getByRole("button", { name: /Next: pay/ }).click();
-  await expect(sheet.getByText("Enter the bank account to pay.")).toBeVisible();
+  // On the account number, and above the button.
+  await expect(sheet.getByText("Enter the bank account to pay.")).toHaveCount(2);
 
   await sheet.getByLabel("Bank").selectOption({ label: "Guaranty Trust Bank" });
   await sheet.getByLabel("Account number").fill("0123456783");
