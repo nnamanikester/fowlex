@@ -32,6 +32,7 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadBatchSummaries,
       loadHealth,
       loadHouses,
+      loadItems,
       loadLogs,
       loadSettings,
       loadTeam,
@@ -48,7 +49,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadBatch(actor.farmId, actor.id)).toBeNull();
     expect(await loadLogs(actor.farmId, actor.id)).toEqual([]);
     expect(await loadHealth(actor.farmId, actor.id)).toEqual([]);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 9 : 0);
+    expect(await loadItems(actor.farmId)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 10 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });
