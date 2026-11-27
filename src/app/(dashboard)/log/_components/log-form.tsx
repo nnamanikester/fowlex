@@ -478,7 +478,12 @@ export function LogForm({
       <details className="rounded-xl border border-line px-4 py-3" open={values.sold > 0}>
         <summary className="cursor-pointer text-sm font-semibold text-fg">Birds taken for sale?</summary>
         <div className="pt-3">
-          <Field id="sold" label="Birds taken" error={show("sold")} hint="Picked up by buyers today">
+          <Field
+            id="sold"
+            label="Birds taken"
+            error={show("sold")}
+            hint="Taken by buyers today without a sales order: birds on orders come off by themselves"
+          >
             {(a11y) => (
               <Stepper
                 id={a11y.id}
