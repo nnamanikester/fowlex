@@ -3,9 +3,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/jwt";
 import { homeFor } from "@/lib/auth/permissions";
 
-/** Pages and APIs anyone may reach: sign-in, the design system, and the auth endpoints. */
+/** Pages and APIs anyone may reach: sign-in, the design system, the public order page, and the auth endpoints. */
 // Webhooks prove who they are with a signature, not a session; cron jobs with CRON_SECRET.
-const PUBLIC = ["/auth", "/design", "/api/auth", "/api/dev", "/api/webhooks", "/api/cron"];
+const PUBLIC = ["/auth", "/design", "/order", "/api/auth", "/api/dev", "/api/webhooks", "/api/cron", "/api/public"];
 /** Where customers may go, and nobody else. */
 const PORTAL = ["/portal", "/api/portal"];
 

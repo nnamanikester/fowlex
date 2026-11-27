@@ -26,6 +26,19 @@ describe("proxy", () => {
       expect((await visit(path)).passes).toBe(true);
   });
 
+  it("lets anyone open a farm's order page and order from it, signed in or not", async () => {
+    for (const path of [
+      "/order/fowlex-farms",
+      "/api/public/shop/fowlex-farms",
+      "/api/public/shop/fowlex-farms/orders",
+    ]) {
+      expect((await visit(path)).passes).toBe(true);
+      expect((await visit(path, "customer")).passes).toBe(true);
+    }
+    // Only the order page is open: not anything that merely starts with the same letters.
+    expect((await visit("/orders")).status).toBe(307);
+  });
+
   it("sends signed-out visitors to sign in, keeping where they were going", async () => {
     expect(await visit("/invoices?status=overdue")).toMatchObject({
       status: 307,

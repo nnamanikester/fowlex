@@ -252,6 +252,7 @@ export function OrderSheet({
           ) : undefined
         }
       >
+        {order?.contact && <OnlineContact contact={order.contact} />}
         {!editable && order ? (
           <OrderSummary order={order} />
         ) : (
@@ -540,6 +541,30 @@ function OrderSummary({ order }: { order: OrderView }) {
           </Link>
         </p>
       )}
+    </div>
+  );
+}
+
+/** Who ordered on the order page, to call and confirm. */
+function OnlineContact({ contact }: { contact: NonNullable<OrderView["contact"]> }) {
+  const phone = /^\+234\d{10}$/.test(contact.phone)
+    ? `0${contact.phone.slice(4, 7)} ${contact.phone.slice(7, 10)} ${contact.phone.slice(10)}`
+    : contact.phone;
+  return (
+    <div className="mb-5 space-y-1 rounded-xl border border-brand-line bg-brand-subtle px-4 py-3 text-sm text-fg">
+      <p className="font-semibold">
+        Ordered online by {contact.name}
+        {contact.business && ` for ${contact.business}`}
+      </p>
+      <p>
+        <a href={`tel:${contact.phone}`} className="focus-ring rounded font-semibold text-brand-fg">
+          Call {phone}
+        </a>
+        {contact.email && <span className="text-fg-muted"> · {contact.email}</span>}
+      </p>
+      <p className="text-fg-muted">
+        {contact.delivery ? `Deliver to: ${contact.address}` : "Collecting from the farm"}
+      </p>
     </div>
   );
 }

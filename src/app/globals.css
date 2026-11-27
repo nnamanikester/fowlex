@@ -42,6 +42,8 @@
     --comb: 186 34 52; /* #ba2234 */
     --comb-fg: 166 30 47; /* #a61e2f — brand-red text, sparingly */
     --comb-subtle: 250 232 233; /* #fae8e9 */
+    /* Comb red that reads on charcoal (6.4:1): the order page's supply count */
+    --comb-on-dark: 255 120 133; /* #ff7885 */
 
     /* Status */
     --success: 31 157 97; /* #1f9d61 — profit, paid, healthy */
