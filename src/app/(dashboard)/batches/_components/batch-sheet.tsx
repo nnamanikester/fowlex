@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useFormik } from "formik";
 import { TriangleAlert, Warehouse } from "lucide-react";
 
-import { Field, FormAlert, useFocusFirstError } from "@/components/auth";
+import { Field, useFocusFirstError } from "@/components/auth";
 import { EmptyState } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import {
@@ -216,6 +217,7 @@ export function BatchSheet({
       subtitle={batch ? `${batch.houseName} · ${batch.breed}` : "Chicks placed in a house"}
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           {counts && (
             <p className="num text-center text-xs text-fg-muted" aria-live="polite">
               {n(placed)} placed
@@ -234,7 +236,6 @@ export function BatchSheet({
       }
     >
       <form id="batch-form" noValidate onSubmit={form.handleSubmit} className="space-y-6">
-        {failure && <FormAlert title={failure.message} />}
         {warnings && (
           <div role="alert" className="space-y-3 rounded-xl border border-warning-line bg-warning-subtle p-4">
             <p className="flex items-center gap-2 font-bold text-warning-fg">

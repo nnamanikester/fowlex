@@ -6,7 +6,7 @@ import { Plus, ShoppingCart, Trash2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
 import { type SpendProps, useSpending } from "../../../expenses/_components/expenses-board";
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Fab, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import {
   ASSET_KIND_LABELS,
@@ -177,7 +178,7 @@ function AssetSheet({
   const [disposing, setDisposing] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const errors = validateAsset(v, { today });
-  const show = (f: keyof AssetInput) => (submitted ? errors[f] : failure?.field === f ? failure.message : undefined);
+  const show = (f: keyof AssetInput) => (failure?.field === f ? failure.message : submitted ? errors[f] : undefined);
   const set = <K extends keyof AssetInput>(k: K, value: AssetInput[K]) => setV((d) => ({ ...d, [k]: value }));
   const locked = !!asset?.expenseId;
   const monthly =
@@ -210,6 +211,7 @@ function AssetSheet({
         subtitle={asset ? ASSET_KIND_LABELS[asset.kind] : "Something that lasts years"}
         footer={
           <div className="space-y-2">
+            <ActionFeedback action={{ failure }} />
             <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
               {asset ? "Save changes" : "Add equipment"}
             </Button>
@@ -229,7 +231,6 @@ function AssetSheet({
         }
       >
         <div className="space-y-5">
-          {failure && !failure.field && <FormAlert title={failure.message} />}
           <Field id="name" label="Name" error={show("name")}>
             {(a11y) => (
               <Input
@@ -353,12 +354,8 @@ function AssetSheet({
           description="It leaves your equipment and stops costing the farm. It stays in the audit log."
           confirmLabel="Delete equipment"
           onConfirm={async () => {
-            try {
-              await apiRequest(`/api/assets/${asset.id}`, "DELETE");
-              onSaved(`${asset.name} deleted.`);
-            } catch (e) {
-              toast.error((e as AuthError).message);
-            }
+            await apiRequest(`/api/assets/${asset.id}`, "DELETE");
+            onSaved(`${asset.name} deleted.`);
           }}
         />
       )}
@@ -389,33 +386,35 @@ function DisposeSheet({
       title={`${asset.name}: sold or scrapped`}
       subtitle={`Worth ${formatNaira(asset.bookValueKobo)} now`}
       footer={
-        <Button
-          size="lg"
-          fullWidth
-          loading={busy}
-          onClick={async () => {
-            setBusy(true);
-            setFailure(null);
-            try {
-              await apiRequest(`/api/assets/${asset.id}/dispose`, "POST", {
-                status,
-                disposedOn: on,
-                proceedsKobo: proceeds ?? 0,
-              });
-              onSaved(`${asset.name} marked ${status}.`);
-            } catch (e) {
-              setFailure(e as AuthError);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Save
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button
+            size="lg"
+            fullWidth
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              setFailure(null);
+              try {
+                await apiRequest(`/api/assets/${asset.id}/dispose`, "POST", {
+                  status,
+                  disposedOn: on,
+                  proceedsKobo: proceeds ?? 0,
+                });
+                onSaved(`${asset.name} marked ${status}.`);
+              } catch (e) {
+                setFailure(e as AuthError);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Save
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
-        {failure && <FormAlert title={failure.message} />}
         <Segmented
           label="What happened"
           className="w-full"

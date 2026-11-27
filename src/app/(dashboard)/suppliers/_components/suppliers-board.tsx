@@ -7,13 +7,15 @@ import { Archive, Landmark, Phone, Plus, Search, Trash2, Truck } from "lucide-re
 import { toast } from "sonner";
 
 import { BankAccountField, type BankState } from "@/components/bank-account-field";
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { ConfirmDialog, EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { apiRequest } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import {
   formatPhone,
   maskAccount,
@@ -201,73 +203,91 @@ export function SupplierSheet({
   );
   const [bankState, setBankState] = React.useState<BankState>(supplier?.bank ? "found" : "empty");
   const [submitted, setSubmitted] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [failure, setFailure] = React.useState<AuthError | null>(null);
+  const action = useAction();
   const [deleting, setDeleting] = React.useState(false);
 
   const errors = validateSupplier(v);
   const bankError =
-    bankState === "partial" || bankState === "not-found" || bankState === "unavailable"
-      ? "Finish the bank account so the bank can name it, or clear both fields."
-      : bankState === "checking"
-        ? "Wait for the bank to name the account."
-        : undefined;
-  const show = (name: keyof SupplierInput) =>
-    submitted ? errors[name] : failure?.field === name ? failure.message : undefined;
+    bankState === "unavailable"
+      ? "The bank couldn't be reached to check this account. Tap Retry, or clear both fields to add it later."
+      : bankState === "partial" || bankState === "not-found"
+        ? "Finish the bank account so the bank can name it, or clear both fields."
+        : bankState === "checking"
+          ? "Wait for the bank to name the account."
+          : undefined;
+  const show = (name: keyof SupplierInput) => action.fieldError(name, submitted ? errors[name] : undefined);
   const set = <K extends keyof SupplierInput>(name: K, value: SupplierInput[K]) =>
     setV((d) => ({ ...d, [name]: value }));
 
   const save = async (extra: { archived?: boolean } = {}) => {
     setSubmitted(true);
-    setFailure(null);
-    if (Object.keys(errors).length || (bankError && !extra.archived)) {
+    action.clear();
+    if (Object.keys(errors).length || (bankError && extra.archived === undefined)) {
       document.getElementById(Object.keys(errors)[0] ?? "accountNumber")?.focus();
       return;
     }
-    setBusy(true);
-    try {
-      const saved = supplier
-        ? await apiRequest<SupplierView>(`/api/suppliers/${supplier.id}`, "PATCH", {
-            ...v,
-            ...extra,
-            version: supplier.version,
-          })
-        : await apiRequest<SupplierView>("/api/suppliers", "POST", v);
-      onSaved(
-        extra.archived !== undefined
-          ? extra.archived
-            ? `${saved.name} archived.`
-            : `${saved.name} is back.`
-          : supplier
-            ? `${saved.name} saved.`
-            : `${saved.name} added.`,
-        saved,
-      );
-    } catch (e) {
-      setFailure(e as AuthError);
-    } finally {
-      setBusy(false);
-    }
+    await action.run(
+      () =>
+        supplier
+          ? apiRequest<SupplierView>(`/api/suppliers/${supplier.id}`, "PATCH", {
+              ...v,
+              ...extra,
+              version: supplier.version,
+            })
+          : apiRequest<SupplierView>("/api/suppliers", "POST", v),
+      {
+        key: extra.archived !== undefined ? "archive" : "save",
+        onSuccess: (saved) =>
+          onSaved(
+            extra.archived !== undefined
+              ? extra.archived
+                ? `${saved.name} archived.`
+                : `${saved.name} is back.`
+              : supplier
+                ? `${saved.name} saved.`
+                : `${saved.name} added.`,
+            saved,
+          ),
+      },
+    );
   };
 
   return (
     <>
       <Sheet
         open
-        onClose={() => !busy && onClose()}
+        onClose={() => !action.busy && onClose()}
         title={supplier ? supplier.name : "Add a supplier"}
         subtitle={supplier ? "Edit supplier" : "Someone you buy from or pay"}
         footer={
           <div className="space-y-2">
-            <Button type="submit" form="supplier-form" size="lg" fullWidth loading={busy}>
+            <ActionFeedback action={action} />
+            <Button
+              type="submit"
+              form="supplier-form"
+              size="lg"
+              fullWidth
+              loading={action.isPending("save")}
+              disabled={action.busy}
+            >
               {supplier ? "Save changes" : "Add supplier"}
             </Button>
             {supplier && (
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="ghost" onClick={() => void save({ archived: !supplier.archived })}>
+                <Button
+                  variant="ghost"
+                  loading={action.isPending("archive")}
+                  disabled={action.busy}
+                  onClick={() => void save({ archived: !supplier.archived })}
+                >
                   <Archive /> {supplier.archived ? "Unarchive" : "Archive"}
                 </Button>
-                <Button variant="ghost" className="text-danger-fg" onClick={() => setDeleting(true)}>
+                <Button
+                  variant="ghost"
+                  className="text-danger-fg"
+                  disabled={action.busy}
+                  onClick={() => setDeleting(true)}
+                >
                   <Trash2 /> Delete
                 </Button>
               </div>
@@ -284,7 +304,6 @@ export function SupplierSheet({
             void save();
           }}
         >
-          {failure && !failure.field && <FormAlert title={failure.message} />}
           <Field id="name" label="Name" error={show("name")}>
             {(a11y) => (
               <Input
@@ -352,7 +371,7 @@ export function SupplierSheet({
               value={supplier?.bank ?? null}
               onChange={(bank) => set("bank", bank)}
               onState={setBankState}
-              error={submitted ? bankError : failure?.field === "bank" ? failure.message : undefined}
+              error={action.fieldError("bank", submitted ? bankError : undefined)}
             />
           </fieldset>
 
@@ -393,12 +412,8 @@ export function SupplierSheet({
           description="They leave your suppliers. Their history stays in the audit log."
           confirmLabel="Delete supplier"
           onConfirm={async () => {
-            try {
-              await apiRequest(`/api/suppliers/${supplier.id}`, "DELETE");
-              onSaved(`${supplier.name} deleted.`, supplier);
-            } catch (e) {
-              toast.error((e as AuthError).message);
-            }
+            await apiRequest(`/api/suppliers/${supplier.id}`, "DELETE");
+            onSaved(`${supplier.name} deleted.`, supplier);
           }}
         />
       )}

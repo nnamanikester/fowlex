@@ -6,9 +6,9 @@ import { CalendarCheck, Check, ChevronLeft, ChevronRight, ClipboardCheck } from 
 import { toast } from "sonner";
 
 import { FormAlert } from "@/components/auth";
-import { EmptyState, Panel } from "@/components/kit";
+import { ConfirmDialog, EmptyState, Panel } from "@/components/kit";
 import { Button, LinkButton } from "@/components/ui/button";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
 import { addDays } from "@/lib/dates";
 import { formatNaira } from "@/lib/money";
 import { ATTENDANCE, ATTENDANCE_LABELS, type Attendance, formatDays } from "@/lib/people/attendance-rules";
@@ -41,7 +41,14 @@ export function AttendanceSheet({
 }) {
   const router = useRouter();
   const start = () => Object.fromEntries(rows.map((r) => [r.employeeId, r.status ?? (r.logged ? "present" : null)]));
-  const [marks, setMarks] = React.useState<Record<string, Attendance | null>>(start);
+  const [marks, setMarksState] = React.useState<Record<string, Attendance | null>>(start);
+  // Marks they've tapped and not saved: moving to another day asks first, so they aren't lost.
+  const [edited, setEdited] = React.useState(false);
+  const [leavingTo, setLeavingTo] = React.useState<string | null>(null);
+  const setMarks: typeof setMarksState = (next) => {
+    setEdited(true);
+    setMarksState(next);
+  };
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const changed = rows.some((r) => marks[r.employeeId] !== r.status);
@@ -57,15 +64,20 @@ export function AttendanceSheet({
       });
       const came = rows.filter((r) => marks[r.employeeId] === "present" || marks[r.employeeId] === "half").length;
       toast.success(`Saved: ${came} of ${rows.length} came ${date === today ? "today" : "that day"}.`);
+      setEdited(false);
       router.refresh();
     } catch (e) {
-      setFailure(e as AuthError);
+      // Save floats at the bottom on a phone, far from the alert at the top: say it there too.
+      const problem = asProblem(e);
+      setFailure(problem);
+      toast.error(problem.message);
     } finally {
       setBusy(false);
     }
   };
 
-  const go = (d: string) => router.push(d === today ? "/people/attendance" : `/people/attendance?date=${d}`);
+  const leave = (d: string) => router.push(d === today ? "/people/attendance" : `/people/attendance?date=${d}`);
+  const go = (d: string) => (edited && changed ? setLeavingTo(d) : leave(d));
 
   return (
     <div className="space-y-4 pb-24 lg:pb-0">
@@ -89,6 +101,7 @@ export function AttendanceSheet({
           size="sm"
           aria-label="The day after"
           disabled={date >= today}
+          reason="That day hasn't come yet."
           onClick={() => go(addDays(date, 1))}
         >
           <ChevronRight />
@@ -177,6 +190,7 @@ export function AttendanceSheet({
                 fullWidth
                 loading={busy}
                 disabled={!changed}
+                reason="Nothing has changed yet: tap who came first."
                 onClick={() => void save()}
                 className="shadow-pop lg:shadow-none"
               >
@@ -186,6 +200,16 @@ export function AttendanceSheet({
           )}
         </>
       )}
+      <ConfirmDialog
+        open={leavingTo !== null}
+        onOpenChange={(open) => !open && setLeavingTo(null)}
+        title="Leave without saving?"
+        description={`The marks you made for ${["Today", "Yesterday"].includes(dayName(date, today)) ? dayName(date, today).toLowerCase() : dayName(date, today)} aren't saved yet.`}
+        confirmLabel="Leave"
+        onConfirm={() => {
+          if (leavingTo) leave(leavingTo);
+        }}
+      />
     </div>
   );
 }

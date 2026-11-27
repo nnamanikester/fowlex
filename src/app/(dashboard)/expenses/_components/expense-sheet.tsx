@@ -11,8 +11,10 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { type AuthError, apiRequest, asProblem } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import { formatRange } from "@/lib/dates";
 import { lineTotal, PAY_METHOD_LABELS, PAYMENT_STATUS_LABELS, type PaymentStatus } from "@/lib/expenses/rules";
 import { type CategoryView, categoryName } from "@/lib/expenses/categories";
@@ -75,45 +77,59 @@ export function ExpenseSheet({
   const [deleting, setDeleting] = React.useState(false);
   const [rejecting, setRejecting] = React.useState(false);
   const [notes, setNotes] = React.useState(expense.notes);
+  const [historyProblem, setHistoryProblem] = React.useState<string | null>(null);
+  const action = useAction();
   const supplier = suppliers.find((s) => s.id === current.supplierId);
   const byId = new Map(items.map((i) => [i.id, i]));
   const batch = batches.find((b) => b.id === current.batchId);
 
+  // After a payment: the latest transfers and the expense as it now stands. If that can't load, the
+  // payment still happened: say the screen may be behind rather than hiding it.
   const refresh = React.useCallback(async () => {
-    const [list, fresh] = await Promise.all([
-      apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET"),
-      apiRequest<ExpenseView[]>(`/api/expenses`, "GET").then((all) => all.find((e) => e.id === expense.id)),
-    ]);
-    setPayouts(list);
-    if (fresh) setCurrent(fresh);
+    try {
+      const [list, fresh] = await Promise.all([
+        apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET"),
+        apiRequest<ExpenseView[]>(`/api/expenses`, "GET").then((all) => all.find((e) => e.id === expense.id)),
+      ]);
+      setPayouts(list);
+      setHistoryProblem(null);
+      if (fresh) setCurrent(fresh);
+    } catch (e) {
+      setHistoryProblem(asProblem(e).message);
+    }
     router.refresh();
   }, [expense.id, router]);
 
+  const [historyAttempt, setHistoryAttempt] = React.useState(0);
   React.useEffect(() => {
     let live = true;
     apiRequest<PayoutView[]>(`/api/expenses/${expense.id}/payouts`, "GET").then(
-      (list) => live && setPayouts(list),
-      () => undefined,
+      (list) => {
+        if (!live) return;
+        setPayouts(list);
+        setHistoryProblem(null);
+      },
+      (e: AuthError) => live && setHistoryProblem(e.message),
     );
     return () => {
       live = false;
     };
-  }, [expense.id]);
+  }, [expense.id, historyAttempt]);
 
   // Waiting for approval: it can be approved, rejected or paid in cash, but not sent through Paystack.
   const approved = current.approval === "approved";
   const owed =
     current.approval !== "rejected" && (current.paymentStatus === "unpaid" || current.paymentStatus === "failed");
-  const decide = async (path: "approve" | "reject", body?: unknown) => {
-    try {
-      setCurrent(await apiRequest<ExpenseView>(`/api/expenses/${current.id}/${path}`, "POST", body));
-      toast.success(path === "approve" ? `${current.number} approved.` : `${current.number} rejected.`);
-      setRejecting(false);
-      router.refresh();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
-  };
+  const decide = (path: "approve" | "reject", body?: unknown) =>
+    action.run(() => apiRequest<ExpenseView>(`/api/expenses/${current.id}/${path}`, "POST", body), {
+      key: path,
+      success: path === "approve" ? `${current.number} approved.` : `${current.number} rejected.`,
+      onSuccess: (saved) => {
+        setCurrent(saved);
+        setRejecting(false);
+        router.refresh();
+      },
+    });
   const latest = payouts[0];
 
   return (
@@ -126,12 +142,18 @@ export function ExpenseSheet({
         footer={
           paying && canPay && owed ? undefined : (
             <div className="space-y-2">
+              <ActionFeedback action={action} />
               {canApprove && current.approval === "pending" && (
                 <div className="grid grid-cols-2 gap-2">
-                  <Button size="lg" onClick={() => void decide("approve")}>
+                  <Button
+                    size="lg"
+                    loading={action.isPending("approve")}
+                    disabled={action.busy}
+                    onClick={() => void decide("approve")}
+                  >
                     <CircleCheck /> Approve
                   </Button>
-                  <Button size="lg" variant="secondary" onClick={() => setRejecting(true)}>
+                  <Button size="lg" variant="secondary" disabled={action.busy} onClick={() => setRejecting(true)}>
                     Reject
                   </Button>
                 </div>
@@ -159,20 +181,25 @@ export function ExpenseSheet({
                 <Button
                   variant="secondary"
                   fullWidth
-                  onClick={async () => {
-                    try {
-                      setCurrent(
-                        await apiRequest<ExpenseView>(`/api/expenses/${current.id}`, "PATCH", {
+                  loading={action.isPending("notes")}
+                  disabled={action.busy}
+                  onClick={() =>
+                    void action.run(
+                      () =>
+                        apiRequest<ExpenseView>(`/api/expenses/${current.id}`, "PATCH", {
                           notes,
                           version: current.version,
                         }),
-                      );
-                      toast.success("Notes saved.");
-                      router.refresh();
-                    } catch (e) {
-                      toast.error((e as AuthError).message);
-                    }
-                  }}
+                      {
+                        key: "notes",
+                        success: "Notes saved.",
+                        onSuccess: (saved) => {
+                          setCurrent(saved);
+                          router.refresh();
+                        },
+                      },
+                    )
+                  }
                 >
                   Save notes
                 </Button>
@@ -218,6 +245,20 @@ export function ExpenseSheet({
                   <strong>Rejected:</strong> {current.approvalNote} It doesn&apos;t count and isn&apos;t owed; record it
                   again to put it right.
                 </p>
+              )}
+              {historyProblem && (
+                <FormAlert title="The transfers for this expense didn't load.">
+                  <p>
+                    {historyProblem}{" "}
+                    <button
+                      type="button"
+                      className="focus-ring rounded font-bold text-fg underline"
+                      onClick={() => setHistoryAttempt((a) => a + 1)}
+                    >
+                      Try again
+                    </button>
+                  </p>
+                </FormAlert>
               )}
               {latest && <TransferStatus payout={latest} canPay={canPay} onChange={refresh} />}
 
@@ -320,6 +361,7 @@ export function ExpenseSheet({
         <RejectSheet
           expense={current}
           onClose={() => setRejecting(false)}
+          action={action}
           onReject={(reason) => decide("reject", { reason })}
         />
       )}
@@ -334,14 +376,10 @@ export function ExpenseSheet({
         }
         confirmLabel="Delete expense"
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/expenses/${current.id}`, "DELETE");
-            toast.success(`${current.number} deleted.`);
-            router.refresh();
-            onClose();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/expenses/${current.id}`, "DELETE");
+          toast.success(`${current.number} deleted.`);
+          router.refresh();
+          onClose();
         }}
       />
     </>
@@ -442,6 +480,11 @@ function PayStep({ expense, onCancel, onDone }: { expense: ExpenseView; onCancel
           fullWidth
           loading={sending}
           disabled={!confirmed || !preview.enough}
+          reason={
+            !preview.enough
+              ? "Your Paystack balance doesn't cover this. Top it up first."
+              : "Tick the box to say you've checked who you're paying."
+          }
           onClick={() => void send()}
         >
           <Send /> Send {formatNaira(preview.amountKobo)}
@@ -533,7 +576,13 @@ function TransferStatus({
               />
             )}
           </Field>
-          <Button type="submit" loading={busy} className="mb-0.5">
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={otp.length < 4}
+            reason="Type the OTP Paystack sent first."
+            className="mb-0.5"
+          >
             Send
           </Button>
         </form>
@@ -637,13 +686,15 @@ function RejectSheet({
   expense,
   onClose,
   onReject,
+  action,
 }: {
   expense: ExpenseView;
   onClose: () => void;
-  onReject: (reason: string) => Promise<void>;
+  onReject: (reason: string) => Promise<unknown>;
+  action: { failure: AuthError | null; slow: boolean; busy: boolean };
 }) {
   const [reason, setReason] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  const busy = action.busy;
   const [tried, setTried] = React.useState(false);
   return (
     <Sheet
@@ -652,21 +703,21 @@ function RejectSheet({
       title={`Reject ${expense.number}?`}
       subtitle={formatNaira(expense.amountKobo)}
       footer={
-        <Button
-          size="lg"
-          variant="danger"
-          fullWidth
-          loading={busy}
-          onClick={async () => {
-            setTried(true);
-            if (!reason.trim()) return;
-            setBusy(true);
-            await onReject(reason);
-            setBusy(false);
-          }}
-        >
-          Reject
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={action} />
+          <Button
+            size="lg"
+            variant="danger"
+            fullWidth
+            loading={busy}
+            onClick={() => {
+              setTried(true);
+              if (reason.trim()) void onReject(reason);
+            }}
+          >
+            Reject
+          </Button>
+        </div>
       }
     >
       <div className="space-y-4">

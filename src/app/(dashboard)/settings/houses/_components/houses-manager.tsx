@@ -6,12 +6,13 @@ import { useFormik } from "formik";
 import { Plus, Sparkles, Trash2, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert, useFocusFirstError } from "@/components/auth";
+import { Field, useFocusFirstError } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Fab, Panel } from "@/components/kit";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import {
@@ -197,20 +198,27 @@ function HouseSheet({
         title={current ? current.name : "Add a house"}
         subtitle={current ? "Edit house" : "Where batches are placed"}
         footer={
-          <div className="flex items-center gap-2">
-            {current && (
-              <Button variant="ghost" className="text-danger-fg" onClick={() => setDeleting(true)}>
-                <Trash2 /> Delete
+          <div className="space-y-2">
+            <ActionFeedback action={{ failure }} />
+            <div className="flex items-center gap-2">
+              {current && (
+                <Button
+                  variant="ghost"
+                  className="text-danger-fg"
+                  disabled={form.isSubmitting}
+                  onClick={() => setDeleting(true)}
+                >
+                  <Trash2 /> Delete
+                </Button>
+              )}
+              <Button type="submit" form="house-form" fullWidth loading={form.isSubmitting} size="lg">
+                {current ? "Save changes" : "Add house"}
               </Button>
-            )}
-            <Button type="submit" form="house-form" fullWidth loading={form.isSubmitting} size="lg">
-              {current ? "Save changes" : "Add house"}
-            </Button>
+            </div>
           </div>
         }
       >
         <form id="house-form" noValidate onSubmit={form.handleSubmit} className="space-y-5">
-          {failure && <FormAlert title={failure.message} />}
           <Field id="name" label="Name" error={error("name")}>
             {(a11y) => (
               <Input
@@ -330,12 +338,8 @@ function HouseSheet({
         confirmLabel="Delete house"
         onConfirm={async () => {
           if (!current) return;
-          try {
-            await apiRequest(`/api/houses/${current.id}`, "DELETE");
-            onSaved(`${current.name} deleted.`);
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/houses/${current.id}`, "DELETE");
+          onSaved(`${current.name} deleted.`);
         }}
       />
     </>

@@ -2,11 +2,12 @@
 
 import * as React from "react";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { formatNaira } from "@/lib/money";
@@ -49,7 +50,7 @@ export function AdvanceSheet({
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const errors = validateAdvance(v, { today });
-  const show = (f: keyof AdvanceInput) => (submitted ? errors[f] : failure?.field === f ? failure.message : undefined);
+  const show = (f: keyof AdvanceInput) => (failure?.field === f ? failure.message : submitted ? errors[f] : undefined);
   const set = <K extends keyof AdvanceInput>(k: K, value: AdvanceInput[K]) => setV((d) => ({ ...d, [k]: value }));
   const amount = Number.isFinite(v.amountKobo) ? v.amountKobo : 0;
   let last = v.firstPeriod;
@@ -79,13 +80,15 @@ export function AdvanceSheet({
       title="Give an advance"
       subtitle={`To ${employee.name}, out of their pay`}
       footer={
-        <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
-          {paidBy === "paystack" ? "Save and send it" : "Save"}
-        </Button>
+        <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
+          <Button size="lg" fullWidth loading={busy} onClick={() => void save()}>
+            {paidBy === "paystack" ? "Save and send it" : "Save"}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         <Field id="amountKobo" label="How much" error={show("amountKobo")}>
           {(a11y) => (
             <MoneyInput
