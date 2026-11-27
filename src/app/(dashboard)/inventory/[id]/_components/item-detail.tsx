@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ClipboardCheck, MinusCircle, PackagePlus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, MinusCircle, PackagePlus, Pencil, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ItemSheet } from "../../_components/inventory-board";
+import { type SpendProps, useSpending } from "../../../expenses/_components/expenses-board";
 import { Field, FormAlert } from "@/components/auth";
 import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +35,9 @@ export function ItemDetail({
   allBatches,
   today,
   canWrite,
+  spending = null,
 }: {
+  spending?: SpendProps | null;
   item: ItemView;
   movements: LedgerRow<MovementView>[];
   batches: { id: string; code: string }[];
@@ -44,6 +47,9 @@ export function ItemDetail({
 }) {
   const router = useRouter();
   const [action, setAction] = React.useState<Action | null>(null);
+  const buying = useSpending(
+    spending ?? { suppliers: [], items: [], batches: [], today, canWrite: false, canPay: false },
+  );
   const [editing, setEditing] = React.useState(false);
   const [removing, setRemoving] = React.useState<MovementView | null>(null);
   const q = (n: number) => quantity(n, item.unit);
@@ -106,19 +112,28 @@ export function ItemDetail({
         </FormAlert>
       )}
 
-      {canWrite && (
+      {(canWrite || spending) && (
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          {!movements.length && (
-            <Button onClick={() => setAction("opening")}>
+          {spending && (
+            <Button onClick={() => buying.spend({ kind: "stock", itemId: item.id })}>
+              <ShoppingCart /> Buy more
+            </Button>
+          )}
+          {canWrite && !movements.length && (
+            <Button variant="secondary" onClick={() => setAction("opening")}>
               <PackagePlus /> Opening stock
             </Button>
           )}
-          <Button variant="secondary" onClick={() => setAction("count")}>
-            <ClipboardCheck /> Count stock
-          </Button>
-          <Button variant="secondary" onClick={() => setAction("usage")}>
-            <MinusCircle /> Record usage
-          </Button>
+          {canWrite && (
+            <>
+              <Button variant="secondary" onClick={() => setAction("count")}>
+                <ClipboardCheck /> Count stock
+              </Button>
+              <Button variant="secondary" onClick={() => setAction("usage")}>
+                <MinusCircle /> Record usage
+              </Button>
+            </>
+          )}
         </div>
       )}
 
@@ -200,6 +215,7 @@ export function ItemDetail({
           }}
         />
       )}
+      {spending && buying.sheets}
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Archive, Landmark, Phone, Plus, Search, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
@@ -23,10 +24,20 @@ import {
   validateSupplier,
 } from "@/lib/suppliers/rules";
 import type { SupplierView } from "@/lib/suppliers/service";
+import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 /** The farm's suppliers as cards: what they supply, how to reach them, and whether they can be paid. */
-export function SuppliersBoard({ suppliers, canWrite }: { suppliers: SupplierView[]; canWrite: boolean }) {
+export function SuppliersBoard({
+  suppliers,
+  owed = {},
+  canWrite,
+}: {
+  suppliers: SupplierView[];
+  /** What each supplier is owed, in kobo, by id. */
+  owed?: Record<string, number>;
+  canWrite: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<SupplierView | "new" | null>(null);
   const [query, setQuery] = React.useState("");
@@ -82,12 +93,9 @@ export function SuppliersBoard({ suppliers, canWrite }: { suppliers: SupplierVie
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {shown.map((s) => (
               <li key={s.id} className="relative">
-                <button
-                  type="button"
-                  disabled={!canWrite}
-                  onClick={() => setEditing(s)}
-                  aria-label={`${s.name}. Edit`}
-                  className="focus-ring flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4 pb-14 text-left shadow-card enabled:hover:border-line-strong"
+                <Link
+                  href={`/suppliers/${s.id}`}
+                  className="focus-ring flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4 pb-14 text-left shadow-card hover:border-line-strong"
                 >
                   <span className="flex items-start justify-between gap-2">
                     <span className="font-display text-lg font-bold text-fg-heading">{s.name}</span>
@@ -107,7 +115,10 @@ export function SuppliersBoard({ suppliers, canWrite }: { suppliers: SupplierVie
                   ) : (
                     <span className="text-xs text-fg-subtle">No bank account</span>
                   )}
-                </button>
+                  {(owed[s.id] ?? 0) > 0 && (
+                    <span className="num text-sm font-semibold text-warning-fg">You owe {formatNaira(owed[s.id])}</span>
+                  )}
+                </Link>
                 {s.phone && (
                   <a
                     href={`tel:${s.phone}`}

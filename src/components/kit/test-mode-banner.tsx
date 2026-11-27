@@ -7,7 +7,16 @@ import { cn } from "@/lib/utils";
  * Always on screen while Paystack test keys are set: an amber bar across the top of every page, so
  * nobody mistakes a test payment or payout for real money, or the other way round.
  */
-export function TestModeBanner({ action, className }: { action?: React.ReactNode; className?: string }) {
+export function TestModeBanner({
+  action,
+  simulated = false,
+  className,
+}: {
+  action?: React.ReactNode;
+  /** Fowlex's own Paystack simulator rather than Paystack's test keys. */
+  simulated?: boolean;
+  className?: string;
+}) {
   return (
     <div
       role="status"
@@ -22,8 +31,10 @@ export function TestModeBanner({ action, className }: { action?: React.ReactNode
         Test mode
       </span>
       <span className="truncate">
-        <span className="hidden sm:inline">Paystack is using test keys. </span>Payments and payouts here move no real
-        money.
+        <span className="hidden sm:inline">
+          {simulated ? "Paystack is simulated. " : "Paystack is using test keys. "}
+        </span>
+        Payments and payouts here move no real money.
       </span>
       {action}
     </div>

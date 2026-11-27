@@ -2,16 +2,19 @@ import { AuditLogModel } from "./audit-log";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { DailyLogModel } from "./daily-log";
+import { ExpenseModel } from "./expense";
 import { FarmModel } from "./farm";
 import { HealthEventModel } from "./health-event";
 import { HouseModel } from "./house";
 import { InventoryItemModel } from "./inventory-item";
 import { InviteModel } from "./invite";
 import { PasswordResetModel } from "./password-reset";
+import { PayoutModel } from "./payout";
 import { SettingsModel } from "./settings";
 import { StockMovementModel } from "./stock-movement";
 import { SupplierModel } from "./supplier";
 import { UserModel } from "./user";
+import { WebhookEventModel } from "./webhook-event";
 
 /** Every model. A new model joins this list so its indexes are built at deploy time. */
 export const ALL_MODELS = [
@@ -19,16 +22,19 @@ export const ALL_MODELS = [
   BatchModel,
   CounterModel,
   DailyLogModel,
+  ExpenseModel,
   FarmModel,
   HealthEventModel,
   HouseModel,
   InventoryItemModel,
   InviteModel,
   PasswordResetModel,
+  PayoutModel,
   SettingsModel,
   StockMovementModel,
   SupplierModel,
   UserModel,
+  WebhookEventModel,
 ];
 
 /**

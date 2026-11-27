@@ -5,6 +5,7 @@ import { cacheLife } from "next/cache";
 import { listAudit } from "@/lib/audit/service";
 import { batchSummaries, getBatch, listBatches } from "@/lib/batches/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
+import { listExpenses, supplierBalances } from "@/lib/expenses/service";
 import { listHouses } from "@/lib/houses/service";
 import { listItems } from "@/lib/inventory/items";
 import { listMovements } from "@/lib/inventory/movements";
@@ -102,6 +103,24 @@ async function suppliersCached(farmId: string) {
 }
 
 export const loadSuppliers = PRODUCTION ? suppliersCached : (farmId: string) => listSuppliers(farmId);
+async function expensesCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listExpenses(farmId);
+}
+
+export const loadExpenses = PRODUCTION ? expensesCached : (farmId: string) => listExpenses(farmId);
+
+async function balancesCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  // A Map doesn't survive the cache: hand back its entries.
+  return [...(await supplierBalances(farmId))];
+}
+
+/** What each supplier is owed, by supplier id. */
+export const loadSupplierBalances = async (farmId: string) =>
+  new Map(PRODUCTION ? await balancesCached(farmId) : await supplierBalances(farmId));
 export const loadItems = PRODUCTION ? itemsCached : (farmId: string) => listItems(farmId);
 export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;

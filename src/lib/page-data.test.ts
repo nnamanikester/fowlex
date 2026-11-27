@@ -30,12 +30,14 @@ describe.each(["production", "development"])("page data in %s", (env) => {
       loadBatch,
       loadBatches,
       loadBatchSummaries,
+      loadExpenses,
       loadHealth,
       loadHouses,
       loadItems,
       loadLogs,
       loadMovements,
       loadSettings,
+      loadSupplierBalances,
       loadSuppliers,
       loadTeam,
     } = await import("./page-data");
@@ -54,7 +56,9 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadItems(actor.farmId)).toEqual([]);
     expect(await loadMovements(actor.farmId, actor.id)).toEqual([]);
     expect(await loadSuppliers(actor.farmId)).toEqual([]);
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 12 : 0);
+    expect(await loadExpenses(actor.farmId)).toEqual([]);
+    expect(await loadSupplierBalances(actor.farmId)).toEqual(new Map());
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 14 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });
