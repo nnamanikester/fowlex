@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ChevronLeft, ChevronRight, RotateCcw, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, FileDown, RotateCcw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { STATE_TONE } from "./payroll-board";
@@ -11,7 +11,7 @@ import { ExpenseSheet } from "../../expenses/_components/expense-sheet";
 import { Field, FormAlert } from "@/components/auth";
 import { Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Sheet } from "@/components/ui/sheet";
@@ -175,17 +175,27 @@ export function RunDetail({
               </>
             );
             return (
-              <li key={l.id}>
+              <li key={l.id} className="flex items-stretch">
                 {open ? (
                   <button
                     type="button"
                     onClick={open}
-                    className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
+                    className="focus-ring flex min-w-0 flex-1 items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
                   >
                     {body}
                   </button>
                 ) : (
-                  <div className="flex items-center gap-3 px-5 py-3.5">{body}</div>
+                  <div className="flex flex-1 items-center gap-3 px-5 py-3.5">{body}</div>
+                )}
+                {!draft && l.expense && (
+                  <a
+                    href={`/api/payroll/${run.id}/payslips?line=${l.id}`}
+                    download
+                    aria-label={`${l.name}'s payslip`}
+                    className="focus-ring flex w-12 shrink-0 items-center justify-center border-l border-line text-fg-muted hover:bg-surface-subtle hover:text-fg"
+                  >
+                    <FileDown className="size-5" aria-hidden />
+                  </a>
                 )}
               </li>
             );
@@ -251,6 +261,11 @@ export function RunDetail({
         <p className="text-sm text-fg-muted">An owner approves the pay before anyone is paid.</p>
       )}
       <div className="flex flex-wrap gap-2">
+        {!draft && (
+          <a href={`/api/payroll/${run.id}/payslips`} download className={buttonClasses({ variant: "secondary" })}>
+            <FileDown /> All payslips (PDF)
+          </a>
+        )}
         {!draft && canApprove && !anyPaid && (
           <Button
             variant="ghost"

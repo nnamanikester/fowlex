@@ -29,6 +29,10 @@ describe("sendEmail", () => {
     expect(url).toBe("https://api.resend.com/emails");
     expect(init.headers).toMatchObject({ Authorization: "Bearer re_test" });
     expect(JSON.parse(init.body as string)).toMatchObject({ from: "Fowlex <hi@fowlex.com>", to: ["ada@fowlex.com"] });
+    expect(JSON.parse(init.body as string).attachments).toBeUndefined();
+    await sendEmail({ ...email, attachments: [{ filename: "Payslip.pdf", content: "JVBERi0=" }] });
+    const [, withFile] = fetch.mock.calls[1] as unknown as [string, RequestInit];
+    expect(JSON.parse(withFile.body as string).attachments).toEqual([{ filename: "Payslip.pdf", content: "JVBERi0=" }]);
   });
 
   it("fails loudly when Resend refuses", async () => {
