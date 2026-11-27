@@ -26,6 +26,7 @@ describe.each(["production", "development"])("page data in %s", (env) => {
   it("loads settings, the team and the audit log", async () => {
     vi.stubEnv("NODE_ENV", env);
     const {
+      loadAssets,
       loadAudit,
       loadBatch,
       loadBatches,
@@ -58,7 +59,8 @@ describe.each(["production", "development"])("page data in %s", (env) => {
     expect(await loadSuppliers(actor.farmId)).toEqual([]);
     expect(await loadExpenses(actor.farmId)).toEqual([]);
     expect(await loadSupplierBalances(actor.farmId)).toEqual(new Map());
-    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 14 : 0);
+    expect(await loadAssets(actor.farmId)).toEqual([]);
+    expect(cacheLife.mock.calls.length).toBe(env === "production" ? 15 : 0);
     if (env === "production") expect(cacheLife).toHaveBeenCalledWith("session");
     cacheLife.mockClear();
   });

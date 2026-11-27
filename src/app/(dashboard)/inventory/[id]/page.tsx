@@ -43,6 +43,7 @@ async function Item({ params }: Pick<PageProps<"/inventory/[id]">, "params">) {
       allBatches={Object.fromEntries(batches.map((b) => [b.id, b.code]))}
       today={today()}
       canWrite={can(user.role, "inventory.write")}
+      showMoney={can(user.role, "expense.read")}
       spending={
         canBuy
           ? {

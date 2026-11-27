@@ -7,6 +7,9 @@ import { GET as outbox } from "./dev/outbox/route";
 import { POST as closeBatch } from "./batches/[id]/close/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
+import { POST as disposeAsset } from "./assets/[id]/dispose/route";
+import { DELETE as deleteAsset, PATCH as updateAsset } from "./assets/[id]/route";
+import { GET as listAssets, POST as createAsset } from "./assets/route";
 import { GET as listBanks } from "./banks/route";
 import { POST as markPaid } from "./expenses/[id]/paid/route";
 import { GET as payPreview, POST as payExpense } from "./expenses/[id]/pay/route";
@@ -621,5 +624,53 @@ describe("expense, payment and upload routes", () => {
     expect((await upload(new Request(`${BASE}/api/uploads`, { method: "POST", body: "nope" }))).status).toBe(400);
     await signInAs("owner");
     expect((await getUpload(req("GET", url), ctx(id))).status).toBe(404);
+  });
+});
+
+describe("equipment routes", () => {
+  it("add, list, edit, mark sold and delete; staff can't see it", async () => {
+    const manager = await signInAs("manager");
+    const body = {
+      name: "Generator",
+      kind: "generator",
+      costKobo: 60_000_000,
+      purchasedOn: "2026-01-10",
+      usefulLifeMonths: 24,
+    };
+    const created = await createAsset(req("POST", "/api/assets", body));
+    expect(created.status).toBe(201);
+    const asset = await created.json();
+    expect(await (await listAssets()).json()).toHaveLength(1);
+    const saved = await updateAsset(
+      req("PATCH", `/api/assets/${asset.id}`, { ...body, notes: "Shed", version: 0 }),
+      ctx(asset.id),
+    );
+    expect((await saved.json()).notes).toBe("Shed");
+    expect((await createAsset(new Request(`${BASE}/api/assets`, { method: "POST", body: "{oops" }))).status).toBe(400);
+    expect(
+      (
+        await updateAsset(
+          new Request(`${BASE}/api/assets/${asset.id}`, { method: "PATCH", body: "{oops" }),
+          ctx(asset.id),
+        )
+      ).status,
+    ).toBe(409); // No version: refused as stale.
+    expect(
+      (
+        await disposeAsset(
+          new Request(`${BASE}/api/assets/${asset.id}/dispose`, { method: "POST", body: "{oops" }),
+          ctx(asset.id),
+        )
+      ).status,
+    ).toBe(400);
+    const sold = await disposeAsset(
+      req("POST", `/api/assets/${asset.id}/dispose`, { status: "scrapped" }),
+      ctx(asset.id),
+    );
+    expect((await sold.json()).status).toBe("scrapped");
+    session.user = { ...manager, role: "staff" };
+    expect((await listAssets()).status).toBe(403);
+    session.user = manager;
+    expect((await deleteAsset(req("DELETE", `/api/assets/${asset.id}`), ctx(asset.id))).status).toBe(204);
   });
 });

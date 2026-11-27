@@ -11,12 +11,14 @@ import {
   type PaymentStatus,
   validateExpense,
 } from "./rules";
+import { checkAssetFromExpense, createAssetFromExpense } from "@/lib/assets/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
 import type { Category } from "@/lib/inventory/rules";
+import { AssetModel } from "@/models/asset";
 import { BatchModel } from "@/models/batch";
 import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
@@ -34,6 +36,8 @@ export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   paidOn: string | null;
   /** Fowlex recorded it itself (a Paystack fee): it changes with its transfer, not by hand. */
   automatic: boolean;
+  /** Equipment: counted as depreciation over its life. */
+  capital: boolean;
   createdAt: string;
 };
 
@@ -56,6 +60,7 @@ type Doc = {
   notes?: string;
   receipt?: { url: string; name?: string } | null;
   source?: { kind?: string | null };
+  capital?: boolean;
   createdAt?: Date;
 };
 const view = (e: Doc): ExpenseView => ({
@@ -77,6 +82,7 @@ const view = (e: Doc): ExpenseView => ({
   notes: e.notes ?? "",
   receipt: e.receipt ? { url: e.receipt.url, name: e.receipt.name ?? "" } : null,
   automatic: !!e.source?.kind,
+  capital: e.capital ?? false,
   createdAt: (e.createdAt ?? new Date(0)).toISOString(),
 });
 
@@ -238,6 +244,11 @@ export async function createExpense(
       "supplierId",
     );
 
+  // Equipment bought outright (not stock) can be tracked as an asset, depreciated over its life.
+  const asset =
+    input.asset && !values.lines.length && values.category === "equipment"
+      ? checkAssetFromExpense(input.asset, values, today)
+      : null;
   const paid = ["cash", "transfer", "pos"].includes(values.method);
   try {
     const doc = await withTransaction(async (session) => {
@@ -250,6 +261,7 @@ export async function createExpense(
             number: `EXP-${year}-${String(seq).padStart(4, "0")}`,
             paymentStatus: paid ? "paid" : "unpaid",
             paidOn: paid ? values.date : null,
+            capital: !!asset,
             farmId: actor.farmId,
             createdBy: actor.id,
             clientRequestId: rid,
@@ -272,6 +284,7 @@ export async function createExpense(
           })),
           { session, ordered: true },
         );
+      if (asset) await createAssetFromExpense(session, actor, asset, expense._id);
       return expense;
     });
     return { expense: view(doc.toObject() as unknown as Doc), created: true };
@@ -358,5 +371,7 @@ export async function deleteExpense(actor: CurrentUser, id: string) {
       session,
     );
     for (const m of movements) await m.softDelete();
+    const assets = await AssetModel.find({ expenseId: doc._id }).session(session);
+    for (const a of assets) await a.softDelete();
   });
 }
