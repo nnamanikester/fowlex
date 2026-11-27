@@ -2,7 +2,14 @@ import "server-only";
 
 import { Types } from "mongoose";
 
-import { ADVANCE_PAYMENTS, type AdvanceInput, type AdvancePayment, instalment, validateAdvance } from "./advance-rules";
+import {
+  ADVANCE_PAYMENTS,
+  type AdvanceInput,
+  type AdvancePayment,
+  instalment,
+  monthName,
+  validateAdvance,
+} from "./advance-rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
@@ -14,6 +21,7 @@ import { nextSequence } from "@/models/counter";
 import { EmployeeModel } from "@/models/employee";
 import { ExpenseModel } from "@/models/expense";
 import { PayoutModel } from "@/models/payout";
+import { PayrollRunModel } from "@/models/payroll-run";
 
 export type AdvanceView = {
   id: string;
@@ -127,6 +135,13 @@ export async function createAdvance(actor: CurrentUser, input: Record<string, un
     status: "active",
   }).lean();
   if (!employee) throw new HttpError(400, "invalid_advance", "Choose someone working here.", "employeeId");
+  if (await PayrollRunModel.exists({ farmId: actor.farmId, period: values.firstPeriod, status: "approved" }))
+    throw new HttpError(
+      409,
+      "pay_approved",
+      `${monthName(values.firstPeriod)}'s pay is already approved. Take it from next month's pay.`,
+      "firstPeriod",
+    );
   if (paidBy === "paystack" && !employee.bank)
     throw new HttpError(409, "no_bank", `Add ${employee.name}'s bank account to pay them through Paystack.`, "paidBy");
   const amount = values.amountKobo;

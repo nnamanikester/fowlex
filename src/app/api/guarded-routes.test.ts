@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DELETE as deleteBatch, PATCH as updateBatch } from "./batches/[id]/route";
@@ -13,6 +14,12 @@ import { GET as listEmployees, POST as createEmployee } from "./employees/route"
 import { GET as attendanceDay, POST as saveAttendance } from "./attendance/route";
 import { DELETE as deleteAdvance } from "./advances/[id]/route";
 import { GET as listAdvances, POST as createAdvance } from "./advances/route";
+import { POST as approveRun } from "./payroll/[id]/approve/route";
+import { PATCH as adjustLine } from "./payroll/[id]/lines/[employeeId]/route";
+import { POST as payRun } from "./payroll/[id]/pay/route";
+import { POST as reopenRun } from "./payroll/[id]/reopen/route";
+import { DELETE as deleteRun, GET as getRun } from "./payroll/[id]/route";
+import { GET as listRuns, POST as startRun } from "./payroll/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -955,5 +962,49 @@ describe("advance routes", () => {
     await signInAs("staff");
     expect((await listAdvances(req("GET", "/api/advances"))).status).toBe(403);
     expect((await createAdvance(req("POST", "/api/advances", {}))).status).toBe(403);
+  });
+});
+
+describe("payroll routes", () => {
+  it("managers prepare, owners approve, reopen and pay; staff can't", async () => {
+    const owner = await signInAs("owner");
+    const musa = await (
+      await createEmployee(req("POST", "/api/employees", { name: "Musa", payType: "monthly", rateKobo: 6_000_000 }))
+    ).json();
+    session.user = { ...owner, role: "manager" };
+    const started = await startRun(req("POST", "/api/payroll", {}));
+    expect(started.status).toBe(201);
+    const run = await started.json();
+    const lines = (employeeId: string) => ({ params: Promise.resolve({ id: run.id, employeeId }) });
+    const adjusted = await adjustLine(
+      req("PATCH", `/api/payroll/${run.id}/lines/${musa.id}`, { bonusKobo: 100_000, version: 0 }),
+      lines(musa.id),
+    );
+    expect((await adjusted.json()).lines[0].bonusKobo).toBe(100_000);
+    expect(
+      (await adjustLine(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }), lines(musa.id))).status,
+    ).toBe(409);
+    expect((await approveRun(req("POST", `/api/payroll/${run.id}/approve`, { version: 1 }), ctx(run.id))).status).toBe(
+      403,
+    );
+    expect((await payRun(req("POST", `/api/payroll/${run.id}/pay`), ctx(run.id))).status).toBe(403);
+    session.user = owner;
+    expect((await approveRun(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }), ctx(run.id))).status).toBe(
+      409,
+    );
+    const approved = await approveRun(req("POST", `/api/payroll/${run.id}/approve`, { version: 1 }), ctx(run.id));
+    expect((await approved.json()).status).toBe("approved");
+    expect((await (await payRun(req("POST", `/api/payroll/${run.id}/pay`), ctx(run.id))).json()).results).toEqual([]);
+    expect((await (await reopenRun(req("POST", `/api/payroll/${run.id}/reopen`), ctx(run.id))).json()).status).toBe(
+      "draft",
+    );
+    expect((await (await getRun(req("GET", `/api/payroll/${run.id}`), ctx(run.id))).json()).id).toBe(run.id);
+    expect((await getRun(req("GET", "/api/payroll/x"), ctx(String(new Types.ObjectId())))).status).toBe(404);
+    expect(await (await listRuns()).json()).toHaveLength(1);
+    expect((await deleteRun(req("DELETE", `/api/payroll/${run.id}`), ctx(run.id))).status).toBe(204);
+    expect((await startRun(new Request(`${BASE}/api/payroll`, { method: "POST", body: "{oops" }))).status).toBe(201);
+    session.user = { ...owner, role: "staff" };
+    expect((await listRuns()).status).toBe(403);
+    expect((await startRun(req("POST", "/api/payroll", {}))).status).toBe(403);
   });
 });
