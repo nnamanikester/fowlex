@@ -496,6 +496,22 @@ describe("stock movement routes", () => {
   });
 });
 
+describe("bank routes for everyone who keeps a bank account", () => {
+  it("finance can list banks and name an account to pay; sales can't", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    await signInAs("finance");
+    const banks = await (await listBanks()).json();
+    expect(banks[0]).toEqual({ code: "001", name: "Test Bank (test mode only)", test: true });
+    const named = await resolveBank(req("GET", "/api/banks/resolve?accountNumber=0000000000&bankCode=001"));
+    expect(await named.json()).toMatchObject({ accountName: "TEST ACCOUNT" });
+    await signInAs("sales");
+    expect((await listBanks()).status).toBe(403);
+    expect((await resolveBank(req("GET", "/api/banks/resolve"))).status).toBe(403);
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("supplier and bank routes", () => {
   it("list banks, name an account, add, edit and delete a supplier; staff can't", async () => {
     vi.stubEnv("PAYSTACK_SECRET_KEY", "");

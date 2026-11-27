@@ -1,9 +1,13 @@
 import "server-only";
 
 import { HttpError } from "@/lib/auth/guard";
-import { isProviderTrouble, paystack, type PaystackResponse, paystackTrouble } from "./client";
+import { TEST_BANK } from "@/lib/suppliers/rules";
+import { isProviderTrouble, paystack, type PaystackResponse, paystackMode, paystackTrouble } from "./client";
 
-export type Bank = { code: string; name: string };
+/** `test`: Paystack's test bank, only offered with test keys (and in the simulator). */
+export type Bank = { code: string; name: string; test?: true };
+
+export { TEST_BANK } from "@/lib/suppliers/rules";
 
 const DAY = 24 * 60 * 60 * 1000;
 const g = globalThis as typeof globalThis & {
@@ -13,7 +17,7 @@ const g = globalThis as typeof globalThis & {
 
 /** Every Nigerian bank Paystack can pay, A to Z, cached for a day (it rarely changes). */
 export async function listBanks(): Promise<Bank[]> {
-  if (g.__fowlexBanks && Date.now() - g.__fowlexBanks.at < DAY) return g.__fowlexBanks.banks;
+  if (g.__fowlexBanks && Date.now() - g.__fowlexBanks.at < DAY) return withTestBank(g.__fowlexBanks.banks);
   const banks: Bank[] = [];
   let next: string | undefined;
   // Follow Paystack's cursor, bounded so a bad cursor can't loop forever.
@@ -28,7 +32,14 @@ export async function listBanks(): Promise<Bank[]> {
   }
   const unique = [...new Map(banks.map((b) => [b.code, b])).values()].sort((a, b) => a.name.localeCompare(b.name));
   g.__fowlexBanks = { at: Date.now(), banks: unique };
-  return unique;
+  return withTestBank(unique);
+}
+
+/** Outside live, the test bank comes first, so trying Fowlex never runs into Paystack's daily limit. */
+function withTestBank(banks: Bank[]): Bank[] {
+  if (paystackMode() === "live") return banks.filter((b) => b.code !== TEST_BANK.code);
+  const rest = banks.filter((b) => b.code !== TEST_BANK.code);
+  return [{ code: TEST_BANK.code, name: TEST_BANK.name, test: true }, ...rest];
 }
 
 type Outcome = { kind: "found"; accountName: string } | { kind: "not_found" } | { kind: "invalid_bank" };

@@ -10,11 +10,13 @@ import type { PaystackResponse } from "./client";
  * - 0000000000: no such account.
  * - 1111111111: the bank lookup is down (Paystack trouble).
  * - any number ending 0002: the transfer fails at the bank.
+ * - at the test bank (001), any number is "TEST ACCOUNT", as with Paystack's test keys.
  *
  * Transfers settle at once (success or failure), and the balance starts at ₦10,000,000. Every
  * change to the balance is written to its ledger, as Paystack's /balance/ledger lists them.
  */
 export const SIMULATED_BANKS = [
+  { code: "001", name: "Test Bank" },
   { code: "044", name: "Access Bank" },
   { code: "023", name: "Citibank Nigeria" },
   { code: "050", name: "Ecobank Nigeria" },
@@ -151,6 +153,8 @@ export function simulate<T>(
       const number = query.account_number ?? "";
       if (!SIMULATED_BANKS.some((x) => x.code === query.bank_code)) return no(422, "Unknown bank code");
       if (number === "1111111111") return no(500, "An error occurred");
+      if (query.bank_code === "001" && /^\d{10}$/.test(number))
+        return ok({ account_number: number, account_name: "TEST ACCOUNT" });
       if (number === "0000000000" || !/^\d{10}$/.test(number)) return no(422, "Could not resolve account name");
       return ok({ account_number: number, account_name: NAMES[Number(number.at(-1)) % NAMES.length] });
     }
