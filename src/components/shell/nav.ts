@@ -207,4 +207,7 @@ const CHILD_NAMES: Record<string, string> = {
   "/settings/houses": "Houses",
   "/settings/users": "Users",
   "/settings/audit": "Audit log",
+  "/inventory/equipment": "Equipment",
+  "/expenses/categories": "Categories",
+  "/people/attendance": "Attendance",
 };

@@ -1,4 +1,5 @@
 import { AssetModel } from "./asset";
+import { AttendanceModel } from "./attendance";
 import { AuditLogModel } from "./audit-log";
 import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
@@ -23,6 +24,7 @@ import { WebhookEventModel } from "./webhook-event";
 /** Every model. A new model joins this list so its indexes are built at deploy time. */
 export const ALL_MODELS = [
   AssetModel,
+  AttendanceModel,
   AuditLogModel,
   BatchModel,
   CounterModel,

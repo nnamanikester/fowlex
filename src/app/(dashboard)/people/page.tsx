@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 
 import { PeopleBoard } from "./_components/people-board";
+import { PeopleTabs } from "./_components/people-tabs";
 import { PageSkeleton, RequirePermission } from "../_components/require-permission";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
@@ -15,6 +16,7 @@ export default function PeoplePage() {
   return (
     <RequirePermission permission="people.read">
       <PageHeader title="People" description="Who works on the farm, how they're paid, and their bank accounts." />
+      <PeopleTabs current="people" />
       <Suspense fallback={<PageSkeleton />}>
         <People />
       </Suspense>
