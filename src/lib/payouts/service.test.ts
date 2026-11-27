@@ -183,7 +183,7 @@ describe("paying a supplier through Paystack", () => {
   it("follows what Paystack says when checked: reversed, failed, or held for an OTP", async () => {
     const { owner, expense } = await owed();
     const verify = vi.spyOn(transfers, "verifyTransfer");
-    verify.mockResolvedValueOnce({ status: "otp", transferCode: "TRF_1", feeKobo: 0 });
+    verify.mockResolvedValueOnce({ status: "otp", transferCode: "TRF_1", transferId: null, feeKobo: 0 });
     vi.spyOn(transfers, "initiateTransfer").mockResolvedValueOnce({
       httpStatus: 200,
       status: true,
@@ -191,7 +191,7 @@ describe("paying a supplier through Paystack", () => {
       data: { status: "pending" },
     });
     expect((await payExpense(owner, expense.id)).status).toBe("otp");
-    verify.mockResolvedValueOnce({ status: "reversed", transferCode: "TRF_1", feeKobo: 0 });
+    verify.mockResolvedValueOnce({ status: "reversed", transferCode: "TRF_1", transferId: null, feeKobo: 0 });
     const ref = (await listPayouts(owner.farmId, expense.id))[0].reference;
     expect((await syncPayout(ref))?.status).toBe("reversed");
   });
@@ -235,6 +235,7 @@ describe("paying a supplier through Paystack", () => {
     vi.spyOn(transfers, "verifyTransfer").mockResolvedValueOnce({
       status: "abandoned",
       transferCode: null,
+      transferId: null,
       feeKobo: 0,
     });
     expect((await payExpense(owner, expense.id)).status).toBe("failed");
@@ -263,6 +264,7 @@ describe("paying a supplier through Paystack", () => {
     vi.spyOn(transfers, "verifyTransfer").mockResolvedValueOnce({
       status: "success",
       transferCode: "TRF_9",
+      transferId: null,
       feeKobo: 0,
     });
     expect((await payExpense(owner, expense.id)).status).toBe("success");

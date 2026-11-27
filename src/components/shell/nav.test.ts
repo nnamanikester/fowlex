@@ -17,6 +17,7 @@ describe("nav", () => {
       "Sales",
       "Invoices",
       "Expenses",
+      "Paystack balance",
       "Reports",
       "Forecasts",
       "People",
