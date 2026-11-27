@@ -37,6 +37,25 @@ const schema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, default: "pending" },
     deliveredOn: { type: String, default: null },
     invoiceId: { type: Schema.Types.ObjectId, ref: "Invoice", default: null },
+    /** Booked by the farm, or by the customer on the public order page. */
+    source: { type: String, enum: ["farm", "online"], default: "farm" },
+    /** Who ordered online and how to reach them, as they typed it. */
+    contact: {
+      type: new Schema(
+        {
+          name: { type: String, default: "" },
+          phone: { type: String, default: "" },
+          email: { type: String, default: "" },
+          business: { type: String, default: "" },
+          delivery: { type: Boolean, default: false },
+          address: { type: String, default: "" },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    /** The online form's id for this order, so a second tap never books it twice. */
+    requestId: { type: String, default: null },
   },
   { optimisticConcurrency: true },
 );
@@ -45,6 +64,10 @@ schema.plugin(basePlugin, { audit: { label: (o) => String(o.number) } });
 schema.index({ farmId: 1, number: 1 }, { unique: true });
 schema.index({ farmId: 1, customerId: 1, status: 1 });
 schema.index({ farmId: 1, "lines.batchId": 1, status: 1 });
+schema.index(
+  { farmId: 1, requestId: 1 },
+  { unique: true, partialFilterExpression: { requestId: { $type: "string" } } },
+);
 
 export type SalesOrder = InferSchemaType<typeof schema> & Base;
 export const SalesOrderModel =

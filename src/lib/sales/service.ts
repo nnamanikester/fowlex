@@ -31,6 +31,9 @@ export type OrderView = OrderInput & {
   invoiceId: string | null;
   /** Each line's batch code, for showing. */
   batchCodes: Record<string, string>;
+  /** Booked by the farm, or by the customer on the order page (with how to reach them). */
+  source: "farm" | "online";
+  contact: { name: string; phone: string; email: string; business: string; delivery: boolean; address: string } | null;
 };
 
 /** As stored: every field has a default, so nothing is missing. */
@@ -48,6 +51,8 @@ type Doc = {
   status: OrderStatus;
   deliveredOn?: string | null;
   invoiceId?: unknown;
+  source: "farm" | "online";
+  contact: OrderView["contact"];
 };
 
 type Names = { customers: Map<string, string>; batches: Map<string, string>; contracts: Map<string, string> };
@@ -74,6 +79,8 @@ const view = (o: Doc, names: Names): OrderView => ({
   deliveredOn: o.deliveredOn ?? null,
   invoiceId: o.invoiceId ? String(o.invoiceId) : null,
   batchCodes: Object.fromEntries(o.lines.map((l) => [String(l.batchId), names.batches.get(String(l.batchId)) ?? "?"])),
+  source: o.source,
+  contact: o.contact,
 });
 
 async function namesFor(farmId: string, docs: Doc[]): Promise<Names> {

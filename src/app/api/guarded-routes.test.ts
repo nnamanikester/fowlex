@@ -97,6 +97,9 @@ import { GET as portalInvoicePdf } from "./portal/invoices/[id]/pdf/route";
 import { GET as portalInvoice } from "./portal/invoices/[id]/route";
 import { GET as portalHome } from "./portal/route";
 import { GET as portalStatement } from "./portal/statement/route";
+import { POST as placePublicOrder } from "./public/shop/[slug]/orders/route";
+import { GET as publicOffer } from "./public/shop/[slug]/route";
+import { GET as getShop, PATCH as updateShopRoute } from "./shop/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1425,5 +1428,64 @@ describe("portal routes", () => {
     session.user = { ...owner, role: "staff" };
     expect((await portalHome()).status).toBe(403);
     expect((await inviteCustomer(req("POST", "/x"), ctx(mine.id))).status).toBe(403);
+  });
+});
+
+describe("order page routes", () => {
+  it("sales turn the page on; anyone sees the offer and orders; staff can't change it", async () => {
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const placed = new Date(Date.parse(today) - 40 * 86_400_000).toISOString().slice(0, 10);
+    await createBatch(
+      req("POST", "/api/batches", {
+        houseId: house.id,
+        placedOn: placed,
+        breed: "Ross 308",
+        delivered: 200,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      }),
+    );
+    session.user = { ...session.user!, role: "sales" };
+    expect((await (await getShop()).json()).enabled).toBe(false);
+    const on = await (await updateShopRoute(req("PATCH", "/x", { enabled: true, pricePerKgKobo: 320_000 }))).json();
+    expect(on.slug).toBe("fowlex-farms");
+    expect((await updateShopRoute(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }))).status).toBe(200);
+
+    // The public side: no one is signed in.
+    session.user = null;
+    const slug = { params: Promise.resolve({ slug: "fowlex-farms" }) };
+    expect((await (await publicOffer(req("GET", "/x"), slug)).json()).readyNow).toBe(200);
+    expect((await publicOffer(req("GET", "/x"), { params: Promise.resolve({ slug: "nope" }) })).status).toBe(404);
+    const order = await placePublicOrder(
+      new Request(`${BASE}/x`, {
+        method: "POST",
+        headers: { "x-forwarded-for": "5.5.5.5, 10.0.0.1" },
+        body: JSON.stringify({
+          birds: 20,
+          date: today,
+          delivery: false,
+          name: "Chidi",
+          phone: "08031234567",
+          email: "",
+          business: "",
+          address: "",
+          notes: "",
+        }),
+      }),
+      slug,
+    );
+    expect(order.status).toBe(201);
+    expect((await order.json()).birds).toBe(20);
+    expect((await placePublicOrder(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }), slug)).status).toBe(
+      400,
+    );
+
+    await signInAs("staff");
+    expect((await getShop()).status).toBe(403);
+    expect((await updateShopRoute(req("PATCH", "/x", {}))).status).toBe(403);
   });
 });

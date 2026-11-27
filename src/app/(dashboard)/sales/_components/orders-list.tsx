@@ -33,7 +33,10 @@ export function OrdersList({
   filters = false,
   fab = false,
   showCustomer = true,
+  openId,
 }: {
+  /** An order to open at once (from the new-order email). */
+  openId?: string;
   orders: OrderView[];
   customers: CustomerOption[];
   customerId?: string;
@@ -47,7 +50,7 @@ export function OrdersList({
   showCustomer?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState<OrderView | "new" | null>(null);
+  const [open, setOpen] = React.useState<OrderView | "new" | null>(() => orders.find((o) => o.id === openId) ?? null);
   const [show, setShow] = React.useState<"pending" | "done" | "all">("pending");
   const shown = filters
     ? orders.filter((o) => show === "all" || (show === "pending" ? o.status === "pending" : o.status !== "pending"))
@@ -110,7 +113,10 @@ export function OrdersList({
                   </span>
                   <span className="num shrink-0 text-right">
                     <span className="block font-semibold text-fg">{formatNaira(o.totalKobo)}</span>
-                    <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                    <span className="flex flex-wrap justify-end gap-1">
+                      {o.source === "online" && <Badge tone="brand">Online</Badge>}
+                      <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS_LABELS[o.status]}</Badge>
+                    </span>
                   </span>
                 </button>
               </li>
