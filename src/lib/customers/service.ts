@@ -18,24 +18,25 @@ export type CustomerView = CustomerInput & {
   hasLogin: boolean;
 };
 
+/** As stored: every field has a default, so nothing is missing. */
 type Doc = CustomerInput & {
   _id: unknown;
-  __v?: number;
+  __v: number;
   status: "active" | "archived";
   userId?: unknown;
 };
 const view = (c: Doc): CustomerView => ({
   id: String(c._id),
-  version: c.__v ?? 0,
+  version: c.__v,
   name: c.name,
   type: c.type as CustomerType,
-  contactName: c.contactName ?? "",
-  phone: c.phone ?? "",
-  email: c.email ?? "",
-  address: c.address ?? "",
+  contactName: c.contactName,
+  phone: c.phone,
+  email: c.email,
+  address: c.address,
   creditLimitKobo: c.creditLimitKobo ?? null,
   termsDays: c.termsDays,
-  notes: c.notes ?? "",
+  notes: c.notes,
   status: c.status,
   hasLogin: !!c.userId,
 });

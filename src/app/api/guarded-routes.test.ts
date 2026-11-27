@@ -88,6 +88,10 @@ import { POST as voidInvoice } from "./invoices/[id]/void/route";
 import { GET as listInvoices, POST as createInvoice } from "./invoices/route";
 import { GET as listInvoicePayments, POST as recordPayment } from "./invoices/[id]/payments/route";
 import { DELETE as removePayment } from "./payments/[id]/route";
+import { POST as emailStatement } from "./customers/[id]/statement/email/route";
+import { GET as statementPdf } from "./customers/[id]/statement/pdf/route";
+import { GET as statement } from "./customers/[id]/statement/route";
+import { GET as agingRoute } from "./invoices/aging/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1335,5 +1339,34 @@ describe("invoice routes", () => {
     expect((await invoicePdf(req("GET", "/x"), ctx("x"))).status).toBe(403);
     expect((await recordPayment(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
     expect((await removePayment(req("DELETE", "/x"), ctx("x"))).status).toBe(403);
+  });
+});
+
+describe("statement and aging routes", () => {
+  it("show, download and email a statement and the aging; staff can't", async () => {
+    await signInAs("finance");
+    const owner = session.user!;
+    session.user = { ...owner, role: "owner" };
+    const customer = await (
+      await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge", email: "g@f.com" }))
+    ).json();
+    session.user = owner;
+    const q = "from=2026-01-01&to=2026-12-31";
+    const s = await statement(req("GET", `/api/customers/${customer.id}/statement?${q}`), ctx(customer.id));
+    expect(await s.json()).toMatchObject({ openingKobo: 0, closingKobo: 0, entries: [] });
+    const pdf = await statementPdf(req("GET", `/api/customers/${customer.id}/statement/pdf?${q}`), ctx(customer.id));
+    expect(pdf.headers.get("Content-Type")).toBe("application/pdf");
+    expect(await (await agingRoute()).json()).toMatchObject({ totalKobo: 0, rows: [] });
+    // Finance reads; emailing it is for those who send invoices.
+    expect((await emailStatement(req("POST", "/x", { from: "2026-01-01" }), ctx(customer.id))).status).toBe(403);
+    session.user = { ...owner, role: "sales" };
+    const sent = await emailStatement(req("POST", "/x", { from: "2026-01-01" }), ctx(customer.id));
+    expect(await sent.json()).toEqual({ to: "g@f.com" });
+    expect(
+      (await emailStatement(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }), ctx(customer.id))).status,
+    ).toBe(400);
+    await signInAs("staff");
+    expect((await statement(req("GET", "/x"), ctx("x"))).status).toBe(403);
+    expect((await agingRoute()).status).toBe(403);
   });
 });

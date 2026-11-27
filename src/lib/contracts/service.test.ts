@@ -179,6 +179,24 @@ describe("contracts", () => {
   });
 });
 
+describe("contract details", () => {
+  it("keeps the signed copy, words the warning for today, and refuses unknown contracts", async () => {
+    const { owner, terms } = await farm();
+    await UserModel.create({ farmId: owner.farmId, email: "ada@f.com", name: "Ada", role: "owner" });
+    const c = await createContract(
+      owner,
+      { ...terms, endDate: TODAY, document: { url: "/api/uploads/x", name: "signed.pdf" }, activate: true },
+      "2026-11-01",
+    );
+    expect(c.document).toEqual({ url: "/api/uploads/x", name: "signed.pdf" });
+    expect(await sendEndingWarnings("x", TODAY)).toBe(1);
+    expect(outbox().at(-1)?.subject).toBe("The Grill's contract ends today");
+    expect(outbox().at(-1)?.text).toContain("(₦3,200.00 a kg)");
+    expect(await refusal(activateContract(owner, "nope", TODAY))).toMatchObject({ status: 404 });
+    expect(await refusal(deleteTemplate(owner, "nope"))).toMatchObject({ status: 404 });
+  });
+});
+
 describe("contract rules", () => {
   it("works out end dates, lengths and status", () => {
     expect(endAfter("2026-11-01", 12)).toBe("2027-10-31");
