@@ -89,13 +89,13 @@ async function Portal() {
                   href={`/portal/invoices/${i.id}`}
                   className="focus-ring flex items-center gap-3 px-5 py-3.5 hover:bg-surface-subtle"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block font-semibold text-fg">{i.number}</span>
                     <span className="num block text-xs text-fg-muted">
                       {day(i.issueDate)} · due {day(i.dueDate)}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
+                  <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span className="block font-semibold text-fg">{formatNaira(i.balanceKobo || i.totalKobo)}</span>
                     <Badge tone={INVOICE_TONE[i.status]}>{INVOICE_STATUS_LABELS[i.status]}</Badge>
                   </span>
@@ -118,14 +118,14 @@ async function Portal() {
           <ul className="divide-y divide-line">
             {home.orders.map((o) => (
               <li key={o.id} className="flex items-center gap-3 px-5 py-3">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block font-semibold text-fg">{o.number}</span>
                   <span className="num block text-xs text-fg-muted">
                     {o.lines.reduce((n, l) => n + l.birds, 0).toLocaleString("en-NG")} birds ·{" "}
                     {day(o.deliveredOn ?? o.deliveryDate)}
                   </span>
                 </span>
-                <span className="num shrink-0 text-right">
+                <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                   <span className="block font-semibold text-fg">{formatNaira(o.totalKobo)}</span>
                   <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS_LABELS[o.status]}</Badge>
                 </span>
@@ -140,13 +140,13 @@ async function Portal() {
           <ul className="divide-y divide-line">
             {home.contracts.map((c) => (
               <li key={c.id} className="flex items-center gap-3 px-5 py-3">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block font-semibold text-fg">{c.number}</span>
                   <span className="num block text-xs text-fg-muted">
                     {formatRange({ from: c.startDate, to: c.terminatedOn ?? c.endDate })} · pay in {c.termsDays} days
                   </span>
                 </span>
-                <span className="num shrink-0 text-right">
+                <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                   <span className="block font-semibold text-fg">
                     {formatNaira(c.priceKobo)} <span className="font-normal text-fg-muted">{PER_UNIT[c.pricing]}</span>
                   </span>

@@ -223,14 +223,14 @@ export function BalanceBoard({
                       <ArrowUpRight className="size-4" />
                     )}
                   </span>
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block truncate font-semibold text-fg">{e.description}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
                       {CATEGORY_LABELS[e.category]} · {when(e.occurredAt)}
                       {!e.confirmed && <Badge tone="info">Waiting for Paystack</Badge>}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
+                  <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span
                       className={cn("block font-semibold", e.direction === "credit" ? "text-success-fg" : "text-fg")}
                     >

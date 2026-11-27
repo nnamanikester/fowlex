@@ -190,7 +190,7 @@ export function InventoryBoard({
                             .join(" · ")}
                         </span>
                       </span>
-                      <span className="num shrink-0 text-right">
+                      <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                         <span className="block font-semibold text-fg">{quantity(item.onHand, item.unit)}</span>
                         {showMoney && (
                           <span className="block text-xs text-fg-subtle">{formatNaira(item.valueKobo)}</span>

@@ -154,7 +154,7 @@ export function ItemDetail({
           <ul className="divide-y divide-line">
             {movements.map((m) => (
               <li key={m.id} className="flex items-start gap-3 px-5 py-3.5">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block font-semibold text-fg">
                     {MOVEMENT_LABELS[m.type]}
                     {m.batchId && allBatches[m.batchId] && (

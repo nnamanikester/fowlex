@@ -1,13 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter, Jost } from "next/font/google";
+import { Fraunces, Geist_Mono, IBM_Plex_Sans, Lexend } from "next/font/google";
 
 import { Providers } from "@/providers";
 import "./globals.css";
 
-/** Inter for the interface (its tabular figures line up naira columns), Jost for headings (the
- * free cousin of the wordmark's Futura), Geist Mono for codes: invoice numbers, batch codes, references. */
-const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
-const jost = Jost({ subsets: ["latin"], display: "swap", variable: "--font-jost" });
+/**
+ * Three faces, each with one job. Fraunces for titles: a soft, rounded serif with the warmth of
+ * the land. Lexend for reading: drawn from reading-proficiency research to cut visual stress and
+ * help people new to screens read with ease (and its zero is plain, unlike a slashed one). IBM Plex Sans for numbers: tabular figures that
+ * line naira up in columns, with a clear 1 and 7. Geist Mono stays for codes (INV-, B-2026-).
+ */
+const display = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+  axes: ["SOFT", "opsz"],
+});
+const body = Lexend({ subsets: ["latin"], display: "swap", variable: "--font-body" });
+const figures = IBM_Plex_Sans({ subsets: ["latin"], display: "swap", variable: "--font-figures" });
 const geistMono = Geist_Mono({ subsets: ["latin"], display: "swap", variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
@@ -24,7 +34,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} ${jost.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${display.variable} ${body.variable} ${figures.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body>
         <Providers>{children}</Providers>
       </body>

@@ -39,7 +39,7 @@ export function AgingPanel({ aging }: { aging: Aging }) {
                 href={`/customers/${r.customerId}`}
                 className="focus-ring flex items-center gap-3 px-5 py-3 hover:bg-surface-subtle"
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block truncate font-semibold text-fg">{r.name}</span>
                   <span className="num block text-xs text-fg-muted">
                     {r.invoices === 1 ? "1 invoice" : `${r.invoices} invoices`}

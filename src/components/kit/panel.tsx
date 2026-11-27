@@ -26,8 +26,8 @@ export function Panel({
   return (
     <section className={cn("overflow-hidden rounded-xl border border-line bg-surface shadow-card", className)}>
       {(title || actions) && (
-        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-3.5">
-          <div className="min-w-0 space-y-0.5">
+        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div className="min-w-0 space-y-1">
             {title && <h2 className="text-base font-bold text-fg-heading">{title}</h2>}
             {description && <p className="text-sm text-fg-muted">{description}</p>}
           </div>

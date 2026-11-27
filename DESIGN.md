@@ -2,7 +2,7 @@
 
 The Fowlex dashboard is built on the **Pickriders dashboard design system** (tokens, shapes, motion,
 components), re-coloured with the Fowlex brand (`brand/README.md`): Fowlex charcoal, comb red and
-cream, with Inter, Jost and Geist Mono. Two kinds of people use it: the partners and managers at a
+cream, with Fraunces, Lexend, IBM Plex Sans and Geist Mono. Two kinds of people use it: the partners and managers at a
 desk reading money, and farm staff on a phone in a poultry house logging deaths and feed.
 
 See it live at **`/design`** (every token and, from step 1.3, every component, in the current theme).
@@ -25,7 +25,7 @@ Radix: the components are our own.
    persistent amber banner and amber "Test" pills while test keys are set.
 5. **Roomy controls, calm surfaces.** 44px buttons and inputs (`min-h-11`), 16px text in inputs on
    phones (no iOS zoom), cards with a hairline and `shadow-card` on the warm `canvas`.
-6. **Numbers line up.** Money and counts use tabular figures (`num`, Inter's `tnum`), right-aligned
+6. **Numbers line up.** Money and counts use the figures face with tabular figures (`num`), right-aligned
    in tables. Naira are shown with ₦ and two decimals; they are stored as kobo integers.
 7. **Mono for what you copy.** Invoice numbers (`INV-2026-0001`), batch codes (`B-2026-07`) and
    Paystack references use Geist Mono, with a copy button where it helps.
@@ -69,8 +69,18 @@ accident.
 
 ## Type
 
-Inter for the interface (tabular figures for money), Jost for headings (the free cousin of Futura,
-the wordmark's face), Geist Mono for codes. Tailwind's default scale, with weight doing the work:
+Three faces, each with one job, so titles, reading and numbers never look alike:
+
+- **Fraunces** (`font-display`) for titles: a soft serif, set with `SOFT 100` and no quirky
+  letters, warm like the land rather than stern like a newspaper.
+- **Lexend** (`font-sans`, the default) for everything you read: drawn from reading-proficiency
+  research to cut visual stress, for people new to screens. Its zero is plain (a slashed zero, as
+  in Atkinson Hyperlegible, made every amount look technical).
+- **IBM Plex Sans** (`num`) for money and counts: tabular, lining figures that line up in columns,
+  with a clear 1 and 7. `num` wins over `font-display`, so a big amount stays a number.
+- **Geist Mono** for codes: invoice numbers, batch codes, references.
+
+Tailwind's default scale, with weight doing the work:
 
 | Use                        | Classes                                                                |
 | -------------------------- | ---------------------------------------------------------------------- |
@@ -85,6 +95,9 @@ the wordmark's face), Geist Mono for codes. Tailwind's default scale, with weigh
 
 ## Shape, space and motion
 
+- **Breathing room:** nothing touches. A title and the line under it get `space-y-1`; an amount
+  over its status pill is a column with `gap-1.5`; a label (`dt`) over its value (`dd`) gets 4px
+  on its own (a base rule). `e2e/spacing.spec.ts` fails if any two controls overlap on any page.
 - **Radius:** buttons `rounded-xl` (12px), inputs `rounded-lg`, cards and panels `rounded-xl`,
   modals `rounded-2xl` (a bottom sheet with `rounded-t-2xl` on phones), pills `rounded-full`.
 - **Heights:** buttons and inputs 44px (`min-h-11`), small buttons 36px.

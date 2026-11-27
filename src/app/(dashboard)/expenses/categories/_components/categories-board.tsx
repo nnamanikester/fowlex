@@ -75,7 +75,7 @@ export function CategoriesBoard({
                     </span>
                   </span>
                   {!budgets.has(c.key) && (
-                    <span className="num shrink-0 text-right">
+                    <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                       <span className="block font-semibold text-fg">{formatNaira(spent.get(c.key) ?? 0)}</span>
                       <span className="block text-xs text-fg-subtle">this month</span>
                     </span>

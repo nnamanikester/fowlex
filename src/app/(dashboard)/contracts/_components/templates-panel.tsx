@@ -26,7 +26,7 @@ export function TemplatesPanel({ templates, canWrite }: { templates: TemplateVie
       <ul className="divide-y divide-line">
         {templates.map((t) => (
           <li key={t.id} className="flex items-center gap-3 px-5 py-3">
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0 flex-1 space-y-1">
               <span className="block truncate font-semibold text-fg">{t.name}</span>
               <span className="num block text-xs text-fg-muted">
                 {formatNaira(t.priceKobo)} {PER_UNIT[t.pricing]} · {DELIVERY_LABELS[t.deliveryEvery]} · {t.months}{" "}

@@ -84,7 +84,7 @@ export function PeopleBoard({
                 className="focus-ring flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4 pb-14 text-left shadow-card hover:border-line-strong"
               >
                 <span className="flex items-start justify-between gap-2">
-                  <span className="min-w-0">
+                  <span className="min-w-0 space-y-0.5">
                     <span className="block truncate font-display text-lg font-bold text-fg-heading">{e.name}</span>
                     <span className="block text-sm text-fg-muted">{e.job || PAY_TYPE_LABELS[e.payType]}</span>
                   </span>
