@@ -61,7 +61,7 @@ async function Batch({ params, searchParams }: PageProps<"/batches/[id]">) {
       canSpend={can(user.role, "expense.write")}
       hatcheries={suppliers
         .filter((s) => !s.archived)
-        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks") }))}
+        .map((s) => ({ id: s.id, name: s.name, chicks: s.supplies.includes("chicks"), payable: !!s.bank }))}
     />
   );
 }

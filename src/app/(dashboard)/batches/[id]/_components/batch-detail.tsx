@@ -9,6 +9,7 @@ import {
   ClipboardPen,
   Hammer,
   MoreHorizontal,
+  PackageCheck,
   Pencil,
   RotateCcw,
   ShoppingCart,
@@ -19,6 +20,7 @@ import { toast } from "sonner";
 
 import { CloseSheet } from "./close-sheet";
 import { ChicksExpense, CostsTab } from "./costs-tab";
+import { PickUpSheet } from "../../_components/book-chicks";
 import { HealthTab } from "./health-tab";
 import { BatchSheet } from "../../_components/batch-sheet";
 import { PHASE_TONE } from "../../_components/batches-board";
@@ -90,6 +92,7 @@ export function BatchDetail({
   const [editing, setEditing] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [closing, setClosing] = React.useState(false);
+  const [pickingUp, setPickingUp] = React.useState(false);
   const [reopening, setReopening] = React.useState(false);
   const open = b.phase !== "closed";
 
@@ -196,6 +199,20 @@ export function BatchDetail({
         ))}
       </nav>
 
+      {b.phase === "planned" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-info-line bg-info-subtle px-4 py-3 text-sm">
+          <span className="flex-1 text-fg">
+            <strong>Booked:</strong> {n(b.bookedChicks ?? b.placed)} chicks
+            {b.supplierName ? ` from ${b.supplierName}` : ""}, to pick up{" "}
+            {b.placedOn === today ? "today" : day(b.placedOn)}. When you collect them, tap Chicks picked up.
+          </span>
+          {canWrite && (
+            <Button size="sm" onClick={() => setPickingUp(true)}>
+              <PackageCheck /> Chicks picked up
+            </Button>
+          )}
+        </div>
+      )}
       {!open && b.closedOn && (
         <div
           role="status"
@@ -258,6 +275,9 @@ export function BatchDetail({
                 <Fact label="Dead on arrival" value={n(b.deadOnArrival)} />
                 <Fact label="Free extras" value={n(b.freeExtras)} />
                 <Fact label="Placed alive" value={n(b.placed)} />
+                {b.shortfall > 0 && (
+                  <Fact label="Short from the hatchery" value={`${n(b.shortfall)} chicks owed to you`} />
+                )}
                 <Fact label="Price per chick" value={formatNaira(b.pricePerChickKobo)} />
                 <Fact label={`Chicks cost (${n(b.paid)} paid)`} value={formatNaira(b.chickCostKobo)} />
                 <Fact
@@ -328,6 +348,7 @@ export function BatchDetail({
         />
       )}
 
+      {pickingUp && <PickUpSheet batch={b} houses={houses} today={today} onClose={() => setPickingUp(false)} />}
       {closing && (
         <CloseSheet
           batch={b}

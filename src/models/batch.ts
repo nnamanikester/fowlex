@@ -25,6 +25,10 @@ const schema = new Schema(
     supplierName: { type: String, trim: true, default: "" },
     /** The hatchery as a saved supplier, so its chicks can be paid for; null for a name typed in. */
     supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", default: null },
+    /** Chicks booked and paid for ahead of pickup: what was paid for, whatever turns up. */
+    bookedChicks: { type: Number, default: null, min: 0 },
+    /** False for a booking until the chicks are picked up and placed. */
+    pickedUp: { type: Boolean, default: true },
     targetSellAgeDays: { type: Number, default: DEFAULTS.targetSellAgeDays },
     targetWeightGrams: { type: Number, default: DEFAULTS.targetWeightGrams },
     status: { type: String, enum: BATCH_STATUSES, default: "active" },
