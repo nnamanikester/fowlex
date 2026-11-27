@@ -78,6 +78,8 @@ export type ExpenseInput = {
   supplierId: string | null;
   /** Who was paid when they aren't a saved supplier ("okada rider"). */
   payeeName: string;
+  /** Their bank account, to pay someone who isn't a saved supplier through Paystack. */
+  payeeBank: { bankCode: string; accountNumber: string; bankName?: string; accountName?: string } | null;
   batchId: string | null;
   /** Stock bought. Empty for an expense that isn't stock. */
   lines: Line[];
@@ -125,7 +127,15 @@ export function validateExpense(v: Partial<Record<keyof ExpenseInput, unknown>>,
     if (!money(v.amountKobo) || v.amountKobo === 0) errors.amountKobo = "Enter how much was spent.";
     if (!errors.description && !(v.description as string).trim()) errors.description = "Say what it was for.";
   }
-  if (v.method === "paystack" && !v.supplierId) errors.supplierId = "Choose a supplier with a bank account to pay.";
+  const bank = v.payeeBank as ExpenseInput["payeeBank"] | undefined;
+  if (
+    bank !== null &&
+    bank !== undefined &&
+    (typeof bank !== "object" || !bank.bankCode || !/^\d{10}$/.test(String(bank.accountNumber)))
+  )
+    errors.payeeBank = "Check the bank account.";
+  if (v.method === "paystack" && !v.supplierId && !bank)
+    errors.payeeBank = "Enter the bank account to pay, or choose a supplier.";
   return errors;
 }
 

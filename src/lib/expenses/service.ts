@@ -24,6 +24,9 @@ import { InventoryItemModel } from "@/models/inventory-item";
 import { PayoutModel } from "@/models/payout";
 import { StockMovementModel } from "@/models/stock-movement";
 import { SupplierModel } from "@/models/supplier";
+import { createRecipient, resolveAccount } from "@/lib/paystack/banks";
+import type { BankAccount } from "@/lib/suppliers/rules";
+import { createSupplier } from "@/lib/suppliers/service";
 
 export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   id: string;
@@ -46,6 +49,7 @@ type Doc = {
   description?: string;
   supplierId?: unknown;
   payeeName?: string;
+  payeeBank?: { bankCode: string; bankName?: string; accountNumber: string; accountName: string } | null;
   batchId?: unknown;
   lines?: { itemId: unknown; quantity: number; unitCostKobo: number }[];
   deliveryKobo?: number;
@@ -67,6 +71,14 @@ const view = (e: Doc): ExpenseView => ({
   description: e.description ?? "",
   supplierId: e.supplierId ? String(e.supplierId) : null,
   payeeName: e.payeeName ?? "",
+  payeeBank: e.payeeBank
+    ? {
+        bankCode: e.payeeBank.bankCode,
+        bankName: e.payeeBank.bankName ?? "",
+        accountNumber: e.payeeBank.accountNumber,
+        accountName: e.payeeBank.accountName,
+      }
+    : null,
   batchId: e.batchId ? String(e.batchId) : null,
   lines: (e.lines ?? []).map((l) => ({ itemId: String(l.itemId), quantity: l.quantity, unitCostKobo: l.unitCostKobo })),
   deliveryKobo: e.deliveryKobo ?? 0,
@@ -135,6 +147,8 @@ function clean(input: Record<string, unknown>, today: string) {
     description: text(input.description),
     supplierId: id(input.supplierId),
     payeeName: text(input.payeeName),
+    // A saved supplier's account wins; a bank account typed in is for paying someone who isn't one.
+    payeeBank: input.supplierId ? null : (input.payeeBank ?? null),
     batchId: id(input.batchId),
     lines: lines ?? [],
     deliveryKobo: input.deliveryKobo === "" || input.deliveryKobo === undefined ? 0 : input.deliveryKobo,
@@ -229,13 +243,51 @@ export async function createExpense(
       "Only the owners send money. Save it as not paid yet, and an owner can pay it.",
       "method",
     );
-  const supplier = await resolve(actor.farmId, values);
-  if (values.method === "paystack" && !supplier?.bank)
+  let supplier = await resolve(actor.farmId, values);
+  // Paying someone who isn't a saved supplier: their account is checked with the bank here, and
+  // kept as a supplier only when asked.
+  let payeeBank: (BankAccount & { recipientCode: string | null }) | null = null;
+  if (values.payeeBank && !supplier) {
+    if (input.saveSupplier === true) {
+      supplier = await SupplierModel.findById(
+        (
+          await createSupplier(actor, {
+            name: values.payeeName || "",
+            bank: values.payeeBank,
+          }).catch((error: HttpError) => {
+            throw new HttpError(
+              error.status,
+              error.code,
+              error.message,
+              error.field === "name" ? "payeeName" : "payeeBank",
+            );
+          })
+        ).id,
+      ).lean();
+      values.supplierId = String(supplier!._id);
+      values.payeeName = "";
+    } else {
+      const account = await resolveAccount(values.payeeBank.accountNumber, values.payeeBank.bankCode).catch(
+        (error: HttpError) => {
+          throw new HttpError(error.status, error.code, error.message, "payeeBank");
+        },
+      );
+      const recipientCode = await createRecipient(account).catch((error: HttpError) => {
+        if (error.status === 503) return null;
+        throw new HttpError(400, error.code, error.message, "payeeBank");
+      });
+      payeeBank = { ...account, recipientCode };
+      values.payeeName = values.payeeName || account.accountName;
+    }
+  }
+  if (values.method === "paystack" && !supplier?.bank && !payeeBank)
     throw new HttpError(
       400,
       "no_bank",
-      `Add ${supplier?.name ?? "the supplier"}'s bank account to pay them through Paystack.`,
-      "supplierId",
+      supplier
+        ? `Add ${supplier.name}'s bank account to pay them through Paystack.`
+        : "Enter the bank account to pay through Paystack.",
+      supplier ? "supplierId" : "payeeBank",
     );
 
   const paid = ["cash", "transfer", "pos"].includes(values.method);
@@ -247,6 +299,7 @@ export async function createExpense(
         [
           {
             ...values,
+            payeeBank,
             number: `EXP-${year}-${String(seq).padStart(4, "0")}`,
             paymentStatus: paid ? "paid" : "unpaid",
             paidOn: paid ? values.date : null,

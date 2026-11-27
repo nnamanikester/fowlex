@@ -11,7 +11,8 @@ export const PAYOUT_STATUSES = ["pending", "otp", "success", "failed", "reversed
 const schema = new Schema(
   {
     expenseId: { type: Schema.Types.ObjectId, ref: "Expense", required: true },
-    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", required: true },
+    /** The supplier paid, or null for a bank account paid without saving a supplier. */
+    supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", default: null },
     amountKobo: { type: Number, required: true, min: 1 },
     reference: { type: String, required: true },
     transferCode: { type: String, default: null },

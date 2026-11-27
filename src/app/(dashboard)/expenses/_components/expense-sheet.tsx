@@ -113,14 +113,14 @@ export function ExpenseSheet({
         footer={
           paying && canPay && owed ? undefined : (
             <div className="space-y-2">
-              {canPay && owed && supplier?.bank && (
+              {canPay && owed && (supplier?.bank || current.payeeBank) && (
                 <Button size="lg" fullWidth onClick={() => setPaying(true)}>
                   <Send /> Pay {formatNaira(current.amountKobo)} with Paystack
                 </Button>
               )}
               {canWrite && owed && (
                 <Button
-                  variant={canPay && supplier?.bank ? "secondary" : "primary"}
+                  variant={canPay && (supplier?.bank || current.payeeBank) ? "secondary" : "primary"}
                   size="lg"
                   fullWidth
                   onClick={() => setMarking(true)}

@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { CircleCheck, HandCoins, Plus, Send, Trash2 } from "lucide-react";
 
+import { BankAccountField, type BankState } from "@/components/bank-account-field";
 import { Field, FormAlert } from "@/components/auth";
 import { Button } from "@/components/ui/button";
 import { FileDrop } from "@/components/ui/file-drop";
@@ -26,7 +27,7 @@ import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
 import { quantity as formatQuantity } from "@/lib/inventory/rules";
 import { formatNaira } from "@/lib/money";
-import { maskAccount } from "@/lib/suppliers/rules";
+import { type BankAccount, maskAccount } from "@/lib/suppliers/rules";
 import type { SupplierView } from "@/lib/suppliers/service";
 import { uploadReceipt } from "@/lib/upload-client";
 import { cn } from "@/lib/utils";
@@ -87,9 +88,15 @@ export function SpendSheet({
   const [requestId] = React.useState(newRequestId);
 
   const supplier = suppliers.find((s) => s.id === supplierId);
-  const payable = canPay && !!supplier?.bank;
+  // Owners can pay a saved supplier with a bank account, or anyone whose account they enter.
+  const payable = canPay && (!supplier || !!supplier.bank);
+  const [bank, setBank] = React.useState<BankAccount | null>(null);
+  const [bankState, setBankState] = React.useState<BankState>("empty");
+  const [saveSupplier, setSaveSupplier] = React.useState(false);
   // Paystack is only on the table for a supplier with a checked account.
   const choice: Paid = paid === "paystack" && !payable ? "already" : paid;
+  // Someone who isn't a saved supplier: their account, to pay now or for an owner to pay later.
+  const askBank = !supplier && (choice === "paystack" || choice === "later");
 
   const lines = kind === "stock" ? rows.filter((r) => r.itemId) : [];
   const parsed = lines.map((r) => ({
@@ -111,7 +118,22 @@ export function SpendSheet({
 
   const save = async () => {
     setFailure(null);
-    const body: Partial<ExpenseInput> & { requestId: string } = {
+    const unnamed =
+      bankState === "partial" || bankState === "checking" || bankState === "not-found" || bankState === "unavailable";
+    if (askBank && ((choice === "paystack" && bankState !== "found") || unnamed)) {
+      setFailure({
+        status: 400,
+        code: "invalid",
+        message:
+          choice === "paystack" && bankState === "empty"
+            ? "Enter the bank account to pay."
+            : "Finish the bank account so the bank can name it.",
+        field: "payeeBank",
+      });
+      document.getElementById("accountNumber")?.focus();
+      return;
+    }
+    const body: Partial<ExpenseInput> & { requestId: string; saveSupplier?: boolean } = {
       date,
       supplierId: supplierId || null,
       payeeName: supplier ? "" : payeeName,
@@ -123,6 +145,8 @@ export function SpendSheet({
       notes,
       receipt: null,
       requestId,
+      payeeBank: askBank && bank ? { bankCode: bank.bankCode, accountNumber: bank.accountNumber } : null,
+      saveSupplier: askBank && !!bank && saveSupplier,
     };
     if (kind === "stock" && !parsed.length) {
       setFailure({ status: 400, code: "invalid", message: "Add what was bought.", field: "lines.0" });
@@ -384,11 +408,15 @@ export function SpendSheet({
               detail={
                 payable && supplier?.bank
                   ? `To ${supplier.bank.accountName}, ${supplier.bank.bankName} ${maskAccount(supplier.bank.accountNumber)}. You confirm next.`
-                  : !canPay
-                    ? "Only the owners send money."
-                    : supplier
-                      ? `Add ${supplier.name}'s bank account first.`
-                      : "Choose a supplier with a bank account."
+                  : payable && bank
+                    ? `To ${bank.accountName}, ${bank.bankName} ${maskAccount(bank.accountNumber)}. You confirm next.`
+                    : payable
+                      ? "To any bank account: enter it below."
+                      : !canPay
+                        ? "Only the owners send money."
+                        : supplier
+                          ? `Add ${supplier.name}'s bank account first.`
+                          : "Choose a supplier with a bank account."
               }
             />
             <Choice
@@ -406,6 +434,32 @@ export function SpendSheet({
               detail={supplier ? `Shows as owed to ${supplier.name}` : "Shows as owed"}
             />
           </div>
+          {askBank && (
+            <div className="space-y-3 rounded-xl border border-line p-4">
+              <p className="text-sm font-semibold text-fg">
+                {choice === "paystack"
+                  ? "Bank account to pay"
+                  : "Their bank account (optional, so an owner can pay it)"}
+              </p>
+              <BankAccountField value={null} onChange={setBank} onState={setBankState} error={error("payeeBank")} />
+              {bank && (
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-5 accent-[rgb(var(--brand))]"
+                    checked={saveSupplier}
+                    onChange={(e) => setSaveSupplier(e.target.checked)}
+                  />
+                  <span>
+                    <span className="block font-semibold text-fg">Save as a supplier</span>
+                    <span className="text-fg-muted">
+                      To pay {payeeName.trim() || bank.accountName} again without typing the account.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
           {choice === "already" && (
             <Segmented
               label="Paid by"

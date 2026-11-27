@@ -134,7 +134,17 @@ describe("other expenses", () => {
     [{ category: "gold", amountKobo: 100, description: "x", method: "cash" }, "category"],
     [{ category: "transport", amountKobo: 100, description: "x", method: "barter" }, "method"],
     [{ category: "transport", amountKobo: 100, description: "x", method: "cash", date: "2026-11-27" }, "date"],
-    [{ category: "transport", amountKobo: 100, description: "x", method: "paystack" }, "supplierId"],
+    [{ category: "transport", amountKobo: 100, description: "x", method: "paystack" }, "payeeBank"],
+    [
+      {
+        category: "transport",
+        amountKobo: 100,
+        description: "x",
+        method: "later",
+        payeeBank: { bankCode: "058", accountNumber: "12" },
+      },
+      "payeeBank",
+    ],
     [{ category: "transport", amountKobo: 1.5, description: "x", method: "cash" }, "amountKobo"],
     [
       {
