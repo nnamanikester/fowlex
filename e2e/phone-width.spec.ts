@@ -46,6 +46,7 @@ test("pages fit the phone's width, whatever the amounts and names", async ({ pag
     "/payroll",
     "/balance",
     "/customers",
+    "/contracts",
     `/customers/${(await customer.json()).id}`,
     ...(run.ok() ? [`/payroll/${(await run.json()).id}`] : []),
   ]) {

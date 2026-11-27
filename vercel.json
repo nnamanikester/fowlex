@@ -3,6 +3,7 @@
   "crons": [
     { "path": "/api/cron/recurring", "schedule": "0 5 * * *" },
     { "path": "/api/cron/low-stock", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/contracts", "schedule": "30 6 * * *" },
     { "path": "/api/cron/balance", "schedule": "0 4 * * *" }
   ]
 }
