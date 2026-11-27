@@ -1,5 +1,5 @@
 // Safe for the browser: no model or database imports here.
-import type { Category as ItemCategory } from "@/lib/inventory/rules";
+import { type Category as ItemCategory, type ItemInput, validateItem } from "@/lib/inventory/rules";
 
 /** What money was spent on. Phase 4 adds budgets and approvals to these. */
 export const EXPENSE_CATEGORIES = [
@@ -68,7 +68,13 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   failed: "Transfer failed",
 };
 
-export type Line = { itemId: string; quantity: number; unitCostKobo: number };
+export type Line = {
+  itemId: string;
+  quantity: number;
+  unitCostKobo: number;
+  /** A stock item made with the purchase, instead of `itemId`: for buying something new. */
+  newItem?: ItemInput;
+};
 
 export type ExpenseInput = {
   date: string;
@@ -117,7 +123,10 @@ export function validateExpense(v: Partial<Record<keyof ExpenseInput, unknown>>,
   else if (lines.length > LIMITS.lines) errors.lines = `Use at most ${LIMITS.lines} lines; split it in two.`;
   else
     lines.forEach((l: Partial<Line>, i) => {
-      if (!l || typeof l.itemId !== "string" || !l.itemId) errors[`lines.${i}`] = "Choose the item.";
+      const fresh = l?.newItem && Object.values(validateItem(l.newItem))[0];
+      if (l?.newItem && fresh) errors[`lines.${i}`] = fresh;
+      else if (!l || (!l.newItem && (typeof l.itemId !== "string" || !l.itemId)))
+        errors[`lines.${i}`] = "Choose the item.";
       else if (typeof l.quantity !== "number" || !(l.quantity > 0) || l.quantity > LIMITS.quantity)
         errors[`lines.${i}`] = "Enter how many.";
       else if (!money(l.unitCostKobo)) errors[`lines.${i}`] = "Enter the price for one.";

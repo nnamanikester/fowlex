@@ -92,6 +92,26 @@ test("pay someone who isn't a saved supplier: enter their account, the bank name
   expect(errors).toEqual([]);
 });
 
+test("buy something not yet in stock: the item is made with the purchase", async ({ page }, info) => {
+  const errors = watchErrors(page);
+  const name = `Layer mash ${info.project.name} ${Date.now().toString(36)}`;
+  await page.goto("/inventory");
+  await page.getByRole("button", { name: "Buy stock" }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Spend money" });
+  await sheet.getByLabel("Item").selectOption("__new");
+  await sheet.getByLabel("New item's name").fill(name);
+  await expect(sheet.getByLabel("Kind", { exact: true }).last()).toHaveValue("feed");
+  await expect(sheet.getByLabel("Kg per bag")).toHaveValue("25");
+  await sheet.getByLabel("How many bags").fill("10");
+  await sheet.getByLabel("Price per bag").fill("17000");
+  await sheet.getByRole("radio", { name: /Already paid/ }).click();
+  await sheet.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText(/EXP-\d{4}-\d{4} recorded\./)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("main").getByRole("link", { name: new RegExp(name) })).toContainText("10 bags");
+  expect(errors).toEqual([]);
+});
+
 test("a supplier's page shows what's owed after two unpaid purchases", async ({ page }, info) => {
   const { supplier, item } = await setup(page, `owed ${info.project.name}`);
   for (const quantity of [2, 3])

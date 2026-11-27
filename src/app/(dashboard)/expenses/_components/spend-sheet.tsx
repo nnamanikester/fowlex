@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { CircleCheck, HandCoins, Plus, Send, Trash2 } from "lucide-react";
 
 import { BankAccountField, type BankState } from "@/components/bank-account-field";
@@ -25,7 +24,14 @@ import {
 } from "@/lib/expenses/rules";
 import type { ExpenseView } from "@/lib/expenses/service";
 import type { ItemView } from "@/lib/inventory/items";
-import { quantity as formatQuantity } from "@/lib/inventory/rules";
+import {
+  type Category,
+  CATEGORIES,
+  CATEGORY_LABELS,
+  quantity as formatQuantity,
+  type Unit,
+  UNITS,
+} from "@/lib/inventory/rules";
 import { formatNaira } from "@/lib/money";
 import { type BankAccount, maskAccount } from "@/lib/suppliers/rules";
 import type { SupplierView } from "@/lib/suppliers/service";
@@ -33,7 +39,10 @@ import { uploadReceipt } from "@/lib/upload-client";
 import { cn } from "@/lib/utils";
 
 export type SpendDefaults = { kind?: "stock" | "other"; supplierId?: string; itemId?: string; batchId?: string };
-type Row = { key: number; itemId: string; quantity: string; unitCostKobo: number | null };
+type NewItem = { name: string; category: Category; unit: Unit; unitKg: number | null };
+type Row = { key: number; itemId: string; newItem: NewItem | null; quantity: string; unitCostKobo: number | null };
+const NEW = "__new";
+const freshItem = (): NewItem => ({ name: "", category: "feed", unit: "bag", unitKg: 25 });
 type Paid = "paystack" | "already" | "later";
 
 const newRequestId = () =>
@@ -66,11 +75,20 @@ export function SpendSheet({
   onSaved: (expense: ExpenseView, options: { pay: boolean }) => void;
 }) {
   const active = items.filter((i) => !i.archived);
-  const [kind, setKind] = React.useState<"stock" | "other">(defaults.kind ?? (active.length ? "stock" : "other"));
+  const [kind, setKind] = React.useState<"stock" | "other">(defaults.kind ?? "stock");
   const [supplierId, setSupplierId] = React.useState(defaults.supplierId ?? "");
   const [rows, setRows] = React.useState<Row[]>(() => {
     const item = active.find((i) => i.id === defaults.itemId);
-    return [{ key: 0, itemId: item?.id ?? "", quantity: "", unitCostKobo: item?.avgCostKobo ?? null }];
+    // Nothing in stock yet: the first line is a new item.
+    return [
+      {
+        key: 0,
+        itemId: item?.id ?? "",
+        newItem: active.length ? null : freshItem(),
+        quantity: "",
+        unitCostKobo: item?.avgCostKobo ?? null,
+      },
+    ];
   });
   const [deliveryKobo, setDeliveryKobo] = React.useState<number | null>(null);
   const [category, setCategory] = React.useState<ExpenseCategory>("transport");
@@ -98,11 +116,12 @@ export function SpendSheet({
   // Someone who isn't a saved supplier: their account, to pay now or for an owner to pay later.
   const askBank = !supplier && (choice === "paystack" || choice === "later");
 
-  const lines = kind === "stock" ? rows.filter((r) => r.itemId) : [];
+  const lines = kind === "stock" ? rows.filter((r) => r.itemId || r.newItem) : [];
   const parsed = lines.map((r) => ({
-    itemId: r.itemId,
+    itemId: r.newItem ? "" : r.itemId,
     quantity: Number(r.quantity),
     unitCostKobo: r.unitCostKobo ?? Number.NaN,
+    ...(r.newItem && { newItem: { ...r.newItem, name: r.newItem.name.trim(), reorderLevel: null, notes: "" } }),
   }));
   const total =
     kind === "stock"
@@ -237,17 +256,9 @@ export function SpendSheet({
         {kind === "stock" ? (
           <fieldset className="min-w-0 space-y-3">
             <legend className="mb-1 text-sm font-semibold text-fg">What was bought</legend>
-            {active.length === 0 && (
-              <p className="text-sm text-fg-muted">
-                Add the items you keep in{" "}
-                <Link href="/inventory" className="font-semibold text-brand-fg">
-                  Inventory
-                </Link>{" "}
-                first.
-              </p>
-            )}
             {rows.map((r, i) => {
-              const item = active.find((x) => x.id === r.itemId);
+              const known = r.newItem ? null : active.find((x) => x.id === r.itemId);
+              const unit = r.newItem?.unit ?? known?.unit;
               const q = Number(r.quantity);
               return (
                 <div key={r.key} className="space-y-2 rounded-xl border border-line p-3">
@@ -256,28 +267,31 @@ export function SpendSheet({
                       {(a11y) => (
                         <Select
                           {...a11y}
-                          value={r.itemId}
+                          value={r.newItem ? NEW : r.itemId}
                           onChange={(e) => {
+                            if (e.target.value === NEW) return setRow(r.key, { itemId: "", newItem: freshItem() });
                             const chosen = active.find((x) => x.id === e.target.value);
                             setRow(r.key, {
                               itemId: e.target.value,
+                              newItem: null,
                               unitCostKobo: r.unitCostKobo ?? chosen?.avgCostKobo ?? null,
                             });
                           }}
                         >
-                          <option value="">Choose an item</option>
+                          {active.length > 0 && <option value="">Choose an item</option>}
                           {active.map((x) => (
                             <option key={x.id} value={x.id}>
                               {x.name}
                             </option>
                           ))}
+                          <option value={NEW}>+ New item</option>
                         </Select>
                       )}
                     </Field>
                     {rows.length > 1 && (
                       <button
                         type="button"
-                        aria-label={`Remove ${item?.name ?? "this line"}`}
+                        aria-label={`Remove ${known?.name ?? (r.newItem?.name || "this line")}`}
                         onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))}
                         className="focus-ring mb-1 grid size-10 shrink-0 place-items-center rounded-lg text-fg-subtle hover:text-danger-fg"
                       >
@@ -285,8 +299,11 @@ export function SpendSheet({
                       </button>
                     )}
                   </div>
+                  {r.newItem && (
+                    <NewItemFields index={i} value={r.newItem} onChange={(newItem) => setRow(r.key, { newItem })} />
+                  )}
                   <div className="grid grid-cols-2 gap-2">
-                    <Field id={`quantity.${i}`} label={item ? `How many ${item.unit}s` : "How many"}>
+                    <Field id={`quantity.${i}`} label={unit ? `How many ${unit}s` : "How many"}>
                       {(a11y) => (
                         <Input
                           {...a11y}
@@ -297,7 +314,7 @@ export function SpendSheet({
                         />
                       )}
                     </Field>
-                    <Field id={`unitCost.${i}`} label={item ? `Price per ${item.unit}` : "Price for one"}>
+                    <Field id={`unitCost.${i}`} label={unit ? `Price per ${unit}` : "Price for one"}>
                       {(a11y) => (
                         <MoneyInput
                           {...a11y}
@@ -307,9 +324,9 @@ export function SpendSheet({
                       )}
                     </Field>
                   </div>
-                  {item && q > 0 && r.unitCostKobo !== null && (
+                  {unit && q > 0 && r.unitCostKobo !== null && (
                     <p className="num text-right text-xs text-fg-muted">
-                      {formatQuantity(q, item.unit)} × {formatNaira(r.unitCostKobo)} ={" "}
+                      {formatQuantity(q, unit)} × {formatNaira(r.unitCostKobo)} ={" "}
                       <strong className="text-fg">
                         {formatNaira(lineTotal({ quantity: q, unitCostKobo: r.unitCostKobo }))}
                       </strong>
@@ -318,17 +335,24 @@ export function SpendSheet({
                 </div>
               );
             })}
-            {active.length > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  setRows((list) => [...list, { key: Date.now(), itemId: "", quantity: "", unitCostKobo: null }])
-                }
-              >
-                <Plus /> Add another item
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                setRows((list) => [
+                  ...list,
+                  {
+                    key: Date.now(),
+                    itemId: "",
+                    newItem: active.length ? null : freshItem(),
+                    quantity: "",
+                    unitCostKobo: null,
+                  },
+                ])
+              }
+            >
+              <Plus /> Add another item
+            </Button>
             <Field id="deliveryKobo" label="Delivery" error={error("deliveryKobo")} hint="Optional">
               {(a11y) => <MoneyInput {...a11y} value={deliveryKobo} onChange={setDeliveryKobo} placeholder="0.00" />}
             </Field>
@@ -529,5 +553,79 @@ function Choice({
         <span className="block text-sm text-fg-muted">{detail}</span>
       </span>
     </button>
+  );
+}
+
+/** A stock item bought for the first time: made with the purchase. */
+function NewItemFields({ index, value, onChange }: { index: number; value: NewItem; onChange: (v: NewItem) => void }) {
+  const set = (change: Partial<NewItem>) => onChange({ ...value, ...change });
+  return (
+    <div className="space-y-2 rounded-lg bg-surface-subtle p-3">
+      <Field id={`newItem.${index}`} label="New item's name">
+        {(a11y) => (
+          <Input
+            {...a11y}
+            value={value.name}
+            maxLength={60}
+            placeholder="Starter feed"
+            onChange={(e) => set({ name: e.target.value })}
+          />
+        )}
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field id={`newItem.${index}.category`} label="Kind">
+          {(a11y) => (
+            <Select
+              {...a11y}
+              value={value.category}
+              onChange={(e) => {
+                const category = e.target.value as Category;
+                set({ category, unitKg: category === "feed" && value.unit !== "kg" ? (value.unitKg ?? 25) : null });
+              }}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field id={`newItem.${index}.unit`} label="Counted in">
+          {(a11y) => (
+            <Select
+              {...a11y}
+              value={value.unit}
+              onChange={(e) => {
+                const unit = e.target.value as Unit;
+                set({
+                  unit,
+                  unitKg: unit === "kg" ? null : value.category === "feed" ? (value.unitKg ?? 25) : value.unitKg,
+                });
+              }}
+            >
+              {UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+      {value.category === "feed" && value.unit !== "kg" && (
+        <Field id={`newItem.${index}.unitKg`} label={`Kg per ${value.unit}`}>
+          {(a11y) => (
+            <Input
+              {...a11y}
+              inputMode="decimal"
+              className="num"
+              value={value.unitKg === null ? "" : String(value.unitKg)}
+              onChange={(e) => set({ unitKg: e.target.value === "" ? null : Number(e.target.value) })}
+            />
+          )}
+        </Field>
+      )}
+    </div>
   );
 }

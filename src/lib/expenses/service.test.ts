@@ -15,6 +15,7 @@ import { clearBankCache } from "@/lib/paystack/banks";
 import { resetSimulator } from "@/lib/paystack/simulator";
 import { BatchModel } from "@/models/batch";
 import { ExpenseModel } from "@/models/expense";
+import { InventoryItemModel } from "@/models/inventory-item";
 import { PayoutModel } from "@/models/payout";
 import { StockMovementModel } from "@/models/stock-movement";
 import { setupTestDb } from "@/test/db";
@@ -98,6 +99,55 @@ describe("purchases", () => {
     expect(a.expense.id).toBe(b.expense.id);
     expect(await ExpenseModel.countDocuments({ farmId: owner.farmId })).toBe(1);
     expect(await StockMovementModel.countDocuments({ farmId: owner.farmId })).toBe(1);
+  });
+});
+
+describe("buying something new", () => {
+  const starter = { name: " Layer   mash ", category: "feed", unit: "bag", unitKg: 25 };
+
+  it("makes the item with the purchase, and reuses an item of the same name", async () => {
+    const { owner, feed, purchase } = await moneyFarm();
+    const { expense } = await createExpense(
+      owner,
+      purchase({
+        lines: [
+          { newItem: starter, quantity: 10, unitCostKobo: 1_700_000 },
+          { newItem: { ...starter, name: "LAYER MASH" }, quantity: 2, unitCostKobo: 1_700_000 },
+          {
+            newItem: { name: "starter FEED", category: "feed", unit: "bag", unitKg: 25 },
+            quantity: 1,
+            unitCostKobo: 1_800_000,
+          },
+        ],
+      }),
+      {},
+      TODAY,
+    );
+    const items = await InventoryItemModel.find({ farmId: owner.farmId, nameKey: "layer mash" }).lean();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ name: "Layer mash", unitKg: 25, reorderLevel: null });
+    expect(expense.lines.map((l) => l.itemId)).toEqual([String(items[0]._id), String(items[0]._id), feed.id]);
+    expect(expense.description).toBe("10 bags Layer mash, 2 bags Layer mash, 1 bag Starter feed");
+    expect((await stockLevels(owner.farmId)).get(String(items[0]._id))).toMatchObject({ onHand: 12 });
+  });
+
+  it("saves nothing when the new item isn't right, or the purchase fails", async () => {
+    const { owner, purchase } = await moneyFarm();
+    expect(
+      await refusal(
+        createExpense(
+          owner,
+          purchase({ lines: [{ newItem: { ...starter, unitKg: null }, quantity: 1, unitCostKobo: 1 }] }),
+          {},
+          TODAY,
+        ),
+      ),
+    ).toMatchObject({ field: "lines.0" });
+    vi.spyOn(StockMovementModel, "create").mockRejectedValueOnce(new Error("disk full"));
+    await expect(
+      createExpense(owner, purchase({ lines: [{ newItem: starter, quantity: 1, unitCostKobo: 1 }] }), {}, TODAY),
+    ).rejects.toThrow("disk full");
+    expect(await InventoryItemModel.countDocuments({ farmId: owner.farmId, nameKey: "layer mash" })).toBe(0);
   });
 });
 

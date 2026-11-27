@@ -16,7 +16,7 @@ import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
-import type { Category } from "@/lib/inventory/rules";
+import { type Category, type ItemInput, nameKey, tidyName } from "@/lib/inventory/rules";
 import { BatchModel } from "@/models/batch";
 import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
@@ -136,9 +136,12 @@ function clean(input: Record<string, unknown>, today: string) {
   const id = (v: unknown) => (v === "" || v === undefined ? null : v);
   const lines = Array.isArray(input.lines)
     ? input.lines.map((l: Record<string, unknown>) => ({
-        itemId: l?.itemId,
+        itemId: l?.newItem ? "" : l?.itemId,
         quantity: l?.quantity,
         unitCostKobo: l?.unitCostKobo,
+        ...(l?.newItem && typeof l.newItem === "object"
+          ? { newItem: { reorderLevel: null, notes: "", ...(l.newItem as object) } }
+          : {}),
       }))
     : input.lines;
   const values = {
@@ -172,7 +175,32 @@ function clean(input: Record<string, unknown>, today: string) {
 }
 
 /** Checks a purchase's items, supplier and batch belong to the farm; fills the category and description. */
-async function resolve(farmId: string, values: ExpenseInput) {
+type NewItem = ItemInput & { _id: Types.ObjectId; nameKey: string };
+
+async function resolve(farmId: string, values: ExpenseInput, created: NewItem[] = []) {
+  // Something new bought: the farm's item of that name if there is one, else one made with the purchase.
+  for (const l of values.lines) {
+    if (!l.newItem) continue;
+    const name = tidyName(l.newItem.name);
+    const existing = await InventoryItemModel.findOne({ farmId, nameKey: nameKey(name) }, { _id: 1 }).lean();
+    if (existing) l.itemId = String(existing._id);
+    else {
+      const twin = created.find((c) => c.nameKey === nameKey(name));
+      const _id = twin?._id ?? new Types.ObjectId();
+      if (!twin)
+        created.push({
+          _id,
+          ...l.newItem,
+          name,
+          nameKey: nameKey(name),
+          unitKg: l.newItem.unitKg ?? null,
+          reorderLevel: l.newItem.reorderLevel ?? null,
+          notes: l.newItem.notes ?? "",
+        });
+      l.itemId = String(_id);
+    }
+    delete l.newItem;
+  }
   const items = values.lines.length
     ? await InventoryItemModel.find({
         farmId,
@@ -180,7 +208,10 @@ async function resolve(farmId: string, values: ExpenseInput) {
       }).lean()
     : [];
   const byId = new Map(
-    items.map((i) => [String(i._id), { name: i.name, unit: i.unit, category: i.category as Category }]),
+    [...items, ...created].map((i) => [
+      String(i._id),
+      { name: i.name, unit: i.unit, category: i.category as Category },
+    ]),
   );
   values.lines.forEach((l, i) => {
     if (!byId.has(l.itemId))
@@ -243,7 +274,8 @@ export async function createExpense(
       "Only the owners send money. Save it as not paid yet, and an owner can pay it.",
       "method",
     );
-  let supplier = await resolve(actor.farmId, values);
+  const newItems: NewItem[] = [];
+  let supplier = await resolve(actor.farmId, values, newItems);
   // Paying someone who isn't a saved supplier: their account is checked with the bank here, and
   // kept as a supplier only when asked.
   let payeeBank: (BankAccount & { recipientCode: string | null }) | null = null;
@@ -295,6 +327,11 @@ export async function createExpense(
     const doc = await withTransaction(async (session) => {
       const year = values.date.slice(0, 4);
       const seq = await nextSequence(actor.farmId, `expense:${year}`, session);
+      if (newItems.length)
+        await InventoryItemModel.create(
+          newItems.map((i) => ({ ...i, farmId: actor.farmId, createdBy: actor.id })),
+          { session, ordered: true },
+        );
       const [expense] = await ExpenseModel.create(
         [
           {
