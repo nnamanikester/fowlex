@@ -44,8 +44,11 @@ export function Sheet({
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       className={cn(
-        "m-0 mt-auto h-[92dvh] max-h-none w-full max-w-none bg-transparent p-0 text-fg backdrop:bg-charcoal/40 backdrop:backdrop-blur-[2px]",
-        "md:ml-auto md:mr-0 md:mt-0 md:h-dvh md:w-[min(40rem,100vw)]",
+        // The drawer sits inside page layouts that space their children (space-y-*): its margins
+        // are !important, or the spacing pushes it down and its footer off the bottom.
+        "fixed inset-0 max-h-none max-w-none bg-transparent p-0 text-fg backdrop:bg-charcoal/40 backdrop:backdrop-blur-[2px]",
+        "max-md:!m-0 max-md:!mt-auto max-md:h-[92dvh] max-md:w-full",
+        "md:!my-0 md:!ml-auto md:!mr-0 md:h-dvh md:w-[min(40rem,100vw)]",
       )}
     >
       {open && (
