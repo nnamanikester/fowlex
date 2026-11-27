@@ -12,6 +12,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { ASSET_KIND_LABELS, ASSET_KINDS, type AssetKind, DEFAULT_LIFE } from "@/lib/assets/rules";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import {
   EXPENSE_CATEGORIES,
@@ -82,6 +83,10 @@ export function SpendSheet({
   const [how, setHow] = React.useState<Extract<PayMethod, "cash" | "transfer" | "pos">>("cash");
   const [files, setFiles] = React.useState<File[]>([]);
   const [notes, setNotes] = React.useState("");
+  // Equipment bought outright can be tracked and its cost spread over its life.
+  const [track, setTrack] = React.useState(true);
+  const [assetKind, setAssetKind] = React.useState<AssetKind>("generator");
+  const [life, setLife] = React.useState(String(DEFAULT_LIFE.generator));
   const [busy, setBusy] = React.useState(false);
   const [failure, setFailure] = React.useState<AuthError | null>(null);
   const [requestId] = React.useState(newRequestId);
@@ -111,7 +116,7 @@ export function SpendSheet({
 
   const save = async () => {
     setFailure(null);
-    const body: Partial<ExpenseInput> & { requestId: string } = {
+    const body: Partial<ExpenseInput> & { requestId: string; asset?: Record<string, unknown> } = {
       date,
       supplierId: supplierId || null,
       payeeName: supplier ? "" : payeeName,
@@ -123,6 +128,11 @@ export function SpendSheet({
       notes,
       receipt: null,
       requestId,
+      ...(kind === "other" &&
+        category === "equipment" &&
+        track && {
+          asset: { name: description, kind: assetKind, usefulLifeMonths: Number(life), salvageKobo: 0 },
+        }),
     };
     if (kind === "stock" && !parsed.length) {
       setFailure({ status: 400, code: "invalid", message: "Add what was bought.", field: "lines.0" });
@@ -350,6 +360,59 @@ export function SpendSheet({
               </Field>
             </div>
           </>
+        )}
+
+        {kind === "other" && category === "equipment" && (
+          <fieldset className="min-w-0 space-y-3 rounded-xl border border-line p-4">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-5 accent-[rgb(var(--brand))]"
+                checked={track}
+                onChange={(e) => setTrack(e.target.checked)}
+              />
+              <span>
+                <span className="block font-semibold text-fg">Track as equipment</span>
+                <span className="text-fg-muted">
+                  It lasts years: its cost is spread over its life instead of counting all this month.
+                </span>
+              </span>
+            </label>
+            {track && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field id="asset.kind" label="What it is" error={error("asset.kind")}>
+                  {(a11y) => (
+                    <Select
+                      {...a11y}
+                      value={assetKind}
+                      onChange={(e) => {
+                        const k = e.target.value as AssetKind;
+                        setAssetKind(k);
+                        setLife(String(DEFAULT_LIFE[k]));
+                      }}
+                    >
+                      {ASSET_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {ASSET_KIND_LABELS[k]}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                <Field id="asset.usefulLifeMonths" label="Lasts (months)" error={error("asset.usefulLifeMonths")}>
+                  {(a11y) => (
+                    <Input
+                      {...a11y}
+                      inputMode="numeric"
+                      className="num"
+                      value={life}
+                      onChange={(e) => setLife(e.target.value.replace(/\D/g, ""))}
+                    />
+                  )}
+                </Field>
+              </div>
+            )}
+          </fieldset>
         )}
 
         <div className="grid grid-cols-2 gap-3">

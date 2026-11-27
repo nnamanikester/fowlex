@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 
 import { InventoryBoard } from "./_components/inventory-board";
+import { InventoryTabs } from "./_components/inventory-tabs";
 import { PageSkeleton, RequirePermission } from "../_components/require-permission";
 import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
@@ -15,11 +16,20 @@ export default function InventoryPage() {
   return (
     <RequirePermission permission="inventory.read">
       <PageHeader title="Inventory" description="Feed, drugs, litter and fuel on hand, and what they cost." />
+      <Suspense fallback={null}>
+        <Tabs />
+      </Suspense>
       <Suspense fallback={<PageSkeleton />}>
         <Inventory />
       </Suspense>
     </RequirePermission>
   );
+}
+
+/** Equipment is money: only for those who see it. */
+async function Tabs() {
+  const user = await requireUser();
+  return can(user.role, "expense.read") ? <InventoryTabs current="stock" /> : null;
 }
 
 async function Inventory() {
@@ -34,6 +44,7 @@ async function Inventory() {
     <InventoryBoard
       items={items}
       canWrite={can(user.role, "inventory.write")}
+      showMoney={can(user.role, "expense.read")}
       spending={
         canBuy
           ? {

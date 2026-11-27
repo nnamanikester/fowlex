@@ -35,8 +35,11 @@ export function ItemDetail({
   allBatches,
   today,
   canWrite,
+  showMoney = true,
   spending = null,
 }: {
+  /** Costs and values are money: hidden from farm hands. */
+  showMoney?: boolean;
   spending?: SpendProps | null;
   item: ItemView;
   movements: LedgerRow<MovementView>[];
@@ -89,12 +92,16 @@ export function ItemDetail({
           value={q(item.onHand)}
           hint={item.reorderLevel !== null ? `Reorder below ${q(item.reorderLevel)}` : "No reorder level"}
         />
-        <StatCard label="Value" value={formatNaira(item.valueKobo)} hint="At average cost" />
-        <StatCard
-          label="Average cost"
-          value={item.avgCostKobo === null ? "–" : formatNaira(item.avgCostKobo)}
-          hint={`Per ${item.unit}`}
-        />
+        {showMoney && (
+          <>
+            <StatCard label="Value" value={formatNaira(item.valueKobo)} hint="At average cost" />
+            <StatCard
+              label="Average cost"
+              value={item.avgCostKobo === null ? "–" : formatNaira(item.avgCostKobo)}
+              hint={`Per ${item.unit}`}
+            />
+          </>
+        )}
         <StatCard
           label="Used this month"
           value={q(
@@ -163,7 +170,8 @@ export function ItemDetail({
                     {q(Math.abs(m.quantity))}
                   </span>
                   <span className="block text-xs text-fg-subtle">
-                    {formatNaira(Math.abs(m.valueKobo))} · {q(m.balance)} left
+                    {showMoney && `${formatNaira(Math.abs(m.valueKobo))} · `}
+                    {q(m.balance)} left
                   </span>
                 </span>
                 {canWrite && !m.source && (

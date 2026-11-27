@@ -5,6 +5,7 @@ import { cacheLife } from "next/cache";
 import { listAudit } from "@/lib/audit/service";
 import { batchSummaries, getBatch, listBatches } from "@/lib/batches/service";
 import type { CurrentUser } from "@/lib/auth/current-user";
+import { listAssets } from "@/lib/assets/service";
 import { listExpenses, supplierBalances } from "@/lib/expenses/service";
 import { listHouses } from "@/lib/houses/service";
 import { listItems } from "@/lib/inventory/items";
@@ -121,6 +122,13 @@ async function balancesCached(farmId: string) {
 /** What each supplier is owed, by supplier id. */
 export const loadSupplierBalances = async (farmId: string) =>
   new Map(PRODUCTION ? await balancesCached(farmId) : await supplierBalances(farmId));
+async function assetsCached(farmId: string) {
+  "use cache: private";
+  cacheLife("session");
+  return listAssets(farmId);
+}
+
+export const loadAssets = PRODUCTION ? assetsCached : (farmId: string) => listAssets(farmId);
 export const loadItems = PRODUCTION ? itemsCached : (farmId: string) => listItems(farmId);
 export const loadLogs = PRODUCTION ? logsCached : (farmId: string, batchId: string) => listLogs(farmId, batchId);
 export const loadHouses: typeof listHouses = PRODUCTION ? housesCached : listHouses;

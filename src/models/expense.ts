@@ -36,6 +36,8 @@ const schema = new Schema(
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, required: true },
     paidOn: { type: String, default: null },
     notes: { type: String, trim: true, default: "" },
+    /** Bought equipment: its cost is spread over its life (depreciation), not counted at once. */
+    capital: { type: Boolean, default: false },
     receipt: {
       type: new Schema({ url: { type: String, required: true }, name: { type: String, default: "" } }, { _id: false }),
       default: null,

@@ -35,10 +35,13 @@ import { cn } from "@/lib/utils";
 export function InventoryBoard({
   items,
   canWrite,
+  showMoney = true,
   spending = null,
 }: {
   items: ItemView[];
   canWrite: boolean;
+  /** Stock values are money: hidden from farm hands. */
+  showMoney?: boolean;
   /** What buying stock needs, for those who can record spending; null hides it. */
   spending?: SpendProps | null;
 }) {
@@ -87,18 +90,20 @@ export function InventoryBoard({
         </Panel>
       ) : (
         <>
-          <p className="text-sm text-fg-muted">
-            Stock worth{" "}
-            <span className="num font-semibold text-fg">
-              {formatNaira(items.reduce((sum, i) => sum + (i.archived ? 0 : i.valueKobo), 0))}
-            </span>
-            {items.some((i) => i.low) && (
-              <>
-                {" · "}
-                <span className="font-semibold text-warning-fg">{items.filter((i) => i.low).length} running low</span>
-              </>
-            )}
-          </p>
+          {showMoney && (
+            <p className="text-sm text-fg-muted">
+              Stock worth{" "}
+              <span className="num font-semibold text-fg">
+                {formatNaira(items.reduce((sum, i) => sum + (i.archived ? 0 : i.valueKobo), 0))}
+              </span>
+              {items.some((i) => i.low) && (
+                <>
+                  {" · "}
+                  <span className="font-semibold text-warning-fg">{items.filter((i) => i.low).length} running low</span>
+                </>
+              )}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <label className="relative min-w-0 flex-1 basis-56">
               <span className="sr-only">Search items</span>
@@ -177,7 +182,9 @@ export function InventoryBoard({
                       </span>
                       <span className="num shrink-0 text-right">
                         <span className="block font-semibold text-fg">{quantity(item.onHand, item.unit)}</span>
-                        <span className="block text-xs text-fg-subtle">{formatNaira(item.valueKobo)}</span>
+                        {showMoney && (
+                          <span className="block text-xs text-fg-subtle">{formatNaira(item.valueKobo)}</span>
+                        )}
                       </span>
                     </Link>
                   </li>
