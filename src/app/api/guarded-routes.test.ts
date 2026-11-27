@@ -69,6 +69,13 @@ import { GET as balanceCron } from "./cron/balance/route";
 import { DELETE as deleteCustomer, GET as getCustomer, PATCH as updateCustomer } from "./customers/[id]/route";
 import { POST as customerStatus } from "./customers/[id]/status/route";
 import { GET as listCustomers, POST as createCustomer } from "./customers/route";
+import { DELETE as deleteTemplate } from "./contract-templates/[id]/route";
+import { GET as listTemplates, POST as createTemplate } from "./contract-templates/route";
+import { POST as activateContract } from "./contracts/[id]/activate/route";
+import { POST as endContract } from "./contracts/[id]/end/route";
+import { DELETE as deleteContract, PATCH as updateContract } from "./contracts/[id]/route";
+import { GET as listContracts, POST as createContract } from "./contracts/route";
+import { GET as contractsCron } from "./cron/contracts/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1132,5 +1139,65 @@ describe("customer routes", () => {
     expect((await listCustomers()).status).toBe(403);
     expect((await updateCustomer(req("PATCH", "/x", {}), ctx("x"))).status).toBe(403);
     expect((await customerStatus(req("POST", "/x", {}), ctx("x"))).status).toBe(403);
+  });
+});
+
+describe("contract routes", () => {
+  it("write, activate, change, end and delete contracts and templates; finance reads, staff can't", async () => {
+    await signInAs("sales");
+    const customer = await (await createCustomer(req("POST", "/x", { name: "Grill", type: "lounge" }))).json();
+    const terms = {
+      customerId: customer.id,
+      pricing: "perBird",
+      priceKobo: 850_000,
+      deliveryEvery: "weekly",
+      termsDays: 7,
+      startDate: "2026-11-01",
+      endDate: "2027-10-31",
+    };
+    const draft = await (await createContract(req("POST", "/x", terms))).json();
+    expect(draft.status).toBe("draft");
+    const active = await (await activateContract(req("POST", "/x"), ctx(draft.id))).json();
+    expect(active.status).toBe("active");
+    const changed = await updateContract(
+      req("PATCH", "/x", { ...terms, priceKobo: 900_000, version: active.version }),
+      ctx(draft.id),
+    );
+    expect((await changed.json()).priceKobo).toBe(900_000);
+    expect((await (await endContract(req("POST", "/x", {}), ctx(draft.id))).json()).status).toBe("terminated");
+    expect(await (await listContracts(req("GET", `/api/contracts?customerId=${customer.id}`))).json()).toHaveLength(1);
+    const other = await (
+      await createContract(req("POST", "/x", { ...terms, startDate: "2027-11-01", endDate: "2028-10-31" }))
+    ).json();
+    expect((await deleteContract(req("DELETE", "/x"), ctx(other.id))).status).toBe(204);
+    const t = await createTemplate(req("POST", "/x", { ...terms, name: "Weekly birds", months: 6 }));
+    expect(t.status).toBe(201);
+    expect(await (await listTemplates()).json()).toHaveLength(1);
+    expect((await deleteTemplate(req("DELETE", "/x"), ctx((await t.json()).id))).status).toBe(204);
+    for (const bad of [createContract, createTemplate])
+      expect((await bad(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }))).status).toBe(400);
+
+    await signInAs("finance");
+    expect((await listContracts(req("GET", "/api/contracts"))).status).toBe(200);
+    expect((await createContract(req("POST", "/x", {}))).status).toBe(403);
+    await signInAs("staff");
+    expect((await listContracts(req("GET", "/api/contracts"))).status).toBe(403);
+    expect((await activateContract(req("POST", "/x"), ctx("x"))).status).toBe(403);
+
+    expect((await contractsCron(new Request(`${BASE}/api/cron/contracts`))).status).toBe(401);
+    vi.stubEnv("CRON_SECRET", "s3cret");
+    const cron = await contractsCron(
+      new Request(`${BASE}/api/cron/contracts`, { headers: { authorization: "Bearer s3cret" } }),
+    );
+    expect(await cron.json()).toEqual({ warned: 0 });
+    vi.unstubAllEnvs();
+  });
+
+  it("lets sales attach a signed contract", async () => {
+    await signInAs("sales");
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([37, 80, 68, 70])], "signed.pdf", { type: "application/pdf" }));
+    const stored = await upload(new Request(`${BASE}/api/uploads`, { method: "POST", body: form }));
+    expect(stored.status).toBe(201);
   });
 });
