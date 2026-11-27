@@ -13,6 +13,7 @@ import mongoose from "mongoose";
 import { E2E_BATCHES, E2E_HOUSES, E2E_PASSWORD, E2E_USERS } from "./users";
 import { BatchModel } from "../src/models/batch";
 import { CounterModel } from "../src/models/counter";
+import { CustomerModel } from "../src/models/customer";
 import { HouseModel } from "../src/models/house";
 import { FarmModel } from "../src/models/farm";
 import { ensureIndexes } from "../src/models/index";
@@ -28,7 +29,17 @@ await mongoose.connect(uri);
 await ensureIndexes();
 const farm = await FarmModel.create({ name: "Fowlex Farms" });
 const passwordHash = await bcrypt.hash(E2E_PASSWORD, 4); // Low cost: test data only.
-await UserModel.create(Object.values(E2E_USERS).map((u) => ({ ...u, farmId: farm._id, passwordHash })));
+const users = await UserModel.create(Object.values(E2E_USERS).map((u) => ({ ...u, farmId: farm._id, passwordHash })));
+// The portal login is The Grill Lounge's, as accepting its invite would make it.
+const buyer = users.find((u) => u.role === "customer")!;
+await CustomerModel.create({
+  farmId: farm._id,
+  name: E2E_USERS.customer.name,
+  type: "lounge",
+  email: E2E_USERS.customer.email,
+  termsDays: 14,
+  userId: buyer._id,
+});
 const houses = await HouseModel.create(
   E2E_HOUSES.map((h) => ({ ...h, nameKey: h.name.toLowerCase(), farmId: farm._id })),
 );

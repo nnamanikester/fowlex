@@ -38,6 +38,9 @@ export type Statement = {
   paidKobo: number;
 };
 
+/** Invoices the customer has: sent ones, and a draft once money is paid on it. */
+export const BILLED = { $or: [{ state: "sent" as const }, { state: "draft" as const, paidKobo: { $gt: 0 } }] };
+
 function checkRange(range: Partial<DateRange>, today: string): DateRange {
   const from = range.from ?? "";
   const to = range.to || today;
@@ -48,8 +51,9 @@ function checkRange(range: Partial<DateRange>, today: string): DateRange {
 
 /**
  * A customer's statement for a range: what they owed going in, every invoice and payment in it
- * with the balance after each, and what they owe at the end. Void invoices and payments taken
- * back don't count. Closing on today, it equals what's left on their invoices.
+ * with the balance after each, and what they owe at the end. It's what the customer has been
+ * sent: drafts still being checked stay off (unless money was paid on one), void invoices and
+ * payments taken back don't count. Closing on today, it equals what's left on those invoices.
  */
 export async function statementFor(
   farmId: string,
@@ -65,7 +69,7 @@ export async function statementFor(
   const { from, to } = checkRange(range, today);
   const [invoices, payments] = await Promise.all([
     InvoiceModel.find(
-      { farmId, customerId, state: { $ne: "void" }, issueDate: { $lte: to } },
+      { farmId, customerId, ...BILLED, issueDate: { $lte: to } },
       { number: 1, issueDate: 1, totalKobo: 1, dueDate: 1 },
     ).lean(),
     PaymentModel.find({ farmId, customerId, date: { $lte: to } }).lean(),

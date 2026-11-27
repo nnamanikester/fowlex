@@ -12,6 +12,7 @@ import { connectDb, withTransaction } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { FarmModel } from "@/models/farm";
 import { InviteModel } from "@/models/invite";
+import { CustomerModel } from "@/models/customer";
 import { type UserDocument, UserModel } from "@/models/user";
 
 export const INVITE_DAYS = 7;
@@ -184,6 +185,13 @@ export async function acceptInvite(
       ],
       { session },
     );
+    // A customer's login sees that customer in the portal.
+    if (invite.customerId)
+      await CustomerModel.updateOne(
+        { _id: invite.customerId, farmId: invite.farmId },
+        { $set: { userId: user._id } },
+        { session },
+      );
     return { ok: true, user } as const;
   });
 }

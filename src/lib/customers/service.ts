@@ -9,6 +9,11 @@ import { connectDb } from "@/lib/db";
 import { readSettings } from "@/lib/settings/service";
 import { normalisePhone } from "@/lib/suppliers/rules";
 import { CustomerModel } from "@/models/customer";
+import { InviteModel } from "@/models/invite";
+import { UserModel } from "@/models/user";
+import { hashToken, newToken } from "@/lib/auth/tokens";
+import { sendEmail } from "@/lib/email";
+import { INVITE_DAYS } from "@/lib/users/service";
 
 export type CustomerView = CustomerInput & {
   id: string;
@@ -16,6 +21,8 @@ export type CustomerView = CustomerInput & {
   status: "active" | "archived";
   /** They can sign in to the customer portal. */
   hasLogin: boolean;
+  /** An invite to the portal is waiting to be accepted. */
+  invited: boolean;
 };
 
 /** As stored: every field has a default, so nothing is missing. */
@@ -25,7 +32,7 @@ type Doc = CustomerInput & {
   status: "active" | "archived";
   userId?: unknown;
 };
-const view = (c: Doc): CustomerView => ({
+const view = (c: Doc, invited = new Set<string>()): CustomerView => ({
   id: String(c._id),
   version: c.__v,
   name: c.name,
@@ -39,20 +46,33 @@ const view = (c: Doc): CustomerView => ({
   notes: c.notes,
   status: c.status,
   hasLogin: !!c.userId,
+  invited: !c.userId && invited.has(String(c._id)),
 });
+
+/** Customers with a portal invite still waiting. */
+async function waiting(farmId: string) {
+  const invites = await InviteModel.find(
+    { farmId, role: "customer", acceptedAt: null, revokedAt: null, expiresAt: { $gt: new Date() } },
+    { customerId: 1 },
+  ).lean();
+  return new Set(invites.map((i) => String(i.customerId)));
+}
 
 /** The farm's customers: active first, A to Z. */
 export async function listCustomers(farmId: string): Promise<CustomerView[]> {
   await connectDb();
-  const docs = await CustomerModel.find({ farmId }).collation({ locale: "en" }).sort({ status: 1, name: 1 }).lean();
-  return docs.map((d) => view(d as unknown as Doc));
+  const [docs, invited] = await Promise.all([
+    CustomerModel.find({ farmId }).collation({ locale: "en" }).sort({ status: 1, name: 1 }).lean(),
+    waiting(farmId),
+  ]);
+  return docs.map((d) => view(d as unknown as Doc, invited));
 }
 
 export async function getCustomer(farmId: string, id: string): Promise<CustomerView | null> {
   await connectDb();
   if (!Types.ObjectId.isValid(id)) return null;
   const doc = await CustomerModel.findOne({ _id: id, farmId }).lean();
-  return doc ? view(doc as unknown as Doc) : null;
+  return doc ? view(doc as unknown as Doc, await waiting(farmId)) : null;
 }
 
 async function clean(farmId: string, input: Record<string, unknown>) {
@@ -137,4 +157,51 @@ export async function setCustomerStatus(actor: CurrentUser, id: string, status: 
 export async function deleteCustomer(actor: CurrentUser, id: string) {
   const doc = await load(actor, id);
   await doc.softDelete();
+}
+
+/**
+ * Invites a customer to the portal: a link to their email to set a password, after which they
+ * see their own invoices, orders, contracts and statement there. A newer invite replaces an older
+ * one; someone who already has a Fowlex account can't be invited again.
+ */
+export async function inviteCustomer(actor: CurrentUser, id: string, origin: string) {
+  const doc = await load(actor, id);
+  if (doc.status !== "active") throw new HttpError(409, "archived", `${doc.name} is archived: bring them back first.`);
+  if (doc.userId) throw new HttpError(409, "has_login", `${doc.name} already uses the portal.`);
+  if (!doc.email)
+    throw new HttpError(409, "no_email", `Add ${doc.name}'s email first: the invite goes there.`, "email");
+  if (await UserModel.exists({ email: doc.email }))
+    throw new HttpError(409, "already_member", `${doc.email} already has a Fowlex account.`);
+  const now = new Date();
+  await InviteModel.updateMany(
+    { farmId: actor.farmId, email: doc.email, acceptedAt: null, revokedAt: null },
+    { revokedAt: now },
+  );
+  const token = newToken();
+  await InviteModel.create({
+    farmId: actor.farmId,
+    createdBy: actor.id,
+    email: doc.email,
+    role: "customer",
+    customerId: doc._id,
+    tokenHash: hashToken(token),
+    expiresAt: new Date(now.getTime() + INVITE_DAYS * 24 * 60 * 60_000),
+  });
+  const settings = await readSettings(actor.farmId);
+  await sendEmail({
+    to: doc.email,
+    subject: `Your account with ${settings.businessName}`,
+    text: [
+      `Hello ${doc.contactName || doc.name},`,
+      "",
+      `${settings.businessName} invited ${doc.name} to its customer portal: see your invoices and pay them, your orders, contracts and statement, any time.`,
+      "",
+      "Open this link to set your password:",
+      "",
+      `${origin}/auth/invite?token=${token}`,
+      "",
+      `The link works once and expires in ${INVITE_DAYS} days.`,
+    ].join("\n"),
+  });
+  return view(doc.toObject() as unknown as Doc, new Set([String(doc._id)]));
 }
