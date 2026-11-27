@@ -7,9 +7,9 @@ import { Field } from "@/components/auth";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
-import { type BankAccount, isPopular, sortBanks } from "@/lib/suppliers/rules";
+import { type BankAccount, isPopular, sortBanks, TEST_BANK } from "@/lib/suppliers/rules";
 
-type Bank = { code: string; name: string };
+type Bank = { code: string; name: string; test?: true };
 let banksOnce: Promise<Bank[]> | null = null;
 const loadBanks = () => {
   banksOnce ??= apiRequest<Bank[]>("/api/banks", "GET").catch((e) => {
@@ -120,7 +120,8 @@ export function BankAccountField({
     };
   }, [needsCheck, key, number, bankCode]);
 
-  const sorted = sortBanks(banks);
+  const testBanks = banks.filter((b) => b.test);
+  const sorted = sortBanks(banks.filter((b) => !b.test));
   const popular = sorted.filter((b) => isPopular(b.name));
   const rest = sorted.filter((b) => !isPopular(b.name));
 
@@ -129,12 +130,30 @@ export function BankAccountField({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field id="bankCode" label="Bank" error={banksError ?? undefined}>
           {(a11y) => (
-            <Select {...a11y} value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
+            <Select
+              {...a11y}
+              value={bankCode}
+              onChange={(e) => {
+                const code = e.target.value;
+                setBankCode(code);
+                // The test bank comes with its test account, so a check never spends a real lookup.
+                if (code === TEST_BANK.code && !number) setNumber(TEST_BANK.accountNumber);
+              }}
+            >
               <option value="">
                 {banks.length ? "Choose the bank" : banksError ? "Banks didn't load" : "Loading banks…"}
               </option>
               {value && !banks.some((b) => b.code === value.bankCode) && (
                 <option value={value.bankCode}>{value.bankName || value.bankCode}</option>
+              )}
+              {testBanks.length > 0 && (
+                <optgroup label="Test mode">
+                  {testBanks.map((b) => (
+                    <option key={b.code} value={b.code}>
+                      {b.name}
+                    </option>
+                  ))}
+                </optgroup>
               )}
               {popular.length > 0 && (
                 <optgroup label="Popular">
@@ -155,7 +174,12 @@ export function BankAccountField({
             </Select>
           )}
         </Field>
-        <Field id="accountNumber" label="Account number" error={state === "not-found" ? message : error}>
+        <Field
+          id="accountNumber"
+          label="Account number"
+          error={state === "not-found" ? message : error}
+          hint={bankCode === TEST_BANK.code ? "Paystack's test account: no real money moves." : undefined}
+        >
           {(a11y) => (
             <Input
               {...a11y}

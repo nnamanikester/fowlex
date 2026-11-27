@@ -44,6 +44,13 @@ export async function requirePermission(permission: Permission): Promise<Current
   return user;
 }
 
+/** The signed-in person, if their role has any one of these permissions; 403 otherwise. */
+export async function requireAnyPermission(...permissions: Permission[]): Promise<CurrentUser> {
+  const user = await requireSession();
+  if (!permissions.some((p) => can(user.role, p))) throw new HttpError(403, "forbidden", "Your role can't do this.");
+  return user;
+}
+
 /**
  * Wraps a route handler so a guard's refusal becomes `{ error: { code, message } }` with its
  * status, and so changes it makes are logged as the signed-in person's. Every handler starts with
