@@ -91,7 +91,8 @@ test("a button that can't be pressed yet says why when tapped", async ({ page })
 });
 
 test("going offline says so until the connection is back", async ({ page, context }) => {
-  const errors = watchErrors(page);
+  // Offline, the browser logs each background request it can't send (prefetches): that's the point.
+  const errors = watchErrors(page, [/ERR_INTERNET_DISCONNECTED/]);
   await page.goto("/");
   await context.setOffline(true);
   await expect(page.getByText("You're offline")).toBeVisible();
