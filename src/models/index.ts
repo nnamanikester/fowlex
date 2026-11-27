@@ -40,8 +40,9 @@ export const ALL_MODELS = [
 ];
 
 /**
- * Makes every model's collection and indexes (unique emails, one settings per farm, expiring reset
- * links) if they're missing. Never drops anything, so it's safe to run on every deploy.
+ * Makes every model's collection, and brings its indexes in line with the schema (unique emails,
+ * one settings per farm, expiring reset links): missing ones are built, and ones the schema changed
+ * or dropped are replaced or removed. Data is never touched, so it's safe to run on every deploy.
  */
 export async function ensureIndexes() {
   const built: string[] = [];
@@ -49,7 +50,8 @@ export async function ensureIndexes() {
     await model.createCollection().catch((error: { code?: number }) => {
       if (error.code !== 48) throw error; // 48: already exists.
     });
-    await model.createIndexes();
+    // Brings the indexes in line with the schema: adds new ones, and replaces or drops changed ones.
+    await model.syncIndexes();
     built.push(model.modelName);
   }
   return built;

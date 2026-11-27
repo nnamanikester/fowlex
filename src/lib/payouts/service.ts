@@ -9,6 +9,7 @@ import { connectDb, withTransaction } from "@/lib/db";
 import { formatNaira } from "@/lib/money";
 import { isProviderTrouble, paystackMode } from "@/lib/paystack/client";
 import { finalizeTransfer, getBalance, initiateTransfer, verifyTransfer } from "@/lib/paystack/transfers";
+import { createRecipient } from "@/lib/paystack/banks";
 import { payableRecipient } from "@/lib/suppliers/service";
 import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
@@ -67,7 +68,7 @@ export async function listPayouts(farmId: string, expenseId: string) {
 /** What paying an expense would look like: who gets it, and whether the balance covers it. */
 export async function payPreview(actor: CurrentUser, expenseId: string) {
   const expense = await payable(actor, expenseId);
-  const { bank } = await payableRecipient(actor.farmId, String(expense.supplierId));
+  const { bank } = await recipientFor(actor, expense);
   const balanceKobo = await getBalance();
   return {
     amountKobo: expense.amountKobo,
@@ -94,13 +95,32 @@ async function payable(actor: CurrentUser, expenseId: string) {
   if (expense.paymentStatus === "paid") throw new HttpError(409, "paid", `${expense.number} is already paid.`);
   if (expense.paymentStatus === "paying" || expense.paymentStatus === "otp")
     throw new HttpError(409, "paying", `A transfer for ${expense.number} is already on its way.`);
-  if (!expense.supplierId)
-    throw new HttpError(
-      409,
-      "no_supplier",
-      "Only a supplier with a checked bank account can be paid through Paystack.",
-    );
+  if (!expense.supplierId && !expense.payeeBank)
+    throw new HttpError(409, "no_bank", "Add the bank account to pay before sending money through Paystack.");
   return expense;
+}
+
+/**
+ * Who a transfer goes to: the supplier's checked account, or the account kept on the expense for
+ * someone who isn't a saved supplier. A Paystack recipient Paystack couldn't make earlier is made now.
+ */
+async function recipientFor(actor: CurrentUser, expense: Awaited<ReturnType<typeof payable>>) {
+  if (expense.supplierId) return payableRecipient(actor.farmId, String(expense.supplierId));
+  const bank = expense.payeeBank!;
+  if (!bank.recipientCode) {
+    bank.recipientCode = await createRecipient(bank);
+    await ExpenseModel.updateOne({ _id: expense._id }, { $set: { "payeeBank.recipientCode": bank.recipientCode } });
+  }
+  return {
+    recipientCode: bank.recipientCode,
+    name: expense.payeeName || bank.accountName,
+    bank: {
+      bankCode: bank.bankCode,
+      bankName: bank.bankName ?? "",
+      accountNumber: bank.accountNumber,
+      accountName: bank.accountName,
+    },
+  };
 }
 
 /**
@@ -113,7 +133,7 @@ async function payable(actor: CurrentUser, expenseId: string) {
  */
 export async function payExpense(actor: CurrentUser, expenseId: string) {
   const expense = await payable(actor, expenseId);
-  const { recipientCode, bank, name } = await payableRecipient(actor.farmId, String(expense.supplierId));
+  const { recipientCode, bank, name } = await recipientFor(actor, expense);
   const attempt = (await PayoutModel.countDocuments({ expenseId: expense._id }).setOptions({ withDeleted: true })) + 1;
   const reference = `fwx-${expense.number.toLowerCase()}-${attempt}`;
 
@@ -126,7 +146,7 @@ export async function payExpense(actor: CurrentUser, expenseId: string) {
             farmId: actor.farmId,
             createdBy: actor.id,
             expenseId: expense._id,
-            supplierId: expense.supplierId!,
+            supplierId: expense.supplierId ?? null,
             amountKobo: expense.amountKobo,
             reference,
             recipient: {

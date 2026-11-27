@@ -8,11 +8,11 @@ test("buy a ₦600,000 generator tracked as equipment: it costs ₦25,000 a mont
 }, info) => {
   const errors = watchErrors(page);
   const name = `Perkins generator ${info.project.name}`;
-  await page.goto("/expenses");
-  await page.getByRole("button", { name: "Spend money" }).first().click();
+  await page.goto("/inventory/equipment");
+  await page.getByRole("button", { name: "Buy equipment" }).first().click();
   const sheet = page.getByRole("dialog", { name: "Spend money" });
-  await sheet.getByRole("radio", { name: "Other expense" }).click();
-  await sheet.getByRole("radio", { name: "Equipment" }).click();
+  await expect(sheet.getByRole("radio", { name: "Other expense" })).toBeChecked();
+  await expect(sheet.getByRole("radio", { name: "Equipment" })).toBeChecked();
   await sheet.getByLabel("Amount").fill("600000");
   await sheet.getByLabel("For", { exact: true }).fill(name);
   await expect(sheet.getByRole("checkbox", { name: /Track as equipment/ })).toBeChecked();
@@ -22,8 +22,7 @@ test("buy a ₦600,000 generator tracked as equipment: it costs ₦25,000 a mont
   await sheet.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(/EXP-\d{4}-\d{4} recorded\./)).toBeVisible();
 
-  await page.goto("/inventory");
-  await page.getByRole("navigation", { name: "Inventory sections" }).getByRole("link", { name: "Equipment" }).click();
+  // On the same page, once saved.
   const row = page.getByRole("main").getByRole("button", { name: new RegExp(name) });
   await expect(row).toContainText("₦25,000.00 a month");
   await expect(row).toContainText("over 2 years");

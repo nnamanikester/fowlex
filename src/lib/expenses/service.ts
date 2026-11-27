@@ -17,7 +17,7 @@ import { HttpError } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
-import type { Category } from "@/lib/inventory/rules";
+import { type Category, type ItemInput, nameKey, tidyName } from "@/lib/inventory/rules";
 import { AssetModel } from "@/models/asset";
 import { BatchModel } from "@/models/batch";
 import { nextSequence } from "@/models/counter";
@@ -26,6 +26,9 @@ import { InventoryItemModel } from "@/models/inventory-item";
 import { PayoutModel } from "@/models/payout";
 import { StockMovementModel } from "@/models/stock-movement";
 import { SupplierModel } from "@/models/supplier";
+import { createRecipient, resolveAccount } from "@/lib/paystack/banks";
+import type { BankAccount } from "@/lib/suppliers/rules";
+import { createSupplier } from "@/lib/suppliers/service";
 
 export type ExpenseView = Omit<ExpenseInput, "amountKobo"> & {
   id: string;
@@ -50,6 +53,7 @@ type Doc = {
   description?: string;
   supplierId?: unknown;
   payeeName?: string;
+  payeeBank?: { bankCode: string; bankName?: string; accountNumber: string; accountName: string } | null;
   batchId?: unknown;
   lines?: { itemId: unknown; quantity: number; unitCostKobo: number }[];
   deliveryKobo?: number;
@@ -72,6 +76,14 @@ const view = (e: Doc): ExpenseView => ({
   description: e.description ?? "",
   supplierId: e.supplierId ? String(e.supplierId) : null,
   payeeName: e.payeeName ?? "",
+  payeeBank: e.payeeBank
+    ? {
+        bankCode: e.payeeBank.bankCode,
+        bankName: e.payeeBank.bankName ?? "",
+        accountNumber: e.payeeBank.accountNumber,
+        accountName: e.payeeBank.accountName,
+      }
+    : null,
   batchId: e.batchId ? String(e.batchId) : null,
   lines: (e.lines ?? []).map((l) => ({ itemId: String(l.itemId), quantity: l.quantity, unitCostKobo: l.unitCostKobo })),
   deliveryKobo: e.deliveryKobo ?? 0,
@@ -130,9 +142,12 @@ function clean(input: Record<string, unknown>, today: string) {
   const id = (v: unknown) => (v === "" || v === undefined ? null : v);
   const lines = Array.isArray(input.lines)
     ? input.lines.map((l: Record<string, unknown>) => ({
-        itemId: l?.itemId,
+        itemId: l?.newItem ? "" : l?.itemId,
         quantity: l?.quantity,
         unitCostKobo: l?.unitCostKobo,
+        ...(l?.newItem && typeof l.newItem === "object"
+          ? { newItem: { reorderLevel: null, notes: "", ...(l.newItem as object) } }
+          : {}),
       }))
     : input.lines;
   const values = {
@@ -141,6 +156,8 @@ function clean(input: Record<string, unknown>, today: string) {
     description: text(input.description),
     supplierId: id(input.supplierId),
     payeeName: text(input.payeeName),
+    // A saved supplier's account wins; a bank account typed in is for paying someone who isn't one.
+    payeeBank: input.supplierId ? null : (input.payeeBank ?? null),
     batchId: id(input.batchId),
     lines: lines ?? [],
     deliveryKobo: input.deliveryKobo === "" || input.deliveryKobo === undefined ? 0 : input.deliveryKobo,
@@ -164,7 +181,32 @@ function clean(input: Record<string, unknown>, today: string) {
 }
 
 /** Checks a purchase's items, supplier and batch belong to the farm; fills the category and description. */
-async function resolve(farmId: string, values: ExpenseInput) {
+type NewItem = ItemInput & { _id: Types.ObjectId; nameKey: string };
+
+async function resolve(farmId: string, values: ExpenseInput, created: NewItem[] = []) {
+  // Something new bought: the farm's item of that name if there is one, else one made with the purchase.
+  for (const l of values.lines) {
+    if (!l.newItem) continue;
+    const name = tidyName(l.newItem.name);
+    const existing = await InventoryItemModel.findOne({ farmId, nameKey: nameKey(name) }, { _id: 1 }).lean();
+    if (existing) l.itemId = String(existing._id);
+    else {
+      const twin = created.find((c) => c.nameKey === nameKey(name));
+      const _id = twin?._id ?? new Types.ObjectId();
+      if (!twin)
+        created.push({
+          _id,
+          ...l.newItem,
+          name,
+          nameKey: nameKey(name),
+          unitKg: l.newItem.unitKg ?? null,
+          reorderLevel: l.newItem.reorderLevel ?? null,
+          notes: l.newItem.notes ?? "",
+        });
+      l.itemId = String(_id);
+    }
+    delete l.newItem;
+  }
   const items = values.lines.length
     ? await InventoryItemModel.find({
         farmId,
@@ -172,7 +214,10 @@ async function resolve(farmId: string, values: ExpenseInput) {
       }).lean()
     : [];
   const byId = new Map(
-    items.map((i) => [String(i._id), { name: i.name, unit: i.unit, category: i.category as Category }]),
+    [...items, ...created].map((i) => [
+      String(i._id),
+      { name: i.name, unit: i.unit, category: i.category as Category },
+    ]),
   );
   values.lines.forEach((l, i) => {
     if (!byId.has(l.itemId))
@@ -235,13 +280,52 @@ export async function createExpense(
       "Only the owners send money. Save it as not paid yet, and an owner can pay it.",
       "method",
     );
-  const supplier = await resolve(actor.farmId, values);
-  if (values.method === "paystack" && !supplier?.bank)
+  const newItems: NewItem[] = [];
+  let supplier = await resolve(actor.farmId, values, newItems);
+  // Paying someone who isn't a saved supplier: their account is checked with the bank here, and
+  // kept as a supplier only when asked.
+  let payeeBank: (BankAccount & { recipientCode: string | null }) | null = null;
+  if (values.payeeBank && !supplier) {
+    if (input.saveSupplier === true) {
+      supplier = await SupplierModel.findById(
+        (
+          await createSupplier(actor, {
+            name: values.payeeName || "",
+            bank: values.payeeBank,
+          }).catch((error: HttpError) => {
+            throw new HttpError(
+              error.status,
+              error.code,
+              error.message,
+              error.field === "name" ? "payeeName" : "payeeBank",
+            );
+          })
+        ).id,
+      ).lean();
+      values.supplierId = String(supplier!._id);
+      values.payeeName = "";
+    } else {
+      const account = await resolveAccount(values.payeeBank.accountNumber, values.payeeBank.bankCode).catch(
+        (error: HttpError) => {
+          throw new HttpError(error.status, error.code, error.message, "payeeBank");
+        },
+      );
+      const recipientCode = await createRecipient(account).catch((error: HttpError) => {
+        if (error.status === 503) return null;
+        throw new HttpError(400, error.code, error.message, "payeeBank");
+      });
+      payeeBank = { ...account, recipientCode };
+      values.payeeName = values.payeeName || account.accountName;
+    }
+  }
+  if (values.method === "paystack" && !supplier?.bank && !payeeBank)
     throw new HttpError(
       400,
       "no_bank",
-      `Add ${supplier?.name ?? "the supplier"}'s bank account to pay them through Paystack.`,
-      "supplierId",
+      supplier
+        ? `Add ${supplier.name}'s bank account to pay them through Paystack.`
+        : "Enter the bank account to pay through Paystack.",
+      supplier ? "supplierId" : "payeeBank",
     );
 
   // Equipment bought outright (not stock) can be tracked as an asset, depreciated over its life.
@@ -254,10 +338,16 @@ export async function createExpense(
     const doc = await withTransaction(async (session) => {
       const year = values.date.slice(0, 4);
       const seq = await nextSequence(actor.farmId, `expense:${year}`, session);
+      if (newItems.length)
+        await InventoryItemModel.create(
+          newItems.map((i) => ({ ...i, farmId: actor.farmId, createdBy: actor.id })),
+          { session, ordered: true },
+        );
       const [expense] = await ExpenseModel.create(
         [
           {
             ...values,
+            payeeBank,
             number: `EXP-${year}-${String(seq).padStart(4, "0")}`,
             paymentStatus: paid ? "paid" : "unpaid",
             paidOn: paid ? values.date : null,

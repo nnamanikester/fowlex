@@ -16,6 +16,20 @@ const schema = new Schema(
     description: { type: String, trim: true, default: "" },
     supplierId: { type: Schema.Types.ObjectId, ref: "Supplier", default: null },
     payeeName: { type: String, trim: true, default: "" },
+    /** A bank account paid without saving a supplier: checked with the bank, with its Paystack recipient. */
+    payeeBank: {
+      type: new Schema(
+        {
+          bankCode: { type: String, required: true },
+          bankName: { type: String, default: "" },
+          accountNumber: { type: String, required: true },
+          accountName: { type: String, required: true },
+          recipientCode: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     batchId: { type: Schema.Types.ObjectId, ref: "Batch", default: null },
     lines: {
       type: [
