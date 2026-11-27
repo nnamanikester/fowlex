@@ -1,6 +1,13 @@
 import "server-only";
 
-export type Email = { to: string; subject: string; text: string; html?: string };
+export type Email = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  /** Files sent with it: `content` is base64. */
+  attachments?: { filename: string; content: string }[];
+};
 
 type Sent = Email & { at: string };
 const g = globalThis as typeof globalThis & { __fowlexOutbox?: Sent[] };
@@ -28,6 +35,7 @@ export async function sendEmail(email: Email) {
       subject: email.subject,
       text: email.text,
       html: email.html,
+      ...(email.attachments?.length && { attachments: email.attachments }),
     }),
   });
   if (!response.ok) throw new Error(`Resend refused the email (${response.status}): ${await response.text()}`);

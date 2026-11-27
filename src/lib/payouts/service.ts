@@ -14,6 +14,7 @@ import { payableRecipient } from "@/lib/suppliers/service";
 import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
 import { PayoutModel } from "@/models/payout";
+import { emailPayslip } from "@/lib/payroll/payslips";
 
 export type PayoutView = {
   id: string;
@@ -284,6 +285,7 @@ export async function settle(
   status: keyof typeof EXPENSE_STATUS,
   { feeKobo = 0, transferCode, failure }: { feeKobo?: number; transferCode?: string | null; failure?: string },
 ) {
+  let paidExpense: string | null = null;
   await withTransaction(async (session) => {
     const payout = await PayoutModel.findOneAndUpdate(
       { reference, status: { $in: FROM[status] } },
@@ -298,6 +300,7 @@ export async function settle(
       { session, returnDocument: "after" },
     );
     if (!payout) return;
+    if (status === "success") paidExpense = String(payout.expenseId);
     const today = lagosToday();
     await ExpenseModel.updateOne(
       { _id: payout.expenseId },
@@ -329,6 +332,8 @@ export async function settle(
       { session },
     );
   });
+  // Someone's pay landed: their payslip goes to them.
+  if (paidExpense) await emailPayslip(paidExpense).catch((error) => console.error("[payslip email]", error));
 }
 
 /** True in the simulator, where no webhook comes: transfers are settled by checking at once. */

@@ -31,6 +31,7 @@ import { nextSequence } from "@/models/counter";
 import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { PayoutModel } from "@/models/payout";
+import { emailPayslip } from "@/lib/payroll/payslips";
 import { StockMovementModel } from "@/models/stock-movement";
 import { SupplierModel } from "@/models/supplier";
 import { createRecipient, resolveAccount } from "@/lib/paystack/banks";
@@ -475,6 +476,9 @@ export async function markPaid(actor: CurrentUser, id: string, input: Record<str
     );
   doc.set({ method, paymentStatus: "paid", paidOn });
   await doc.save();
+  // Someone's pay, paid in cash: their payslip goes to them.
+  if (doc.source?.kind === "payslip")
+    await emailPayslip(String(doc._id)).catch((error) => console.error("[payslip email]", error));
   return view(doc.toObject() as unknown as Doc);
 }
 

@@ -52,6 +52,8 @@ const schema = new Schema(
           excluded: { type: Boolean, default: false },
           hasBank: { type: Boolean, default: false },
           batchIds: { type: [Schema.Types.ObjectId], default: [] },
+          /** When the payslip was last emailed to them. */
+          emailedAt: { type: Date, default: null },
         }),
       ],
       default: [],

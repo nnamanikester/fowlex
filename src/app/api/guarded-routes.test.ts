@@ -20,6 +20,8 @@ import { POST as payRun } from "./payroll/[id]/pay/route";
 import { POST as reopenRun } from "./payroll/[id]/reopen/route";
 import { DELETE as deleteRun, GET as getRun } from "./payroll/[id]/route";
 import { GET as listRuns, POST as startRun } from "./payroll/route";
+import { POST as emailPayslip } from "./payroll/[id]/payslips/email/route";
+import { GET as payslips } from "./payroll/[id]/payslips/route";
 import { DELETE as deleteItem, PATCH as updateItem } from "./inventory/items/[id]/route";
 import { GET as listItems, POST as createItem } from "./inventory/items/route";
 import { POST as disposeAsset } from "./assets/[id]/dispose/route";
@@ -1006,5 +1008,34 @@ describe("payroll routes", () => {
     session.user = { ...owner, role: "staff" };
     expect((await listRuns()).status).toBe(403);
     expect((await startRun(req("POST", "/api/payroll", {}))).status).toBe(403);
+  });
+});
+
+describe("payslip routes", () => {
+  it("download a month's payslips or one, and email one; staff can't", async () => {
+    await signInAs("owner");
+    await createEmployee(
+      req("POST", "/api/employees", { name: "Musa", email: "musa@f.com", payType: "monthly", rateKobo: 6_000_000 }),
+    );
+    const run = await (await startRun(req("POST", "/api/payroll", {}))).json();
+    const approved = await (
+      await approveRun(req("POST", `/api/payroll/${run.id}/approve`, { version: 0 }), ctx(run.id))
+    ).json();
+    const all = await payslips(req("GET", `/api/payroll/${run.id}/payslips`), ctx(run.id));
+    expect(all.headers.get("Content-Type")).toBe("application/pdf");
+    expect(all.headers.get("Content-Disposition")).toMatch(/^attachment; filename="Payslips \d{4}-\d{2}\.pdf"$/);
+    const one = await payslips(req("GET", `/api/payroll/${run.id}/payslips?line=${approved.lines[0].id}`), ctx(run.id));
+    expect(one.headers.get("Content-Disposition")).toMatch(/Payslip \d{4}-\d{2} Musa\.pdf/);
+    const sent = await emailPayslip(
+      req("POST", `/api/payroll/${run.id}/payslips/email`, { lineId: approved.lines[0].id }),
+      ctx(run.id),
+    );
+    expect(await sent.json()).toEqual({ to: "musa@f.com" });
+    expect((await emailPayslip(new Request(`${BASE}/x`, { method: "POST", body: "{oops" }), ctx(run.id))).status).toBe(
+      404,
+    );
+    await signInAs("staff");
+    expect((await payslips(req("GET", `/api/payroll/${run.id}/payslips`), ctx(run.id))).status).toBe(403);
+    expect((await emailPayslip(req("POST", "/x", {}), ctx(run.id))).status).toBe(403);
   });
 });

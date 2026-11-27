@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, HandCoins, Landmark, Pencil, Phone, Trash2 } from "lucide-react";
+import { ChevronLeft, FileDown, HandCoins, Landmark, Mail, Pencil, Phone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AdvanceSheet } from "./advance-sheet";
@@ -16,6 +16,7 @@ import { formatRange } from "@/lib/dates";
 import { formatNaira } from "@/lib/money";
 import { instalment, monthName } from "@/lib/people/advance-rules";
 import type { AdvanceView } from "@/lib/people/advances";
+import type { Payslip } from "@/lib/payroll/payslips";
 import { PAY_TYPE_LABELS } from "@/lib/people/rules";
 import type { EmployeeView } from "@/lib/people/service";
 import { formatPhone, maskAccount } from "@/lib/suppliers/rules";
@@ -26,6 +27,7 @@ const formatDate = (d: string) => formatRange({ from: d, to: d });
 export function EmployeeDetail({
   employee: e,
   advances,
+  payslips = [],
   batches,
   today,
   canWrite,
@@ -33,6 +35,7 @@ export function EmployeeDetail({
 }: {
   employee: EmployeeView;
   advances: AdvanceView[];
+  payslips?: Payslip[];
   batches: { id: string; code: string }[];
   today: string;
   canWrite: boolean;
@@ -41,7 +44,22 @@ export function EmployeeDetail({
   const router = useRouter();
   const [open, setOpen] = React.useState<"edit" | "advance" | null>(null);
   const [removing, setRemoving] = React.useState<string | null>(null);
+  const [sending, setSending] = React.useState<string | null>(null);
   const owing = advances.reduce((n, a) => n + a.balanceKobo, 0);
+  const resend = async (p: Payslip) => {
+    setSending(p.lineId);
+    try {
+      const { to } = await apiRequest<{ to: string }>(`/api/payroll/${p.runId}/payslips/email`, "POST", {
+        lineId: p.lineId,
+      });
+      toast.success(`${monthName(p.period)} payslip sent to ${to}.`);
+      router.refresh();
+    } catch (error) {
+      toast.error((error as AuthError).message);
+    } finally {
+      setSending(null);
+    }
+  };
   const done = (message: string) => {
     setOpen(null);
     toast.success(message);
@@ -186,6 +204,48 @@ export function EmployeeDetail({
           </ul>
         )}
       </Panel>
+
+      {payslips.length > 0 && (
+        <Panel
+          title="Payslips"
+          description={e.email ? `Emailed to ${e.email} when paid.` : "Add an email to send them their payslips."}
+          flush
+        >
+          <ul className="divide-y divide-line">
+            {payslips.map((p) => (
+              <li key={p.lineId} className="flex items-center gap-2 px-5 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-fg">{monthName(p.period)}</span>
+                  <span className="block text-xs text-fg-muted">
+                    {p.paidOn ? `Paid on ${formatDate(p.paidOn)}` : "Not paid yet"}
+                    {p.emailedAt && " · emailed"}
+                  </span>
+                </span>
+                <span className="num shrink-0 font-semibold text-fg">{formatNaira(p.netKobo)}</span>
+                {canWrite && e.email && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Email the ${monthName(p.period)} payslip`}
+                    loading={sending === p.lineId}
+                    onClick={() => void resend(p)}
+                  >
+                    <Mail />
+                  </Button>
+                )}
+                <a
+                  href={`/api/payroll/${p.runId}/payslips?line=${p.lineId}`}
+                  download
+                  aria-label={`Download the ${monthName(p.period)} payslip`}
+                  className="focus-ring inline-flex size-9 items-center justify-center rounded-lg text-fg-muted hover:bg-surface-subtle hover:text-fg"
+                >
+                  <FileDown className="size-5" aria-hidden />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
 
       {open === "edit" && (
         <EmployeeSheet
