@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { feeFor, listPayouts, payExpense, payPreview, settle, settlesBySync, submitOtp, syncPayout } from "./service";
 import { createExpense, getExpense, listExpenses, supplierBalances } from "@/lib/expenses/service";
 import { today as lagosToday } from "@/lib/dates";
+import { HttpError } from "@/lib/auth/guard";
+import * as banks from "@/lib/paystack/banks";
 import { clearBankCache } from "@/lib/paystack/banks";
 import * as client from "@/lib/paystack/client";
 import { configureSimulator, resetSimulator } from "@/lib/paystack/simulator";
@@ -187,7 +189,7 @@ describe("paying a supplier through Paystack", () => {
       {},
       TODAY,
     );
-    expect(await refusal(payExpense(owner, noSupplier.id))).toMatchObject({ code: "no_supplier" });
+    expect(await refusal(payExpense(owner, noSupplier.id))).toMatchObject({ code: "no_bank" });
     expect(await refusal(payExpense(owner, "nope"))).toMatchObject({ status: 404 });
     await ExpenseModel.updateOne({ _id: noBank.id }, { paymentStatus: "otp" });
     expect(await refusal(payExpense(owner, noBank.id))).toMatchObject({ code: "paying" });
@@ -248,6 +250,110 @@ describe("paying a supplier through Paystack", () => {
     });
     expect((await payExpense(owner, expense.id)).status).toBe("success");
     expect((await listExpenses(owner.farmId)).some((e) => e.category === "bank-charges")).toBe(false);
+  });
+
+  it("pays someone who isn't a saved supplier, to the account the bank named", async () => {
+    const { owner } = await moneyFarm();
+    const { expense } = await createExpense(
+      owner,
+      {
+        category: "transport",
+        amountKobo: 1_500_000,
+        description: "Haulage from Ibadan",
+        method: "paystack",
+        payeeBank: { bankCode: "058", accountNumber: "0123456783", accountName: "SOMEONE ELSE" },
+      },
+      {},
+      TODAY,
+    );
+    expect(expense).toMatchObject({
+      supplierId: null,
+      payeeName: "NGOZI OKAFOR",
+      payeeBank: { accountName: "NGOZI OKAFOR", bankName: "Guaranty Trust Bank", accountNumber: "0123456783" },
+    });
+    expect(await payPreview(owner, expense.id)).toMatchObject({
+      recipient: { accountName: "NGOZI OKAFOR", accountNumber: "••••6783" },
+    });
+    const payout = await payExpense(owner, expense.id);
+    expect(payout).toMatchObject({ status: "success", recipient: { accountName: "NGOZI OKAFOR" } });
+    expect(await PayoutModel.findById(payout.id).lean()).toMatchObject({ supplierId: null });
+  });
+
+  it("keeps a typed-in account as a supplier when asked, and refuses one the bank can't find", async () => {
+    const { owner } = await moneyFarm();
+    const spend = (over: Record<string, unknown>) =>
+      createExpense(
+        owner,
+        {
+          category: "transport",
+          amountKobo: 100_000,
+          description: "Haulage",
+          method: "later",
+          payeeName: "Musa Haulage",
+          ...over,
+        },
+        {},
+        TODAY,
+      );
+    const { expense } = await spend({
+      payeeBank: { bankCode: "058", accountNumber: "0123456782" },
+      saveSupplier: true,
+    });
+    expect(expense).toMatchObject({ payeeName: "", payeeBank: null, supplierId: expect.any(String) });
+    expect(
+      await refusal(spend({ payeeBank: { bankCode: "058", accountNumber: "0123456782" }, saveSupplier: true })),
+    ).toMatchObject({
+      code: "duplicate_name",
+      field: "payeeName",
+    });
+    expect(await refusal(spend({ payeeBank: { bankCode: "058", accountNumber: "0000000000" } }))).toMatchObject({
+      status: 400,
+      field: "payeeBank",
+    });
+    expect(await refusal(spend({ payeeBank: { bankCode: "058", accountNumber: "1111111111" } }))).toMatchObject({
+      status: 503,
+      field: "payeeBank",
+    });
+  });
+
+  it("makes the Paystack recipient when paying if Paystack couldn't when saving, or refuses one it won't pay", async () => {
+    const { owner } = await moneyFarm();
+    const make = vi
+      .spyOn(banks, "createRecipient")
+      .mockRejectedValueOnce(new HttpError(503, "paystack_unavailable", "busy"));
+    const { expense } = await createExpense(
+      owner,
+      {
+        category: "repairs",
+        amountKobo: 100_000,
+        description: "Welder",
+        method: "later",
+        payeeBank: { bankCode: "058", accountNumber: "0123456785" },
+      },
+      {},
+      TODAY,
+    );
+    expect(await ExpenseModel.findById(expense.id).lean()).toMatchObject({ payeeBank: { recipientCode: null } });
+    make.mockRestore();
+    expect((await payExpense(owner, expense.id)).status).toBe("success");
+    expect((await ExpenseModel.findById(expense.id).lean())?.payeeBank?.recipientCode).toMatch(/^RCP_/);
+    vi.spyOn(banks, "createRecipient").mockRejectedValueOnce(new HttpError(400, "recipient_refused", "No"));
+    expect(
+      await refusal(
+        createExpense(
+          owner,
+          {
+            category: "repairs",
+            amountKobo: 1,
+            description: "x",
+            method: "later",
+            payeeBank: { bankCode: "058", accountNumber: "0123456785" },
+          },
+          {},
+          TODAY,
+        ),
+      ),
+    ).toMatchObject({ field: "payeeBank" });
   });
 
   it("knows Paystack's fees and when the simulator settles", () => {

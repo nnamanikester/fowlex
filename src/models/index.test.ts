@@ -25,4 +25,17 @@ describe("ensureIndexes", () => {
     const resets = await mongoose.connection.db!.collection("passwordresets").indexes();
     expect(resets.find((i) => i.key.expiresAt)?.expireAfterSeconds).toBe(24 * 60 * 60);
   });
+
+  it("replaces an index whose rule changed: a purchase may list one item twice", async () => {
+    await mongoose.connection.db!.dropDatabase();
+    const movements = mongoose.connection.db!.collection("stockmovements");
+    // The old rule: one movement per record and item, for purchases too.
+    await movements.createIndex(
+      { "source.kind": 1, "source.id": 1, itemId: 1 },
+      { unique: true, partialFilterExpression: { "source.id": { $type: "objectId" } } },
+    );
+    await ensureIndexes();
+    const rule = (await movements.indexes()).find((i) => i.key["source.kind"]);
+    expect(rule?.partialFilterExpression).toEqual({ "source.kind": "daily-log", deletedAt: null });
+  });
 });

@@ -61,6 +61,57 @@ test("buy 20 bags of feed and pay the supplier through Paystack: stock comes in,
   expect(errors).toEqual([]);
 });
 
+test("pay someone who isn't a saved supplier: enter their account, the bank names it, send", async ({ page }, info) => {
+  const errors = watchErrors(page);
+  await page.goto("/expenses");
+  await page.getByRole("button", { name: "Spend money" }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Spend money" });
+  await sheet.getByRole("radio", { name: "Other expense" }).click();
+  await sheet.getByRole("radio", { name: "Transport" }).click();
+  await sheet.getByLabel("Amount").fill("10000");
+  await sheet.getByLabel("For", { exact: true }).fill(`Lorry hire ${info.project.name} ${Date.now().toString(36)}`);
+  await sheet.getByLabel("Who was paid").fill("Musa");
+  await sheet.getByRole("radio", { name: /Pay now with Paystack/ }).click();
+  await expect(sheet.getByText("To any bank account: enter it below.")).toBeVisible();
+  await sheet.getByRole("button", { name: /Next: pay/ }).click();
+  await expect(sheet.getByText("Enter the bank account to pay.")).toBeVisible();
+
+  await sheet.getByLabel("Bank").selectOption({ label: "Guaranty Trust Bank" });
+  await sheet.getByLabel("Account number").fill("0123456783");
+  await expect(sheet.getByText(/To NGOZI OKAFOR, Guaranty Trust Bank ••••6783/)).toBeVisible();
+  await expect(sheet.getByRole("checkbox", { name: /Save as a supplier/ })).not.toBeChecked();
+  await sheet.getByRole("button", { name: "Next: pay ₦10,000.00" }).click();
+
+  const pay = page.getByRole("dialog", { name: /^Lorry hire/ });
+  await expect(pay.getByText("NGOZI OKAFOR", { exact: true }).first()).toBeVisible();
+  await pay.getByRole("checkbox").check();
+  await pay.getByRole("button", { name: "Send ₦10,000.00" }).click();
+  await expect(page.getByText("₦10,000.00 sent to NGOZI OKAFOR.")).toBeVisible();
+  await expect(pay.getByText("Paid", { exact: true })).toBeVisible();
+  await expect(pay.getByText("Musa")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("buy something not yet in stock: the item is made with the purchase", async ({ page }, info) => {
+  const errors = watchErrors(page);
+  const name = `Layer mash ${info.project.name} ${Date.now().toString(36)}`;
+  await page.goto("/inventory");
+  await page.getByRole("button", { name: "Buy stock" }).first().click();
+  const sheet = page.getByRole("dialog", { name: "Spend money" });
+  await sheet.getByLabel("Item").selectOption("__new");
+  await sheet.getByLabel("New item's name").fill(name);
+  await expect(sheet.getByLabel("Kind", { exact: true }).last()).toHaveValue("feed");
+  await expect(sheet.getByLabel("Kg per bag")).toHaveValue("25");
+  await sheet.getByLabel("How many bags").fill("10");
+  await sheet.getByLabel("Price per bag").fill("17000");
+  await sheet.getByRole("radio", { name: /Already paid/ }).click();
+  await sheet.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText(/EXP-\d{4}-\d{4} recorded\./)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("main").getByRole("link", { name: new RegExp(name) })).toContainText("10 bags");
+  expect(errors).toEqual([]);
+});
+
 test("a supplier's page shows what's owed after two unpaid purchases", async ({ page }, info) => {
   const { supplier, item } = await setup(page, `owed ${info.project.name}`);
   for (const quantity of [2, 3])

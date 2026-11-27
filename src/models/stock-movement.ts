@@ -26,10 +26,10 @@ const schema = new Schema({
 schema.plugin(basePlugin, { audit: { label: (m) => `${String(m.type)} ${String(m.quantity)}` } });
 schema.index({ farmId: 1, itemId: 1, date: 1 });
 schema.index({ farmId: 1, batchId: 1 });
-// A source record makes at most one movement per item.
+// A daily log takes its feed off once. (A purchase can list one item on several lines.)
 schema.index(
   { "source.kind": 1, "source.id": 1, itemId: 1 },
-  { unique: true, partialFilterExpression: { "source.id": { $type: "objectId" }, deletedAt: null } },
+  { unique: true, partialFilterExpression: { "source.kind": "daily-log", deletedAt: null } },
 );
 
 export type StockMovement = InferSchemaType<typeof schema> & Base;

@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/kit";
 import { requireUser } from "@/lib/auth/current-user";
 import { can } from "@/lib/auth/permissions";
 import { today } from "@/lib/dates";
-import { loadAssets } from "@/lib/page-data";
+import { loadAssets, loadBatches, loadItems, loadSuppliers } from "@/lib/page-data";
 
 export const metadata: Metadata = { title: "Equipment" };
 
@@ -26,7 +26,26 @@ export default function EquipmentPage() {
 
 async function Equipment() {
   const user = await requireUser();
+  const canWrite = can(user.role, "expense.write");
+  const [assets, suppliers, items, batches] = await Promise.all([
+    loadAssets(user.farmId),
+    canWrite ? loadSuppliers(user.farmId) : Promise.resolve([]),
+    canWrite ? loadItems(user.farmId) : Promise.resolve([]),
+    canWrite ? loadBatches(user.farmId) : Promise.resolve([]),
+  ]);
   return (
-    <EquipmentBoard assets={await loadAssets(user.farmId)} today={today()} canWrite={can(user.role, "expense.write")} />
+    <EquipmentBoard
+      assets={assets}
+      today={today()}
+      canWrite={canWrite}
+      spending={{
+        suppliers,
+        items,
+        batches: batches.filter((b) => b.phase !== "closed").map((b) => ({ id: b.id, code: b.code })),
+        today: today(),
+        canWrite,
+        canPay: can(user.role, "payout.send"),
+      }}
+    />
   );
 }
