@@ -116,7 +116,7 @@ function CustomRange({ value, max, onApply }: { value: DateRange; max?: string; 
       {!valid && from && to && (
         <p className="text-xs font-medium text-danger-fg">The start must be on or before the end.</p>
       )}
-      <Button type="submit" size="sm" disabled={!valid}>
+      <Button type="submit" size="sm" disabled={!valid} reason="Pick a start date on or before the end date.">
         Apply
       </Button>
     </form>

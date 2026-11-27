@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { Repeat } from "lucide-react";
 import { toast } from "sonner";
 
-import { Field, FormAlert } from "@/components/auth";
+import { Field } from "@/components/auth";
 import { Panel } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { ActionFeedback } from "@/components/ui/action-feedback";
 import { Sheet } from "@/components/ui/sheet";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
 import { formatRange } from "@/lib/dates";
@@ -103,6 +104,7 @@ function RepeatSheet({ repeat, onClose }: { repeat: RecurringView; onClose: () =
       subtitle="Repeats every month"
       footer={
         <div className="space-y-2">
+          <ActionFeedback action={{ failure }} />
           <Button
             size="lg"
             fullWidth
@@ -130,7 +132,6 @@ function RepeatSheet({ repeat, onClose }: { repeat: RecurringView; onClose: () =
       }
     >
       <div className="space-y-5">
-        {failure && !failure.field && <FormAlert title={failure.message} />}
         <div className="grid grid-cols-2 gap-3">
           <Field
             id="amountKobo"

@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
 import { Modal } from "@/components/ui/modal";
 import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import { ROLE_LABELS } from "@/lib/auth/permissions";
 import type { Team } from "@/lib/users/service";
 import { cn } from "@/lib/utils";
@@ -37,15 +38,9 @@ export function TeamManager({ team }: { team: Team }) {
   const [inviting, setInviting] = React.useState(false);
   const [turningOff, setTurningOff] = React.useState<Member | null>(null);
 
-  const run = async (action: () => Promise<unknown>, success: string) => {
-    try {
-      await action();
-      toast.success(success);
-      router.refresh();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
-  };
+  const action = useAction();
+  const run = (fn: () => Promise<unknown>, success: string) =>
+    action.run(fn, { progress: "Saving…", success, onSuccess: () => router.refresh() });
 
   const setMember = (member: Member, change: { role?: TeamRole; status?: "active" | "disabled" }, success: string) =>
     run(() => apiRequest(`/api/users/${member.id}`, "PATCH", change), success);
@@ -299,7 +294,7 @@ function InviteDialog({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" loading={busy} disabled={!email.trim()}>
+          <Button type="submit" loading={busy} disabled={!email.trim()} reason="Type their email first.">
             Send invite
           </Button>
         </div>

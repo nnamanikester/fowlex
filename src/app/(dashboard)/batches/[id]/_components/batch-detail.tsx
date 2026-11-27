@@ -30,7 +30,8 @@ import { ConfirmDialog, EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { type AuthError, apiRequest } from "@/lib/auth/client";
+import { apiRequest } from "@/lib/auth/client";
+import { useAction } from "@/lib/use-action";
 import { batchKpis, growthRows, vsStandard } from "@/lib/batches/kpis";
 import { ageOn, formatAge, PHASE_LABELS, targetDate } from "@/lib/batches/rules";
 import type { BatchCosts } from "@/lib/batches/costs";
@@ -99,15 +100,13 @@ export function BatchDetail({
   const [reopening, setReopening] = React.useState(false);
   const open = b.phase !== "closed";
 
-  const setStatus = async (status: "active" | "selling") => {
-    try {
-      await apiRequest(`/api/batches/${b.id}/status`, "POST", { status });
-      toast.success(status === "selling" ? `${b.code} is now selling.` : `${b.code} is back to growing.`);
-      router.refresh();
-    } catch (e) {
-      toast.error((e as AuthError).message);
-    }
-  };
+  const action = useAction();
+  const setStatus = (status: "active" | "selling") =>
+    action.run(() => apiRequest(`/api/batches/${b.id}/status`, "POST", { status }), {
+      progress: status === "selling" ? `Moving ${b.code} to selling…` : `Moving ${b.code} back to growing…`,
+      success: status === "selling" ? `${b.code} is now selling.` : `${b.code} is back to growing.`,
+      onSuccess: () => router.refresh(),
+    });
 
   const daysLeft = b.targetSellAgeDays - b.ageDays;
   const plan = vaccinationPlan(
@@ -377,13 +376,9 @@ export function BatchDetail({
         confirmLabel="Reopen batch"
         destructive={false}
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/batches/${b.id}/reopen`, "POST");
-            toast.success(`${b.code} is open again.`);
-            router.refresh();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/batches/${b.id}/reopen`, "POST");
+          toast.success(`${b.code} is open again.`);
+          router.refresh();
         }}
       />
       <ConfirmDialog
@@ -394,14 +389,10 @@ export function BatchDetail({
         confirmLabel="Delete batch"
         typeToConfirm={b.code}
         onConfirm={async () => {
-          try {
-            await apiRequest(`/api/batches/${b.id}`, "DELETE");
-            toast.success(`${b.code} deleted.`);
-            router.replace("/batches");
-            router.refresh();
-          } catch (e) {
-            toast.error((e as AuthError).message);
-          }
+          await apiRequest(`/api/batches/${b.id}`, "DELETE");
+          toast.success(`${b.code} deleted.`);
+          router.replace("/batches");
+          router.refresh();
         }}
       />
     </div>
