@@ -39,13 +39,36 @@ test("profit and loss by month adds up to the year, and by batch lists every bat
   await cash.click();
   await expect(page).toHaveURL(/basis=cash/);
   await main.getByRole("radio", { name: "By batch" }).click();
-  await expect(page).toHaveURL(/view=batches/);
+  await expect(page).toHaveURL(/by=batch/);
   const batches = main.getByRole("table", { name: "Profit and loss by batch" });
   await expect(batches.getByRole("link", { name: /^B-\d{4}-\d{2}/ }).first()).toBeVisible();
 
-  // The table exports as a spreadsheet.
-  const download = page.waitForEvent("download");
-  await main.getByRole("button", { name: /Export CSV/ }).click();
-  expect((await download).suggestedFilename()).toBe("fowlex-profit-by-batch-cash.csv");
+  // It downloads as a spreadsheet: naira as plain numbers Excel adds up, dates Excel reads.
+  const csvFile = page.waitForEvent("download");
+  await main.getByRole("link", { name: "Download CSV" }).click();
+  const csv = await csvFile;
+  expect(csv.suggestedFilename()).toBe("fowlex-profit-by-batch-cash.csv");
+  const text = await (await import("node:fs/promises")).readFile((await csv.path())!, "utf8");
+  const [head, firstRow] = text.replace(/^\uFEFF/, "").split("\r\n");
+  expect(head).toBe(
+    '"Batch","Placed","Income (NGN)","Direct costs (NGN)","Shared costs (NGN)","Net profit (NGN)","Margin (%)","Cost a bird (NGN)","Cost a kg (NGN)"',
+  );
+  expect(firstRow).toMatch(/^"B-\d{4}-\d{2}","\d{4}-\d{2}-\d{2}",-?\d+(\.\d+)?,/);
+
+  // And as a PDF.
+  const pdfFile = page.waitForEvent("download");
+  await main.getByRole("link", { name: "Download PDF" }).click();
+  expect((await pdfFile).suggestedFilename()).toBe("fowlex-profit-by-batch-cash.pdf");
+
+  // Every other report: cash flow by month, with its totals.
+  await main.getByRole("combobox", { name: "Report" }).selectOption("cashflow");
+  await expect(page).toHaveURL(/report=cashflow/);
+  const flow = main.getByRole("table", { name: /^Cash flow, \d{4}$/ });
+  await expect(flow.locator("tfoot")).toContainText("Total");
+  for (const report of ["expenses", "sales", "aging", "payroll"]) {
+    await main.getByRole("combobox", { name: "Report" }).selectOption(report);
+    await expect(page).toHaveURL(new RegExp(`report=${report}`));
+    await expect(main.locator("table caption")).toBeAttached();
+  }
   expect(errors).toEqual([]);
 });

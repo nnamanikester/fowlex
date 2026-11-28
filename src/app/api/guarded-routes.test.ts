@@ -56,6 +56,7 @@ import { GET as listLogs, POST as createLog } from "./logs/route";
 import { DELETE as deleteHouse, PATCH as updateHouse } from "./houses/[id]/route";
 import { POST as createHouse } from "./houses/route";
 import { GET as summary } from "./reports/summary/route";
+import { GET as reportFile } from "./reports/[kind]/route";
 import { PATCH as saveSettings } from "./settings/route";
 import { PATCH as updateMember } from "./users/[id]/route";
 import { POST as resend } from "./users/invites/[id]/resend/route";
@@ -178,6 +179,23 @@ describe("GET /api/reports/summary", () => {
       profitKobo: 0,
       marginPct: null,
     });
+  });
+});
+
+describe("GET /api/reports/[kind]", () => {
+  const kind = (k: string) => ({ params: Promise.resolve({ kind: k }) });
+  it("downloads any report as a CSV or a PDF, for roles that read finances", async () => {
+    await signInAs("staff");
+    expect((await reportFile(req("GET", "/api/reports/cashflow"), kind("cashflow"))).status).toBe(403);
+    await signInAs("manager");
+    const csv = await reportFile(req("GET", "/api/reports/cashflow?year=2026&format=csv"), kind("cashflow"));
+    expect(csv.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(csv.headers.get("Content-Disposition")).toBe('attachment; filename="fowlex-cash-flow-2026.csv"');
+    expect(await csv.text()).toContain('"Month","Money in (NGN)"');
+    const pdf = await reportFile(req("GET", "/api/reports/expenses?year=2026&format=pdf"), kind("expenses"));
+    expect(pdf.headers.get("Content-Type")).toBe("application/pdf");
+    expect(pdf.headers.get("Content-Disposition")).toBe('attachment; filename="fowlex-expenses-by-category-2026.pdf"');
+    expect((await reportFile(req("GET", "/api/reports/nope"), kind("nope"))).status).toBe(404);
   });
 });
 
