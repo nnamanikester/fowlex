@@ -78,9 +78,11 @@ describe("sales orders", () => {
     await createContract(owner, terms, TODAY);
     const o = await createOrder(owner, order());
     expect(o).toMatchObject({ number: "SO-2026-0001", status: "pending", contract: { number: "CON-2026-0001" } });
-    expect(o.lines[0]).toMatchObject({ pricing: "perKg", priceKobo: 320_000 });
-    // Not weighed yet: only the delivery charge so far.
-    expect(o.totalKobo).toBe(500_000);
+    expect(o.lines[0]).toMatchObject({ pricing: "perKg", priceKobo: 320_000, weighed: false });
+    // Not weighed yet: priced on the batch's weight, and its invoice made with it (not sent).
+    expect(o.lines[0].weightGrams).toBeGreaterThan(0);
+    expect(o.totalKobo).toBe(Math.round((o.lines[0].weightGrams * 320_000) / 1000) + 500_000);
+    expect(o.invoiceId).toBeTruthy();
     expect(await priceFor(owner.farmId, grill.id, "2028-01-01")).toEqual({
       pricing: "perKg",
       priceKobo: null,
@@ -93,9 +95,6 @@ describe("sales orders", () => {
     await createContract(owner, terms, TODAY);
     const o = await createOrder(owner, order());
     expect((await getBatch(owner.farmId, batch.id, TODAY))!.liveBirds).toBe(1000);
-    expect(await refusal(deliverOrder(owner, o.id, {}, o.version, TODAY))).toMatchObject({
-      field: "lines.0.weightGrams",
-    });
     const done = await deliverOrder(
       owner,
       o.id,
@@ -248,6 +247,7 @@ describe("order rules", () => {
     );
     expect(validateOrder({ lines: Array(21).fill(line) }).lines).toMatch(/At most/);
     const perKg = { batchId: "a".repeat(24), birds: 1, weightGrams: 0, priceKobo: 1, pricing: "perKg" };
-    expect(validateOrder({ lines: [perKg] }, { delivered: true })["lines.0.weightGrams"]).toMatch(/Weigh/);
+    // Weighing is never required: the batch's weight stands in.
+    expect(validateOrder({ lines: [perKg] })["lines.0.weightGrams"]).toBeUndefined();
   });
 });

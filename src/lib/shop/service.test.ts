@@ -138,7 +138,14 @@ describe("the order page", () => {
       [old.id, 300],
       [young.id, 100],
     ]);
-    expect(order.lines[0]).toMatchObject({ pricing: "perKg", priceKobo: 320_000, weightGrams: 0 });
+    // Priced on the batch's weight until weighed on the day, with its invoice made (not sent).
+    expect(order.lines[0]).toMatchObject({
+      pricing: "perKg",
+      priceKobo: 320_000,
+      weightGrams: 300 * 2000,
+      weighed: false,
+    });
+    expect(order.invoiceId).toBeTruthy();
     const [customer] = (await listCustomers(owner.farmId)).filter((c) => !c.walkIn);
     expect(customer).toMatchObject({
       name: "The Grill",

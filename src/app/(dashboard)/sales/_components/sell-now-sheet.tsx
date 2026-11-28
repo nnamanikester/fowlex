@@ -46,7 +46,8 @@ export function SellNowSheet({
   onClose,
   onDone,
 }: {
-  batches: { id: string; code: string; free: number }[];
+  /** `birdGrams`: a bird's weight there (last weighing or target), for a sale not weighed. */
+  batches: { id: string; code: string; free: number; birdGrams?: number }[];
   /** The farm's prices, the usual one first: one tap each. */
   prices?: PriceOption[];
   simulated: boolean;
@@ -82,7 +83,7 @@ export function SellNowSheet({
     }
   }, [usual]);
 
-  const grams = Math.round(Number(kg || 0) * 1000);
+  const weighed = Math.round(Number(kg || 0) * 1000);
   const price = pricing === "perKg" ? perKg : perBird;
   const chosen = prices.find((p) => p.pricing === pricing && p.priceKobo === price);
   const pick = (p: PriceOption) => {
@@ -90,8 +91,11 @@ export function SellNowSheet({
     if (p.pricing === "perKg") setPerKg(p.priceKobo);
     else setPerBird(p.priceKobo);
   };
-  const total = !price ? 0 : pricing === "perKg" ? Math.round((grams * price) / 1000) : birds * price;
   const batch = batches.find((b) => b.id === batchId);
+  // Not weighed: the batch's weight a bird (the oldest batch's, when none is chosen), as the sale is priced.
+  const estimate = Math.round((batch ?? batches[0])?.birdGrams ?? 0) * birds;
+  const grams = weighed || estimate;
+  const total = !price ? 0 : pricing === "perKg" ? Math.round((grams * price) / 1000) : birds * price;
   const limit = batch ? batch.free : free;
   const reason =
     birds < 1
@@ -100,16 +104,14 @@ export function SellNowSheet({
         ? `There are ${limit.toLocaleString("en-NG")} birds free.`
         : !price
           ? "Enter the price."
-          : pricing === "perKg" && grams < 1
-            ? "Weigh the birds and enter their weight."
-            : "";
+          : "";
   const sum =
     !price || !birds
       ? "Add the price to see the total"
       : pricing === "perKg"
-        ? grams
+        ? weighed
           ? `${Number(kg).toLocaleString("en-NG")} kg × ${naira(price)}`
-          : "Add their weight to see the total"
+          : `About ${(Math.round(grams / 100) / 10).toLocaleString("en-NG")} kg × ${naira(price)}, not weighed`
         : `${birds.toLocaleString("en-NG")} × ${naira(price)}`;
 
   const sell = () =>
@@ -120,7 +122,8 @@ export function SellNowSheet({
           batchId: batchId || undefined,
           pricing,
           priceKobo: price,
-          weightGrams: pricing === "perKg" ? grams : 0,
+          // Left empty, the farm prices it on the batch's weight.
+          weightGrams: pricing === "perKg" ? weighed : 0,
           paidBy,
           name: who.name,
           phone: who.phone,
@@ -341,13 +344,20 @@ export function SellNowSheet({
           )}
           {pricing === "perKg" ? (
             <div className="grid grid-cols-2 gap-3">
-              <Field id="sellKg" label="They weigh (kg)" error={action.fieldError("weightGrams")}>
+              <Field
+                id="sellKg"
+                label="They weigh (kg)"
+                hint={weighed ? undefined : "Optional"}
+                error={action.fieldError("weightGrams")}
+              >
                 {(a11y) => (
                   <Input
                     {...a11y}
                     inputMode="decimal"
                     className="num h-12 text-lg"
-                    placeholder="4.4"
+                    placeholder={
+                      estimate ? `About ${(Math.round(estimate / 100) / 10).toLocaleString("en-NG")}` : "4.4"
+                    }
                     value={kg}
                     onChange={(e) => setKg(e.target.value.replace(/[^\d.]/g, "").slice(0, 8))}
                   />

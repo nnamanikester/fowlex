@@ -160,9 +160,10 @@ describe("selling to anyone, in one go", () => {
     expect(kg.invoice).toMatchObject({ customerId: known.id, totalKobo: 1_408_000 });
     // Their own email goes to Paystack.
     expect((await CollectionModel.findById(kg.collection!.id).lean())!.email).toBe("s@spot.ng");
-    expect(await refusal(quickSale(owner, sale({ pricing: "perKg", priceKobo: 320_000 }), TODAY))).toMatchObject({
-      field: "weightGrams",
-    });
+    // Not weighed: sold on the batch's weight (2.2 kg a bird), and the invoice says so.
+    const unweighed = await quickSale(owner, sale({ pricing: "perKg", priceKobo: 320_000 }), TODAY);
+    expect(unweighed.invoice.totalKobo).toBe(Math.round((2 * 2200 * 320_000) / 1000));
+    expect(unweighed.invoice.lines[0].description).toContain("about 4.4 kg (not weighed yet)");
     expect(await refusal(quickSale(owner, sale({ birds: 99 }), TODAY))).toMatchObject({ code: "not_enough_birds" });
     expect(await refusal(quickSale(owner, sale({ batchId: String(oid()) }), TODAY))).toMatchObject({
       code: "not_enough_birds",

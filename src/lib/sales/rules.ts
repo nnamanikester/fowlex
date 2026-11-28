@@ -14,7 +14,16 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 export const ORDER_TONE = { pending: "warning", delivered: "info", invoiced: "success", cancelled: "neutral" } as const;
 
 /** Birds from one batch: how many, their total live weight (once weighed), and the price. */
-export type OrderLine = { batchId: string; birds: number; weightGrams: number; priceKobo: number; pricing: Pricing };
+export type OrderLine = {
+  batchId: string;
+  birds: number;
+  /** Their weight: as weighed, or (not `weighed`) the batch's estimate for a per-kg line. */
+  weightGrams: number;
+  priceKobo: number;
+  pricing: Pricing;
+  /** False when the weight is the batch's estimate, not a weighing: it can be weighed later. */
+  weighed?: boolean;
+};
 
 export type OrderInput = {
   customerId: string;
@@ -38,10 +47,10 @@ export const orderTotal = (o: { lines: OrderLine[]; deliveryKobo: number }) =>
 export const kg = (grams: number) => `${(Math.round(grams / 100) / 10).toLocaleString("en-NG")} kg`;
 
 /**
- * Checks an order. `delivered` is stricter: a per-kg line must be weighed by then. Before, the
- * weight may be left at zero (birds are weighed on the day).
+ * Checks an order. Weighing is never required: a per-kg line left at zero is priced on its
+ * batch's estimated weight.
  */
-export function validateOrder(v: Partial<Record<keyof OrderInput, unknown>>, { delivered = false } = {}) {
+export function validateOrder(v: Partial<Record<keyof OrderInput, unknown>>) {
   const errors: Partial<Record<keyof OrderInput | `lines.${number}.${keyof OrderLine}`, string>> = {};
   if (typeof v.customerId !== "string" || !/^[a-f\d]{24}$/i.test(v.customerId))
     errors.customerId = "Choose the customer.";
@@ -63,9 +72,7 @@ export function validateOrder(v: Partial<Record<keyof OrderInput, unknown>>, { d
         errors[`lines.${i}.birds`] = "Enter how many birds.";
       const g = l?.weightGrams;
       if (typeof g !== "number" || !Number.isInteger(g) || g < 0 || g > LIMITS.grams)
-        errors[`lines.${i}.weightGrams`] = "Enter their total weight in kg.";
-      else if (delivered && l?.pricing === "perKg" && g === 0)
-        errors[`lines.${i}.weightGrams`] = "Weigh them: the price is per kg.";
+        errors[`lines.${i}.weightGrams`] = "Enter their total weight in kg, or leave it empty.";
       if (!PRICINGS.includes(l?.pricing as Pricing)) errors[`lines.${i}.pricing`] = "Choose per kg or per bird.";
       const p = l?.priceKobo;
       if (typeof p !== "number" || !Number.isInteger(p) || p < 1 || p > LIMITS.kobo)

@@ -16,7 +16,7 @@ export function SellNow({
   prices,
   simulated,
 }: {
-  batches: { id: string; code: string; free: number }[];
+  batches: { id: string; code: string; free: number; birdGrams?: number }[];
   prices: PriceOption[];
   simulated: boolean;
 }) {
