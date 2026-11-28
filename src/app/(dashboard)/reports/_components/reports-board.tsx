@@ -2,17 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 
 import { StatCard } from "@/components/kit";
 import { DataTable, type Column } from "@/components/tables/data-table";
 import { Badge } from "@/components/ui/badge";
-import { Segmented } from "@/components/ui/segmented";
-import { Select } from "@/components/ui/select";
 import type { Basis, BatchPnl, MonthPnl, Pnl } from "@/lib/finance/pnl";
 import { formatNaira } from "@/lib/money";
-
-export type View = "months" | "batches";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthName = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
@@ -99,41 +94,33 @@ function moneyColumns<T extends Pnl>(): Column<T>[] {
   ];
 }
 
-/** Profit and loss, by month or by batch, invoiced or as cash came in. */
+/** Profit and loss by month or by batch, with Profit or Loss on every row. */
 export function ReportsBoard({
-  view,
+  by,
   basis,
   year,
-  years,
   total,
   months,
   batches,
 }: {
-  view: View;
+  by: "month" | "batch";
   basis: Basis;
   year: number;
-  years: number[];
   total: Pnl;
   months: MonthPnl[];
   batches: BatchPnl[];
 }) {
-  const router = useRouter();
-  const path = usePathname();
-  const [pending, start] = React.useTransition();
-  const go = (next: Partial<{ view: View; basis: Basis; year: number }>) => {
-    const q = new URLSearchParams({
-      view,
-      basis,
-      year: String(year),
-      ...Object.fromEntries(Object.entries(next).map(([k, v]) => [k, String(v)])),
-    });
-    start(() => router.replace(`${path}?${q}`, { scroll: false }));
-  };
-
   const monthColumns: Column<MonthPnl>[] = [
-    { id: "month", header: "Month", cell: (r) => monthName(r.month), sortValue: (r) => r.month, csv: (r) => r.month },
+    {
+      id: "month",
+      header: "Month",
+      className: "whitespace-nowrap",
+      cell: (r) => monthName(r.month),
+      sortValue: (r) => r.month,
+      csv: (r) => r.month,
+    },
     ...moneyColumns<MonthPnl>(),
-    { id: "verdict", header: "", cell: (r) => <Verdict p={r} /> },
+    { id: "verdict", header: "", hideBelow: "sm", cell: (r) => <Verdict p={r} /> },
   ];
   const batchColumns: Column<BatchPnl>[] = [
     {
@@ -171,47 +158,12 @@ export function ReportsBoard({
       sortValue: (r) => r.perKgKobo,
       csv: (r) => (r.perKgKobo === null ? null : naira(r.perKgKobo)),
     },
-    { id: "verdict", header: "", cell: (r) => <Verdict p={r} /> },
+    { id: "verdict", header: "", hideBelow: "sm", cell: (r) => <Verdict p={r} /> },
   ];
 
-  const scope = view === "months" ? String(year) : "All batches";
+  const scope = by === "month" ? String(year) : "All batches";
   return (
-    <div className="space-y-4" aria-busy={pending}>
-      <div className="flex flex-wrap items-center gap-3">
-        <Segmented
-          label="Report"
-          value={view}
-          onChange={(v) => go({ view: v })}
-          options={[
-            { value: "months", label: "By month" },
-            { value: "batches", label: "By batch" },
-          ]}
-        />
-        <Segmented
-          label="Count income"
-          value={basis}
-          onChange={(v) => go({ basis: v })}
-          options={[
-            { value: "accrual", label: "Invoiced" },
-            { value: "cash", label: "Cash received" },
-          ]}
-        />
-        {view === "months" && (
-          <Select
-            aria-label="Year"
-            className="w-28"
-            value={String(year)}
-            onChange={(e) => go({ year: Number(e.target.value) })}
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </Select>
-        )}
-      </div>
-
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Income"
@@ -231,7 +183,7 @@ export function ReportsBoard({
         <StatCard label="Margin" value={margin(total)} hint="Profit as a share of income" />
       </div>
 
-      {view === "months" ? (
+      {by === "month" ? (
         <DataTable
           label={`Profit and loss by month, ${year}`}
           rows={months}
@@ -240,7 +192,6 @@ export function ReportsBoard({
           search={false}
           pageSize={12}
           initialSort={{ id: "month", dir: "asc" }}
-          csv={{ filename: `fowlex-profit-${year}-${basis}` }}
           empty={<p className="px-5 py-8 text-center text-sm text-fg-muted">Nothing earned or spent in {year} yet.</p>}
         />
       ) : (
@@ -250,7 +201,6 @@ export function ReportsBoard({
           columns={batchColumns}
           getRowId={(r) => r.batchId}
           searchPlaceholder="Search batches"
-          csv={{ filename: `fowlex-profit-by-batch-${basis}` }}
           empty={<p className="px-5 py-8 text-center text-sm text-fg-muted">No batches yet.</p>}
         />
       )}
