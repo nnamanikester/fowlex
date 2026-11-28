@@ -155,4 +155,30 @@ describe("a log records what was used, like feed", () => {
     );
     expect(await listHealth(owner.farmId, batch.id)).toHaveLength(2);
   });
+
+  it("records any other vaccine or medicine given, typed by name, from stock when chosen", async () => {
+    const { owner, batch, vaccine, onHand } = await farm();
+    await createLog(
+      owner,
+      {
+        batchId: batch.id,
+        date: TODAY,
+        vaccines: [
+          { product: "  Amprolium ", kind: "medication" },
+          { product: "Lasota booster", kind: "vaccination", itemId: vaccine.id, quantity: 2 },
+          // Anything without a name or a schedule is left out.
+          { product: "   " },
+          { kind: "medication" },
+        ],
+      },
+      {},
+      TODAY,
+    );
+    const health = await listHealth(owner.farmId, batch.id);
+    expect(health.map((e) => [e.product, e.kind, e.scheduleKey, e.notes]).sort()).toEqual([
+      ["Amprolium", "medication", null, "From the daily log"],
+      ["Lasota booster", "vaccination", null, "From the daily log"],
+    ]);
+    expect(await onHand(vaccine.id)).toBe(3);
+  });
 });

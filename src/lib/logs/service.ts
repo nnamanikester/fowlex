@@ -274,9 +274,9 @@ async function load(actor: CurrentUser, id: string) {
 }
 
 /**
- * The vaccinations given that day (or week), ticked on the log: each recorded on the batch's
- * health record like one entered there, from stock when an item is chosen. A dose already
- * recorded is left as it is.
+ * The vaccines and medicine given that day (or week): doses ticked from the schedule, and any
+ * other vaccine or medicine typed by name. Each goes on the batch's health record like one entered
+ * there, from stock when an item is chosen. A scheduled dose already recorded is left as it is.
  */
 async function recordVaccines(
   actor: CurrentUser,
@@ -288,8 +288,10 @@ async function recordVaccines(
   if (!Array.isArray(given)) return;
   const schedule = scheduleFor(batch.breed);
   for (const raw of given as Record<string, unknown>[]) {
+    // A dose from the schedule, or any vaccine or medicine typed by name.
     const dose = schedule.find((d) => d.key === raw?.scheduleKey);
-    if (!dose) continue;
+    const product = typeof raw?.product === "string" ? raw.product.trim() : "";
+    if (!dose && !product) continue;
     const fromStock =
       typeof raw.itemId === "string" && raw.itemId && typeof raw.quantity === "number" && raw.quantity > 0;
     try {
@@ -298,10 +300,10 @@ async function recordVaccines(
         {
           batchId: String(batch._id),
           date: log.endDate ?? log.date,
-          kind: "vaccination",
-          product: dose.vaccine,
-          scheduleKey: dose.key,
-          route: dose.route,
+          kind: dose ? "vaccination" : raw.kind === "medication" ? "medication" : "vaccination",
+          product: dose ? dose.vaccine : product,
+          scheduleKey: dose ? dose.key : null,
+          route: dose ? dose.route : "",
           dose: "",
           givenBy: actor.name,
           costKobo: 0,

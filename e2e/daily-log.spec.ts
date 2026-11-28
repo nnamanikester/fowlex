@@ -206,3 +206,63 @@ test("vaccines given and other things used go in the log: on the health record, 
   await expect(page.getByText("sachets · 7 sachets left")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("every part of a log is there to fill, even with nothing due and nothing in the store", async ({
+  page,
+  isMobile,
+  playwright,
+}) => {
+  test.skip(!isMobile, "The daily log is for phones");
+  const errors = watchErrors(page);
+  // A new batch of its own, 2 days old.
+  const tag = Date.now().toString(36);
+  const owner = await playwright.request.newContext({
+    baseURL: test.info().project.use.baseURL,
+    storageState: "playwright/.auth/owner.json",
+  });
+  const house = await (await owner.post("/api/houses", { data: { name: `Everything ${tag}`, capacity: 5000 } })).json();
+  const placed = new Date(`${todayLagos()}T00:00:00Z`);
+  placed.setUTCDate(placed.getUTCDate() - 2);
+  const made = await (
+    await owner.post("/api/batches", {
+      data: {
+        houseId: house.id,
+        placedOn: placed.toISOString().slice(0, 10),
+        breed: "Ross 308",
+        delivered: 300,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      },
+    })
+  ).json();
+  const batch: { id: string; code: string } = made.batch ?? made;
+  await owner.dispose();
+
+  await signInAs(page, E2E_USERS.staff.email);
+  await page.goto(`/log?batch=${batch.id}`);
+  await expect(page.getByRole("radio", { name: new RegExp(batch.code) })).toHaveAttribute("aria-checked", "true");
+  // Nothing folded away: weighing, birds taken, vaccines and medicine, other things used.
+  await expect(page.getByLabel("Average weight (kg)")).toBeVisible();
+  await expect(page.getByText("Birds taken for sale")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vaccines and medicine" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Other things used" })).toBeVisible();
+
+  // A medicine given, typed by name.
+  await page.getByRole("button", { name: "Add a vaccine or medicine given" }).click();
+  await page.getByLabel("Given 1", { exact: true }).fill(`Amprolium ${tag}`);
+  await page.getByRole("radio", { name: "Medicine" }).click();
+  await page.getByLabel("Average weight (kg)").fill("0.06");
+  await page.getByLabel("Feed used (kg)").fill("6");
+  await page.getByRole("button", { name: /^Save log for/ }).click();
+  await expect(page.getByText(`Logged ${batch.code} for today.`)).toBeVisible();
+  // The form is ready for the next one; the medicine is on the batch's health record.
+  await expect(page.getByLabel("Given 1", { exact: true })).toHaveCount(0);
+  const health = (await (await page.request.get(`/api/health?batchId=${batch.id}`)).json()) as {
+    product: string;
+    kind: string;
+  }[];
+  expect(health.map((e) => [e.product, e.kind])).toEqual([[`Amprolium ${tag}`, "medication"]]);
+  expect(errors).toEqual([]);
+});
