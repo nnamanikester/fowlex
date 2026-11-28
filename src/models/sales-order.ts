@@ -23,6 +23,8 @@ const schema = new Schema(
             batchId: { type: Schema.Types.ObjectId, ref: "Batch", required: true },
             birds: { type: Number, required: true, min: 1 },
             weightGrams: { type: Number, default: 0, min: 0 },
+            /** False when the weight is the batch's estimate: it can be weighed later. */
+            weighed: { type: Boolean, default: true },
             priceKobo: { type: Number, required: true, min: 1 },
             pricing: { type: String, enum: PRICINGS, required: true },
           },

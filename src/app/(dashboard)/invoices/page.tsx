@@ -57,6 +57,7 @@ async function Invoices({ searchParams }: Pick<PageProps<"/invoices">, "searchPa
         canPay={can(user.role, "payment.write")}
         simulated={paystackMode() === "simulated"}
         start={canWrite && forCustomer ? { customerId: forCustomer, orderIds: orders } : undefined}
+        openId={typeof params.open === "string" ? params.open : undefined}
         filters
         fab
       />

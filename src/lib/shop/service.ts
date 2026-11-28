@@ -12,6 +12,8 @@ import { addDays, today as lagosToday } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { formatNaira } from "@/lib/money";
+import { syncOrderInvoice } from "@/lib/invoices/service";
+import { orderTotal } from "@/lib/sales/rules";
 import { readSettings } from "@/lib/settings/service";
 import { normalisePhone } from "@/lib/suppliers/rules";
 import { nextSequence } from "@/models/counter";
@@ -283,6 +285,14 @@ export async function placeOnlineOrder(
   const pricing = contract?.pricing ?? option.pricing;
   const priceKobo = contract?.priceKobo ?? option.priceKobo;
   const where = v.delivery ? `Deliver to: ${v.address}` : "Collecting from the farm";
+  const lines = take.map((t) => ({
+    ...t,
+    weightGrams:
+      pricing === "perKg" ? Math.round((batches.find((b) => b.id === t.batchId)?.weightGrams ?? 0) * t.birds) : 0,
+    weighed: false,
+    priceKobo,
+    pricing,
+  }));
   const which = doc.priceList.length > 1 && !contract ? option.name : "";
   const year = v.date.slice(0, 4);
   const seq = await nextSequence(farmId, `order:${year}`);
@@ -295,10 +305,10 @@ export async function placeOnlineOrder(
       customerId: customer._id,
       contractId: contract?.id ?? null,
       deliveryDate: v.date,
-      // Per kg, the birds are weighed on the day: the amount is worked out then.
-      lines: take.map((t) => ({ ...t, weightGrams: 0, priceKobo, pricing })),
+      // Per kg, priced on the batches' weight until the birds are weighed on the day.
+      lines: lines,
       deliveryKobo: 0,
-      totalKobo: pricing === "perBird" ? v.birds * priceKobo : 0,
+      totalKobo: orderTotal({ lines, deliveryKobo: 0 }),
       notes: [which, where, v.notes].filter(Boolean).join(". ").slice(0, 500),
       source: "online",
       contact: { name: v.name, phone, email: v.email, business: v.business, delivery: v.delivery, address: v.address },
@@ -312,6 +322,8 @@ export async function placeOnlineOrder(
     }
     throw error;
   }
+  // Its invoice with it, not sent: the farm sends it when it's ready.
+  await syncOrderInvoice(farmId, null, order._id);
   const placed = placedView(order.toObject(), farm, {
     weightGrams: batchesWeight(batches, take),
   });

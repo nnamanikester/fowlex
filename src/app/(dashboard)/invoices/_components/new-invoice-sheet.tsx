@@ -58,7 +58,7 @@ export function NewInvoiceSheet({
     if (!customerId) return;
     let live = true;
     apiRequest<OrderView[]>(`/api/sales?customerId=${customerId}`, "GET").then(
-      (all) => live && setOrders({ key: customerId, list: all.filter((o) => o.status === "delivered") }),
+      (all) => live && setOrders({ key: customerId, list: all.filter((o) => o.status === "delivered" && !o.locked) }),
       (e: { message: string }) => live && setOrders({ key: customerId, list: [], error: e.message }),
     );
     return () => {

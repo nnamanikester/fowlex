@@ -146,7 +146,14 @@ async function linesFor(
   orders: {
     _id: unknown;
     number: string;
-    lines: { batchId: unknown; birds: number; weightGrams: number; priceKobo: number; pricing: "perKg" | "perBird" }[];
+    lines: {
+      batchId: unknown;
+      birds: number;
+      weightGrams: number;
+      priceKobo: number;
+      pricing: "perKg" | "perBird";
+      weighed?: boolean | null;
+    }[];
     deliveryKobo: number;
     deliveredOn?: string | null;
   }[],
@@ -162,7 +169,13 @@ async function linesFor(
     for (const l of o.lines)
       lines.push({
         orderId: o._id,
-        description: `${l.birds.toLocaleString("en-NG")} birds from ${code.get(String(l.batchId)) ?? "a batch"}${l.weightGrams ? `, ${kg(l.weightGrams)}` : ""} at ${formatNaira(l.priceKobo)} ${PER_UNIT[l.pricing]} (${o.number}${on})`,
+        description: `${l.birds.toLocaleString("en-NG")} birds from ${code.get(String(l.batchId)) ?? "a batch"}${
+          !l.weightGrams
+            ? ""
+            : l.weighed === false
+              ? `, about ${kg(l.weightGrams)} (not weighed yet)`
+              : `, ${kg(l.weightGrams)}`
+        } at ${formatNaira(l.priceKobo)} ${PER_UNIT[l.pricing]} (${o.number}${on})`,
         amountKobo: lineAmount(l),
       });
     if (o.deliveryKobo > 0)
@@ -210,6 +223,14 @@ export async function createInvoice(actor: CurrentUser, input: Record<string, un
         : `${notReady.number} isn't delivered yet: invoice it once the birds have gone.`,
       "orderIds",
     );
+  // An order's own invoice (made with it, nothing paid, only it on it) gives way to this one.
+  const own = await InvoiceModel.find({
+    farmId: actor.farmId,
+    _id: { $in: orders.map((o) => o.invoiceId).filter(Boolean) },
+  }).lean();
+  const replaced = own.filter((i) => i.state === "draft" && i.paidKobo === 0 && i.orderIds.length === 1);
+  const taken = orders.find((o) => o.invoiceId && !replaced.some((i) => String(i._id) === String(o.invoiceId)));
+  if (taken) throw new HttpError(409, "not_delivered", `${taken.number} is on an invoice already.`, "orderIds");
   const customer = await CustomerModel.findOne({ _id: customerId, farmId: actor.farmId }, { termsDays: 1 }).lean();
   const contractId = orders.find((o) => o.contractId)?.contractId;
   const contract = contractId ? await ContractModel.findById(contractId, { termsDays: 1 }).lean() : null;
@@ -220,29 +241,43 @@ export async function createInvoice(actor: CurrentUser, input: Record<string, un
   if (discountKobo > totals.subtotalKobo)
     throw new HttpError(400, "invalid_invoice", "The discount is more than the invoice.", "discountKobo");
 
+  // The orders' own drafts give way: the first keeps its number (so none is skipped) and becomes
+  // this invoice; the others go.
+  const [keep, ...gone] = [...replaced].sort((x, y) => x.number.localeCompare(y.number));
+  const fields = {
+    customerId,
+    orderIds: ids,
+    lines,
+    issueDate,
+    dueDate: addDays(issueDate, terms),
+    ...totals,
+    vatRateBps: settings.vatEnabled ? settings.vatRateBps : null,
+    notes,
+  };
   const doc = await withTransaction(async (session) => {
-    const number = await nextInvoiceNumber(actor.farmId, { now: new Date(`${issueDate}T12:00:00Z`), session });
-    const [invoice] = await InvoiceModel.create(
-      [
-        {
-          farmId: actor.farmId,
-          createdBy: actor.id,
-          number,
-          customerId,
-          orderIds: ids,
-          lines,
-          issueDate,
-          dueDate: addDays(issueDate, terms),
-          ...totals,
-          vatRateBps: settings.vatEnabled ? settings.vatRateBps : null,
-          notes,
-        },
-      ],
-      { session },
-    );
+    let invoice;
+    if (keep) {
+      invoice = (await InvoiceModel.findOneAndUpdate({ _id: keep._id }, { $set: fields }, { session, new: true }))!;
+    } else {
+      const number = await nextInvoiceNumber(actor.farmId, { now: new Date(`${issueDate}T12:00:00Z`), session });
+      [invoice] = await InvoiceModel.create([{ farmId: actor.farmId, createdBy: actor.id, number, ...fields }], {
+        session,
+      });
+    }
+    if (gone.length)
+      await InvoiceModel.updateMany(
+        { _id: { $in: gone.map((i) => i._id) } },
+        { $set: { deletedAt: new Date() } },
+        { session },
+      );
     // Guarded, so two invoices can't take the same order at once.
     const moved = await SalesOrderModel.updateMany(
-      { farmId: actor.farmId, _id: { $in: ids }, status: "delivered" },
+      {
+        farmId: actor.farmId,
+        _id: { $in: ids },
+        status: "delivered",
+        invoiceId: { $in: [null, ...replaced.map((i) => i._id)] },
+      },
       { $set: { status: "invoiced", invoiceId: invoice._id } },
       { session },
     );
@@ -356,10 +391,18 @@ export async function voidInvoice(actor: CurrentUser, id: string, reason: unknow
     doc.$session(session);
     doc.set({ state: "void", voidedAt: new Date(), voidReason: why.slice(0, 300) });
     await doc.save();
+    // Off the invoice: an order billed after delivery is delivered again; one still to deliver stays so.
     await SalesOrderModel.updateMany(
       { farmId: actor.farmId, invoiceId: doc._id },
-      { $set: { status: "delivered", invoiceId: null } },
-      { session },
+      [
+        {
+          $set: {
+            invoiceId: null,
+            status: { $cond: [{ $eq: ["$status", "invoiced"] }, "delivered", "$status"] },
+          },
+        },
+      ],
+      { session, updatePipeline: true },
     );
   });
   return (await views(actor.farmId, [doc.toObject() as unknown as Doc], today))[0];
@@ -471,4 +514,112 @@ export async function invoicePdf(farmId: string, id: string, today = lagosToday(
     bytes: await pdf.save(),
     filename: `Invoice ${invoice.number}.pdf`.replace(/[^\w .-]/g, ""),
   };
+}
+
+/** An order's invoice that has money on it: the order stays as it is. */
+export async function assertOrderUnpaid(farmId: string, order: { number: string; invoiceId?: unknown }) {
+  if (!order.invoiceId) return;
+  const invoice = await InvoiceModel.findOne(
+    { _id: order.invoiceId, farmId },
+    { number: 1, paidKobo: 1, state: 1 },
+  ).lean();
+  if (invoice && invoice.state !== "void" && invoice.paidKobo > 0)
+    throw new HttpError(
+      409,
+      "paid",
+      `${invoice.number} has payments on it, so ${order.number} stays as it is. Record a refund to change it.`,
+    );
+}
+
+/**
+ * An order's invoice, made with the order and kept in step with it: every change to the order
+ * (birds, weight, price, delivery, the day) rewrites its lines and totals, until money is paid on
+ * it. Issued on the delivery day, due after the contract's or customer's terms. Not sent: that
+ * stays a choice. An invoice billing several orders is rewritten from all of them.
+ */
+export async function syncOrderInvoice(farmId: string, by: string | null, orderId: unknown) {
+  await connectDb();
+  const order = await SalesOrderModel.findOne({ _id: orderId, farmId }).lean();
+  if (!order || order.status === "cancelled") return null;
+  const issueDate = order.deliveredOn ?? order.deliveryDate;
+  const customer = await CustomerModel.findOne({ _id: order.customerId, farmId }, { termsDays: 1 })
+    .setOptions({ withDeleted: true })
+    .lean();
+  const contract = order.contractId ? await ContractModel.findById(order.contractId, { termsDays: 1 }).lean() : null;
+  const settings = await readSettings(farmId);
+  const terms = contract?.termsDays ?? customer?.termsDays ?? settings.paymentTermsDays;
+  const existing = order.invoiceId ? await InvoiceModel.findOne({ _id: order.invoiceId, farmId }) : null;
+  if (existing && existing.state !== "void") {
+    if (existing.paidKobo > 0) return existing;
+    const orders = await SalesOrderModel.find({ farmId, _id: { $in: existing.orderIds } }).lean();
+    const lines = await linesFor(farmId, orders as never);
+    const totals = invoiceTotals(
+      lines,
+      Math.min(
+        existing.discountKobo,
+        lines.reduce((n, l) => n + l.amountKobo, 0),
+      ),
+      existing.vatRateBps ?? null,
+    );
+    existing.set({ lines, ...totals, issueDate, dueDate: addDays(issueDate, terms) });
+    await existing.save();
+    return existing;
+  }
+  const lines = await linesFor(farmId, [order] as never);
+  const vat = settings.vatEnabled ? settings.vatRateBps : null;
+  return withTransaction(async (session) => {
+    const number = await nextInvoiceNumber(farmId, { now: new Date(`${issueDate}T12:00:00Z`), session });
+    const [invoice] = await InvoiceModel.create(
+      [
+        {
+          farmId,
+          createdBy: by,
+          number,
+          customerId: order.customerId,
+          orderIds: [order._id],
+          lines,
+          issueDate,
+          dueDate: addDays(issueDate, terms),
+          ...invoiceTotals(lines, 0, vat),
+          vatRateBps: vat,
+        },
+      ],
+      { session },
+    );
+    await SalesOrderModel.updateOne({ _id: order._id }, { $set: { invoiceId: invoice._id } }, { session });
+    return invoice;
+  });
+}
+
+/**
+ * An order is deleted or called off: its invoice goes with it. One never sent is removed; one the
+ * customer already has is voided (so its number still adds up), saying why. Transfer accounts
+ * waiting on it stop.
+ */
+export async function dropOrderInvoice(
+  farmId: string,
+  order: { _id: unknown; number: string; invoiceId?: unknown },
+  why: string,
+) {
+  if (!order.invoiceId) return;
+  const invoice = await InvoiceModel.findOne({ _id: order.invoiceId, farmId });
+  if (!invoice || invoice.state === "void") return;
+  const others = invoice.orderIds.filter((id) => String(id) !== String(order._id));
+  if (others.length) {
+    // Billed with other orders: they stay on it, this one comes off.
+    invoice.set({ orderIds: others });
+    await invoice.save();
+    await syncOrderInvoice(farmId, null, others[0]);
+    return;
+  }
+  if (invoice.state === "draft") await invoice.softDelete();
+  else {
+    invoice.set({ state: "void", voidedAt: new Date(), voidReason: why.slice(0, 300) });
+    await invoice.save();
+  }
+  const { CollectionModel } = await import("@/models/collection");
+  await CollectionModel.updateMany(
+    { farmId, invoiceId: invoice._id, status: "waiting" },
+    { $set: { status: "expired" } },
+  );
 }

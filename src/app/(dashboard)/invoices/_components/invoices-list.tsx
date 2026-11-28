@@ -32,6 +32,7 @@ export function InvoicesList({
   canPay = false,
   simulated = false,
   start,
+  openId,
   title = "Invoices",
   description,
   filters = false,
@@ -48,6 +49,8 @@ export function InvoicesList({
   simulated?: boolean;
   /** Open "New invoice" at once, for a customer and orders (from an order's "Make an invoice"). */
   start?: { customerId?: string; orderIds?: string[] };
+  /** Open this invoice at once (from an order's "See its invoice"). */
+  openId?: string;
   title?: string;
   description?: string;
   filters?: boolean;
@@ -55,7 +58,9 @@ export function InvoicesList({
   showCustomer?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState<InvoiceView | "new" | null>(start ? "new" : null);
+  const [open, setOpen] = React.useState<InvoiceView | "new" | null>(
+    start ? "new" : (invoices.find((i) => i.id === openId) ?? null),
+  );
   const [show, setShow] = React.useState<"unpaid" | "paid" | "all">("unpaid");
   const unpaid = (i: InvoiceView) => i.status !== "paid" && i.status !== "void";
   const shown = filters

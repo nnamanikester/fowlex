@@ -4,5 +4,11 @@ import type { BatchView } from "@/lib/batches/service";
 export function sellable(batches: BatchView[]) {
   return batches
     .filter((b) => (b.phase === "active" || b.phase === "selling") && b.liveBirds > 0)
-    .map((b) => ({ id: b.id, code: b.code, liveBirds: b.liveBirds }));
+    .map((b) => ({
+      id: b.id,
+      code: b.code,
+      liveBirds: b.liveBirds,
+      // A bird's weight, for a per-kg order not yet weighed: the last weighing, or the target.
+      birdGrams: b.totals.lastWeight?.grams ?? b.targetWeightGrams,
+    }));
 }
