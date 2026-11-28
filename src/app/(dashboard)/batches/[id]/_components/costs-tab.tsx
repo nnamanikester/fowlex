@@ -44,7 +44,7 @@ export function CostsTab({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Cost so far" value={formatNaira(costs.totalKobo)} hint="Expenses and stock used" />
+        <StatCard label="Cost so far" value={formatNaira(costs.totalKobo)} hint="Including its share of farm costs" />
         <StatCard
           label="Per bird placed"
           value={batch.placed ? formatNaira(Math.round(costs.totalKobo / batch.placed)) : "–"}
@@ -74,13 +74,14 @@ export function CostsTab({
       {costs.totalKobo > 0 && (
         <Panel
           title="Where the money went"
-          description="Expenses for this batch and the stock it used, at average cost."
+          description="Expenses for this batch, the stock it used at average cost, and its share of the farm's shared costs (rent, power, staff, equipment wear) by bird-days."
         >
           <BreakdownBar
             title="This batch's costs by kind"
-            parts={COST_KINDS.map((k) => ({ label: COST_KIND_LABELS[k], value: costs.byKind[k] })).filter(
-              (p) => p.value > 0,
-            )}
+            parts={[
+              ...COST_KINDS.map((k) => ({ label: COST_KIND_LABELS[k], value: costs.byKind[k] })),
+              { label: "Share of farm costs", value: costs.sharedKobo },
+            ].filter((p) => p.value > 0)}
           />
         </Panel>
       )}

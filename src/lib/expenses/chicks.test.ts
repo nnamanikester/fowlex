@@ -194,13 +194,16 @@ describe("what a batch has cost", () => {
       {},
       TODAY,
     );
-    const costs = await batchCosts(owner.farmId, placed.id);
+    const costs = await batchCosts(owner.farmId, placed.id, TODAY);
     expect(costs.stock).toEqual([
       { itemId: feed.id, name: "Starter feed", unit: "bag", quantity: 2, costKobo: 3_600_000 },
     ]);
     expect(costs.expenses).toHaveLength(4);
     expect(costs.expensesKobo).toBe(980 * 85_000 + 1_000_000);
-    expect(costs.totalKobo).toBe(980 * 85_000 + 1_000_000 + 3_600_000);
+    // The drinkers aren't a cost of the batch when bought: their wear is, ₦50,000 over 24 months,
+    // all November's to this batch, the only one on the farm.
+    expect(costs.sharedKobo).toBe(208_333);
+    expect(costs.totalKobo).toBe(980 * 85_000 + 1_000_000 + 3_600_000 + 208_333);
     expect(await batchCosts(owner.farmId, "nope")).toMatchObject({ totalKobo: 0 });
   });
 });
