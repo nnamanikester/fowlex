@@ -2,7 +2,7 @@ import "server-only";
 
 import { Types } from "mongoose";
 
-import { type LogInput, validateLog } from "./rules";
+import { spanLabel, type LogInput, validateLog } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { placedCount } from "@/lib/batches/rules";
@@ -27,6 +27,7 @@ const view = (l: Doc): LogView => ({
   version: l.__v ?? 0,
   batchId: String(l.batchId),
   date: l.date,
+  endDate: l.endDate ?? null,
   deaths: l.deaths,
   culls: l.culls,
   sold: l.sold,
@@ -83,7 +84,27 @@ export async function logTotals(farmId: string, batchIds: string[], excludeLogId
         culls: { $sum: "$culls" },
         sold: { $sum: "$sold" },
         feedKg: { $sum: "$feedKg" },
-        days: { $sum: 1 },
+        // A week's or month's log counts every day it covers.
+        days: {
+          $sum: {
+            $cond: [
+              { $gt: ["$endDate", null] },
+              {
+                $add: [
+                  1,
+                  {
+                    $dateDiff: {
+                      startDate: { $dateFromString: { dateString: "$date" } },
+                      endDate: { $dateFromString: { dateString: "$endDate" } },
+                      unit: "day",
+                    },
+                  },
+                ],
+              },
+              1,
+            ],
+          },
+        },
         weights: {
           $push: { $cond: [{ $gt: ["$avgWeightGrams", 0] }, { date: "$date", grams: "$avgWeightGrams" }, "$$REMOVE"] },
         },
@@ -126,6 +147,8 @@ function clean(input: Record<string, unknown>) {
   return {
     batchId: input.batchId,
     date: input.date,
+    // A span of one day is just a day.
+    endDate: input.endDate === "" || input.endDate === undefined || input.endDate === input.date ? null : input.endDate,
     deaths: num(input.deaths, 0),
     culls: num(input.culls, 0),
     sold: num(input.sold, 0),
@@ -158,10 +181,30 @@ function check(values: Record<keyof LogInput, unknown>, context: Parameters<type
   return values as unknown as LogInput;
 }
 
-const alreadyLogged = (date: string, id: string) =>
-  new HttpError(409, "already_logged", `This batch already has a log for ${date}. Open it to make changes.`, "date", {
-    id,
-  });
+const alreadyLogged = (log: { date: string; endDate?: string | null }, id: string) =>
+  new HttpError(
+    409,
+    "already_logged",
+    `This batch already has a log for ${log.endDate ? `some of ${spanLabel(log.date, log.endDate)}` : log.date}. Open it to make changes.`,
+    "date",
+    { id },
+  );
+
+/** A log of the batch that covers any of these days (other than `except`). */
+const overlapping = (
+  farmId: string,
+  batchId: Types.ObjectId,
+  from: string,
+  to: string | null,
+  except?: Types.ObjectId,
+) =>
+  DailyLogModel.findOne({
+    farmId,
+    batchId,
+    date: { $lte: to ?? from },
+    $or: [{ endDate: { $gte: from } }, { endDate: null, date: { $gte: from } }],
+    ...(except ? { _id: { $ne: except } } : {}),
+  }).lean();
 
 /**
  * Records a batch's day. One log per batch per day: a second is refused with the existing log's id
@@ -186,11 +229,11 @@ export async function createLog(
   const removed = totals ? totals.deaths + totals.culls + totals.sold : 0;
   const log = check(values, { today, placedOn: batch.placedOn, aliveBefore: placedCount(batch) - removed });
 
-  const existing = await DailyLogModel.findOne({ farmId: actor.farmId, batchId: batch._id, date: log.date }).lean();
+  const existing = await overlapping(actor.farmId, batch._id, log.date, log.endDate);
   if (existing) {
     // The same log, sent again while the first copy was being saved.
     if (id && existing.clientRequestId === id) return { log: view(existing as unknown as Doc), created: false };
-    throw alreadyLogged(log.date, String(existing._id));
+    throw alreadyLogged(log, String(existing._id));
   }
   await withFeed(actor.farmId, log);
   try {
@@ -208,8 +251,8 @@ export async function createLog(
     // Sent twice at once, or another phone logged the same day a moment earlier.
     const sent = id ? await DailyLogModel.findOne({ farmId: actor.farmId, clientRequestId: id }).lean() : null;
     if (sent) return { log: view(sent as unknown as Doc), created: false };
-    const other = await DailyLogModel.findOne({ farmId: actor.farmId, batchId: batch._id, date: log.date }).lean();
-    throw alreadyLogged(log.date, String(other?._id ?? ""));
+    const other = await overlapping(actor.farmId, batch._id, log.date, log.endDate);
+    throw alreadyLogged(log, String(other?._id ?? ""));
   }
 }
 
@@ -237,10 +280,8 @@ export async function updateLog(
   const removed = totals ? totals.deaths + totals.culls + totals.sold : 0;
   const log = check(values, { today, placedOn: batch.placedOn, aliveBefore: placedCount(batch) - removed });
 
-  if (log.date !== doc.date) {
-    const clash = await DailyLogModel.findOne({ farmId: actor.farmId, batchId: batch._id, date: log.date }).lean();
-    if (clash) throw alreadyLogged(log.date, String(clash._id));
-  }
+  const clash = await overlapping(actor.farmId, batch._id, log.date, log.endDate, doc._id);
+  if (clash) throw alreadyLogged(log, String(clash._id));
   await withFeed(actor.farmId, log);
   doc.set({ ...log, batchId: batch._id });
   try {

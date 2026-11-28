@@ -106,6 +106,7 @@ import { POST as collectInvoice } from "./invoices/[id]/collect/route";
 import { GET as portalCollection } from "./portal/collections/[id]/route";
 import { POST as portalCollect } from "./portal/invoices/[id]/collect/route";
 import { POST as quickSaleRoute } from "./sales/quick/route";
+import { POST as decideContractChange } from "./contracts/changes/[id]/route";
 import { GET as devCharge } from "./dev/paystack/charge/route";
 import { POST as payLink } from "./invoices/[id]/pay-link/route";
 import { POST as payCheckout } from "./public/pay/[token]/checkout/route";
@@ -350,6 +351,13 @@ describe("log routes", () => {
     const listed = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${today}`));
     expect((await listed.json()).map((l: { id: string }) => l.id)).toEqual([log.id]);
     expect(await (await listLogs(req("GET", `/api/logs?batchId=${batch.id}`))).json()).toHaveLength(1);
+    // A week logged together is found by any day in it.
+    const back = (n: number) => new Date(Date.parse(today) - n * 86_400_000).toISOString().slice(0, 10);
+    const week = await (
+      await createLog(req("POST", "/api/logs", { batchId: batch.id, date: back(9), endDate: back(3), deaths: 7 }))
+    ).json();
+    const inWeek = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${back(5)}`));
+    expect((await inWeek.json()).map((l: { id: string }) => l.id)).toEqual([week.id]);
 
     const saved = await updateLog(
       req("PATCH", `/api/logs/${log.id}`, { ...body, deaths: 4, version: log.version }),
@@ -1203,7 +1211,27 @@ describe("contract routes", () => {
       req("PATCH", "/x", { ...terms, priceKobo: 900_000, version: active.version }),
       ctx(draft.id),
     );
-    expect((await changed.json()).priceKobo).toBe(900_000);
+    // Sales asks; the agreed price stands until an owner approves.
+    const asked = await changed.json();
+    expect(asked).toMatchObject({
+      priceKobo: 850_000,
+      pendingChange: { status: "pending", after: { priceKobo: 900_000 } },
+    });
+    expect((await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id))).status).toBe(
+      403,
+    );
+    session.user = { ...session.user!, role: "owner" };
+    const approved = await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id));
+    expect((await approved.json()).priceKobo).toBe(900_000);
+    expect(
+      (
+        await decideContractChange(
+          new Request(`${BASE}/x`, { method: "POST", body: "{oops" }),
+          ctx(asked.pendingChange.id),
+        )
+      ).status,
+    ).toBe(409);
+    session.user = { ...session.user!, role: "sales" };
     expect((await (await endContract(req("POST", "/x", {}), ctx(draft.id))).json()).status).toBe("terminated");
     expect(await (await listContracts(req("GET", `/api/contracts?customerId=${customer.id}`))).json()).toHaveLength(1);
     const other = await (

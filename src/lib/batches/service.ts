@@ -489,10 +489,10 @@ export async function closeBatch(
 
   const closedOn = input.closedOn === undefined || input.closedOn === "" ? today : input.closedOn;
   const [lastLog, lastHealth] = await Promise.all([
-    DailyLogModel.findOne({ farmId: actor.farmId, batchId: id }, { date: 1 }).sort({ date: -1 }).lean(),
+    DailyLogModel.findOne({ farmId: actor.farmId, batchId: id }, { date: 1, endDate: 1 }).sort({ date: -1 }).lean(),
     HealthEventModel.findOne({ farmId: actor.farmId, batchId: id }, { date: 1 }).sort({ date: -1 }).lean(),
   ]);
-  const last = [batch.placedOn, lastLog?.date, lastHealth?.date].filter(Boolean).sort().at(-1)!;
+  const last = [batch.placedOn, lastLog?.endDate ?? lastLog?.date, lastHealth?.date].filter(Boolean).sort().at(-1)!;
   if (typeof closedOn !== "string" || !isISODate(closedOn))
     throw new HttpError(400, "invalid_close", "Choose the day the house was emptied.", "closedOn");
   if (closedOn > today) throw new HttpError(400, "invalid_close", "That's in the future.", "closedOn");

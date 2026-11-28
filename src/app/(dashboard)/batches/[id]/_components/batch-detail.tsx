@@ -41,7 +41,7 @@ import { formatRange } from "@/lib/dates";
 import { needsAttention, vaccinationPlan, withdrawalUntil } from "@/lib/health/rules";
 import type { HealthView } from "@/lib/health/service";
 import type { HouseView } from "@/lib/houses/service";
-import { bags } from "@/lib/logs/rules";
+import { bags, spanDays, spanLabel } from "@/lib/logs/rules";
 import type { LogView } from "@/lib/logs/service";
 import { formatNaira } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -367,7 +367,9 @@ export function BatchDetail({
       {closing && (
         <CloseSheet
           batch={b}
-          lastRecord={[b.placedOn, ...logs.map((l) => l.date), ...health.map((e) => e.date)].sort().at(-1)!}
+          lastRecord={[b.placedOn, ...logs.map((l) => l.endDate ?? l.date), ...health.map((e) => e.date)]
+            .sort()
+            .at(-1)!}
           today={today}
           canLog={canLog}
           onClose={() => setClosing(false)}
@@ -437,8 +439,12 @@ function DailyLogs({ logs, batch, canLog }: { logs: LogView[]; batch: BatchView;
         {logs.map((l) => (
           <li key={l.id} className="grid gap-1 px-5 py-3.5 sm:grid-cols-[8rem_1fr] sm:gap-4">
             <span className="font-semibold text-fg">
-              {day(l.date)}
-              <span className="block text-xs font-normal text-fg-subtle">Day {Math.max(0, ageOn(batch, l.date))}</span>
+              {l.endDate ? spanLabel(l.date, l.endDate) : day(l.date)}
+              <span className="block text-xs font-normal text-fg-subtle">
+                {l.endDate
+                  ? `Days ${Math.max(0, ageOn(batch, l.date))} to ${ageOn(batch, l.endDate)} · ${spanDays(l.date, l.endDate)} days`
+                  : `Day ${Math.max(0, ageOn(batch, l.date))}`}
+              </span>
             </span>
             <span className="num flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
               <span>
