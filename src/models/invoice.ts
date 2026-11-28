@@ -38,6 +38,8 @@ const schema = new Schema(
     notes: { type: String, trim: true, default: "" },
     state: { type: String, enum: INVOICE_STATES, default: "draft" },
     sentAt: { type: Date, default: null },
+    /** The private key in the invoice's pay link (/pay/<token>): anyone with the link can pay it. */
+    payToken: { type: String, default: null },
     sentTo: { type: String, default: "" },
     voidedAt: { type: Date, default: null },
     voidReason: { type: String, default: "" },
@@ -46,6 +48,7 @@ const schema = new Schema(
 );
 
 schema.plugin(basePlugin, { audit: { label: (i) => String(i.number) } });
+schema.index({ payToken: 1 }, { unique: true, partialFilterExpression: { payToken: { $type: "string" } } });
 schema.index({ farmId: 1, number: 1 }, { unique: true });
 schema.index({ farmId: 1, customerId: 1, state: 1 });
 

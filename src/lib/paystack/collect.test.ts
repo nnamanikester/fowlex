@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { startTransferCharge, verifyCharge } from "./collect";
+import { startCheckout, startTransferCharge, verifyCharge } from "./collect";
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 beforeEach(() => vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_secret"));
@@ -66,19 +66,46 @@ describe("paying by transfer to an account of its own", () => {
 
   it("checks a payment: in, not yet, unknown, or can't tell", async () => {
     const fetch = vi.fn(async () =>
-      json(200, { status: true, data: { status: "success", amount: 700_000, paid_at: "2026-11-27T11:00:00Z" } }),
+      json(200, {
+        status: true,
+        data: { status: "success", amount: 700_000, fees: 10_500, paid_at: "2026-11-27T11:00:00Z" },
+      }),
     );
     vi.stubGlobal("fetch", fetch);
     expect(await verifyCharge("r")).toEqual({
       status: "success",
       amountKobo: 700_000,
+      feeKobo: 10_500,
       paidAt: new Date("2026-11-27T11:00:00Z"),
     });
     fetch.mockImplementationOnce(async () => json(200, { status: true, data: {} }));
-    expect(await verifyCharge("r")).toEqual({ status: "", amountKobo: 0, paidAt: null });
+    expect(await verifyCharge("r")).toEqual({ status: "", amountKobo: 0, feeKobo: 0, paidAt: null });
     fetch.mockImplementationOnce(async () => json(404, { status: false, message: "Transaction reference not found" }));
     expect(await verifyCharge("r")).toBeNull();
     fetch.mockImplementationOnce(async () => json(500, { status: false, message: "Down" }));
     await expect(verifyCharge("r")).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("opens Paystack's checkout and returns its page; says plainly when it can't", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      json(200, { status: true, data: { authorization_url: "https://checkout.paystack.com/x", reference: "r1" } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const input = {
+      email: "a@b.ng",
+      amountKobo: 1000,
+      reference: "r1",
+      callbackUrl: "https://app/pay/t",
+      metadata: {},
+    };
+    expect(await startCheckout(input)).toEqual({ url: "https://checkout.paystack.com/x", reference: "r1" });
+    expect(JSON.parse(String(fetch.mock.calls[0][1]!.body))).toMatchObject({
+      callback_url: "https://app/pay/t",
+      amount: 1000,
+    });
+    fetch.mockImplementationOnce(async () => json(200, { status: true, data: { authorization_url: "https://c/y" } }));
+    expect((await startCheckout(input)).reference).toBe("r1");
+    fetch.mockImplementationOnce(async () => json(401, { status: false, message: "Invalid key" }));
+    await expect(startCheckout(input)).rejects.toMatchObject({ status: 503 });
   });
 });

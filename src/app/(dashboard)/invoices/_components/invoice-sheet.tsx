@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Ban, FileDown, HandCoins, Landmark, Send } from "lucide-react";
+import { Ban, FileDown, HandCoins, Landmark, Send, Share2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { PaymentSheet, PaymentsList } from "./payments-panel";
 
@@ -88,6 +89,20 @@ export function InvoiceSheet({
                 </Button>
                 <Button size="lg" variant="secondary" disabled={action.busy} onClick={() => setPaying(true)}>
                   <HandCoins /> Record a payment
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="col-span-2"
+                  loading={action.isPending("link")}
+                  disabled={action.busy}
+                  onClick={() =>
+                    void action.run(() => apiRequest<{ url: string }>(`/api/invoices/${i.id}/pay-link`, "POST"), {
+                      key: "link",
+                      onSuccess: ({ url }) => void sharePayLink(url, i.number, i.balanceKobo),
+                    })
+                  }
+                >
+                  <Share2 /> Send pay link
                 </Button>
               </div>
             )}
@@ -313,4 +328,25 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd className="truncate text-fg">{value}</dd>
     </div>
   );
+}
+
+/**
+ * Sends a pay link the way people send things: the phone's share sheet (WhatsApp, SMS), or the
+ * link copied, ready to paste.
+ */
+async function sharePayLink(url: string, number: string, balanceKobo: number) {
+  const text = `Pay ${number} (${formatNaira(balanceKobo)}) by card, bank app, USSD or transfer: ${url}`;
+  if (typeof navigator.share === "function") {
+    const shared = await navigator.share({ title: `Pay ${number}`, text }).then(
+      () => true,
+      () => false,
+    );
+    if (shared) return;
+  }
+  const copied = await navigator.clipboard?.writeText(url).then(
+    () => true,
+    () => false,
+  );
+  if (copied) toast.success("Pay link copied: paste it to the customer.");
+  else toast.message(url);
 }

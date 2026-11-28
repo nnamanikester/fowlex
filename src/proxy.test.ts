@@ -29,6 +29,8 @@ describe("proxy", () => {
   it("lets anyone open a farm's order page and order from it, signed in or not", async () => {
     for (const path of [
       "/order/fowlex-farms",
+      "/pay/aB3dE5gH7jK9mN1pQ3sT",
+      "/dev/paystack/checkout",
       "/api/public/shop/fowlex-farms",
       "/api/public/shop/fowlex-farms/orders",
     ]) {
@@ -37,6 +39,8 @@ describe("proxy", () => {
     }
     // Only the order page is open: not anything that merely starts with the same letters.
     expect((await visit("/orders")).status).toBe(307);
+    // Only /pay itself is open, not anything that merely starts with it.
+    expect((await visit("/payroll")).status).toBe(307);
   });
 
   it("sends signed-out visitors to sign in, keeping where they were going", async () => {

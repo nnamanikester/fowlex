@@ -60,7 +60,15 @@ export type LedgerRow = {
   createdAt: string;
 };
 /** A one-off transfer account for a payment, and whether the money has come in. */
-type Charge = { reference: string; amount: number; email: string; paid: boolean; expiresAt: string };
+type Charge = {
+  reference: string;
+  amount: number;
+  email: string;
+  paid: boolean;
+  expiresAt: string;
+  /** Where a checkout returns the customer to. */
+  callback?: string;
+};
 type State = {
   charges: Map<string, Charge>;
   balance: number;
@@ -100,6 +108,16 @@ function move(difference: number, reason: string, model: string, row: number) {
 /** Any other change to the balance, as Paystack would list it (tests: charges, refunds, payments). */
 export function simulateLedger(difference: number, reason: string, model: string) {
   move(difference, reason, model, state().ledger.length + 1);
+}
+
+/** Paystack's fee for taking a local payment: 1.5%, plus ₦100 from ₦2,500, at most ₦2,000. */
+export const chargeFee = (amount: number) =>
+  Math.min(Math.round(amount * 0.015) + (amount >= 250_000 ? 10_000 : 0), 200_000);
+
+/** A charge the simulator holds: for its checkout page. */
+export function simulatedCharge(reference: string) {
+  const c = state().charges.get(reference);
+  return c ? { reference: c.reference, amount: c.amount, paid: c.paid, callback: c.callback ?? "" } : null;
 }
 
 /** The customer pays into a one-off transfer account (in the simulator, at once). */
@@ -233,6 +251,20 @@ export function simulate<T>(
         "Charge attempted",
       );
     }
+    if (method === "POST" && path === "/transaction/initialize") {
+      const reference = String(b.reference ?? "");
+      const amount = Number(b.amount);
+      const callback = String(b.callback_url ?? "");
+      if (!reference || !(amount > 0) || !b.email || !callback) return no(400, "Invalid transaction");
+      if (s.charges.has(reference)) return no(400, "Duplicate Transaction Reference");
+      s.charges.set(reference, { reference, amount, email: String(b.email), paid: false, expiresAt: "", callback });
+      // The simulator's own checkout page, on the app's address.
+      const url = `${new URL(callback).origin}/dev/paystack/checkout?reference=${encodeURIComponent(reference)}`;
+      return ok(
+        { authorization_url: url, access_code: `sim_${s.charges.size}`, reference },
+        "Authorization URL created",
+      );
+    }
     const charge = /^\/transaction\/verify\/(.+)$/.exec(path);
     if (method === "GET" && charge) {
       const c = s.charges.get(decodeURIComponent(charge[1]));
@@ -240,6 +272,7 @@ export function simulate<T>(
       return ok({
         status: c.paid ? "success" : "ongoing",
         amount: c.amount,
+        fees: c.paid ? chargeFee(c.amount) : null,
         paid_at: c.paid ? new Date().toISOString() : null,
         reference: c.reference,
       });

@@ -257,7 +257,7 @@ describe("invoice PDFs and edge cases", () => {
     const again = await sendInvoice(owner, inv.id, "https://app.fowlex.com", TODAY);
     expect(again.state).toBe("sent");
     expect(outbox().at(-1)?.text).toContain(
-      "Pay by transfer to Fowlex Farms, GTBank 0123456789, with INV-2026-0001 as the reference.",
+      "Or pay by transfer to Fowlex Farms, GTBank 0123456789, with INV-2026-0001 as the reference.",
     );
   });
 
