@@ -97,10 +97,14 @@ export async function batchCosts(farmId: string, batchId: string): Promise<Batch
     paymentStatus: e.paymentStatus,
     capital: e.capital ?? false,
   }));
-  const expensesKobo = list
-    .filter((e) => e.approval === "approved" && !e.capital)
-    .reduce((n, e) => n + e.amountKobo, 0);
-  const stockKobo = stock.reduce((n, s) => n + s.costKobo, 0);
+  // The totals are the cost sheet's, so the page and every report agree.
   const sheet = (await costSheets(farmId, [batchId])).get(batchId)!;
-  return { expenses: list, stock, expensesKobo, stockKobo, totalKobo: expensesKobo + stockKobo, byKind: sheet.byKind };
+  return {
+    expenses: list,
+    stock,
+    expensesKobo: sheet.expensesKobo,
+    stockKobo: sheet.stockKobo,
+    totalKobo: sheet.totalKobo,
+    byKind: sheet.byKind,
+  };
 }

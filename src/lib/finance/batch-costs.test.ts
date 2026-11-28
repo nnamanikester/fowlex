@@ -21,7 +21,8 @@ const TODAY = "2026-11-28";
  * and 2 vials of vaccine at ₦4,500 used from stock (₦72,000 + ₦9,000), a ₦60,000 labour bill
  * and ₦15,000 of transport for it. Not counted: a rejected ₦50,000 expense, a ₦600,000 generator
  * (equipment: spread over its life), and ₦100,000 of rent (shared: 8.2). Batch B, beside it: 500
- * chicks (₦425,000) and 2 bags of feed (₦36,000).
+ * chicks (₦425,000) and 2 bags of feed (₦36,000). Bags bought for A count when used: only their
+ * ₦5,000 delivery counts when bought.
  */
 async function farm() {
   const owner: CurrentUser = { id: String(oid()), farmId: String(oid()), name: "Ada", email: "a@f.com", role: "owner" };
@@ -75,6 +76,15 @@ async function farm() {
   await spend({ category: "labour", description: "Catchers", amountKobo: 6_000_000, batchId: a.id });
   await spend({ category: "transport", description: "Feed haulage", amountKobo: 1_500_000, batchId: a.id });
   await spend({ category: "rent", description: "House rent", amountKobo: 10_000_000 });
+  // 10 more bags bought for it at the same ₦18,000, with ₦5,000 delivery: the bags count as
+  // they're used, so only the delivery is a cost now.
+  await spend({
+    category: "feed",
+    description: "",
+    batchId: a.id,
+    lines: [{ itemId: feed.id, quantity: 10, unitCostKobo: 1_800_000 }],
+    deliveryKobo: 500_000,
+  });
   // Recorded as an asset (spread over its life), not a cost of this batch.
   const generator = await spend({
     category: "equipment",
@@ -99,10 +109,10 @@ describe("a batch's costs", () => {
     const { owner, a, b } = await farm();
     const sheets = await costSheets(owner.farmId, [a.id, b.id, a.id, "nope"]);
     expect(sheets.get(a.id)).toEqual({
-      byKind: { chicks: 85_000_000, feed: 7_200_000, medication: 900_000, labour: 6_000_000, other: 1_500_000 },
-      expensesKobo: 85_000_000 + 6_000_000 + 1_500_000,
+      byKind: { chicks: 85_000_000, feed: 7_700_000, medication: 900_000, labour: 6_000_000, other: 1_500_000 },
+      expensesKobo: 85_000_000 + 500_000 + 6_000_000 + 1_500_000,
       stockKobo: 7_200_000 + 900_000,
-      totalKobo: 100_600_000,
+      totalKobo: 101_100_000,
     });
     expect(sheets.get(b.id)).toMatchObject({
       byKind: { chicks: 42_500_000, feed: 3_600_000, medication: 0, labour: 0, other: 0 },
@@ -111,7 +121,7 @@ describe("a batch's costs", () => {
     expect(sheets.size).toBe(2);
     // The batch page shows the same breakdown.
     const page = await batchCosts(owner.farmId, a.id);
-    expect(page).toMatchObject({ totalKobo: 100_600_000, byKind: sheets.get(a.id)!.byKind });
+    expect(page).toMatchObject({ totalKobo: 101_100_000, byKind: sheets.get(a.id)!.byKind });
     expect(await costSheets(owner.farmId, [])).toEqual(new Map());
   });
 

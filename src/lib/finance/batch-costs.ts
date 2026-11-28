@@ -11,6 +11,14 @@ import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { StockMovementModel } from "@/models/stock-movement";
 
+/**
+ * What an expense adds to costs when it's spent. Stock bought (an expense with item lines) becomes
+ * a cost as it's used, at its average cost, so only the delivery charge counts here.
+ */
+export const COST_OF_EXPENSE = {
+  $cond: [{ $gt: [{ $size: { $ifNull: ["$lines", []] } }, 0] }, { $ifNull: ["$deliveryKobo", 0] }, "$amountKobo"],
+};
+
 export type CostSheet = {
   byKind: Record<CostKind, number>;
   /** Expenses charged to the batch (approved, not equipment) and stock it used. */
@@ -28,7 +36,8 @@ const empty = (): CostSheet => ({
 
 /**
  * Each batch's direct costs, by kind, for many batches at once: its approved expenses (equipment
- * aside: that's spread over its life) summed by category in one aggregation, and the stock it used
+ * aside: that's spread over its life; stock bought: that counts as it's used) summed by category
+ * in one aggregation, and the stock it used
  * (feed, drugs, vaccines, litter…) at the average cost on the day it was used. Shared costs (rent,
  * power, salaried staff) come on top in 8.2.
  */
@@ -52,7 +61,7 @@ export async function costSheets(farmId: string, batchIds: string[]): Promise<Ma
           deletedAt: null,
         },
       },
-      { $group: { _id: { batchId: "$batchId", category: "$category" }, kobo: { $sum: "$amountKobo" } } },
+      { $group: { _id: { batchId: "$batchId", category: "$category" }, kobo: { $sum: COST_OF_EXPENSE } } },
     ]),
     StockMovementModel.find({ farmId, batchId: { $in: oids }, quantity: { $lt: 0 } }, { itemId: 1 }).lean(),
   ]);
