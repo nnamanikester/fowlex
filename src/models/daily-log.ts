@@ -3,14 +3,17 @@ import { type HydratedDocument, type InferSchemaType, model, models, Schema, typ
 import { type Base, basePlugin, type SoftDeleteMethods } from "./plugins/base";
 
 /**
- * One batch's day: birds that died, were culled or left for sale, feed and water used, and an
- * average weight when the birds were weighed. One per batch per day (Lagos calendar days). Feed in
+ * One batch's day, or a week or a month logged together (`endDate`): birds that died, were
+ * culled or left for sale, feed and water used, and an average weight when the birds were
+ * weighed. Logs for a batch never cover the same day twice (Lagos calendar days). Feed in
  * kg, water in litres, weight in grams.
  */
 const schema = new Schema(
   {
     batchId: { type: Schema.Types.ObjectId, ref: "Batch", required: true },
     date: { type: String, required: true },
+    /** The last day a week's or month's log covers; null for a single day. */
+    endDate: { type: String, default: null },
     deaths: { type: Number, default: 0, min: 0 },
     culls: { type: Number, default: 0, min: 0 },
     sold: { type: Number, default: 0, min: 0 },
