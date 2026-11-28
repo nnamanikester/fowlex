@@ -187,7 +187,7 @@ export function SellNowSheet({
       footer={
         <div className="space-y-3">
           <div className="flex items-end justify-between gap-4" aria-live="polite">
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-0.5">
               <p className="text-sm font-semibold text-fg">Total</p>
               <p className="num truncate text-sm text-fg-muted">{sum}</p>
             </div>
@@ -477,7 +477,7 @@ export function SellNowSheet({
             >
               <UserRound className="size-5" />
             </span>
-            <span className="min-w-0">
+            <span className="min-w-0 space-y-0.5">
               <span className="block text-sm font-semibold text-fg-heading">Add their name or phone (optional)</span>
               <span className="block text-xs text-fg-muted">
                 Skip it for a walk-in: the sale goes through either way

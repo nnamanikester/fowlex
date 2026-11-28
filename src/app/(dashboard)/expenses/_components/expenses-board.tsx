@@ -265,7 +265,7 @@ export function ExpensesBoard({
                   onClick={() => show(e)}
                   className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block truncate font-semibold text-fg">
                       {e.description || categoryName(categories, e.category)}
                     </span>
@@ -280,7 +280,7 @@ export function ExpensesBoard({
                         .join(" · ")}
                     </span>
                   </span>
-                  <span className="shrink-0 text-right">
+                  <span className="flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span className="num block font-semibold text-fg">{formatNaira(e.amountKobo)}</span>
                     {e.approval === "approved" ? (
                       <Badge tone={PAYMENT_TONE[e.paymentStatus]}>{PAYMENT_STATUS_LABELS[e.paymentStatus]}</Badge>

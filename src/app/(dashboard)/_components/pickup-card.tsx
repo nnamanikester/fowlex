@@ -36,7 +36,7 @@ export function PickupCard({ batches, today }: { batches: BatchView[]; today: st
               href={`/batches?pickup=${b.id}`}
               className="focus-ring flex items-center gap-3 px-5 py-3 hover:bg-surface-subtle"
             >
-              <span className="min-w-0 flex-1">
+              <span className="min-w-0 flex-1 space-y-1">
                 <span className="block font-semibold text-fg">
                   {(b.bookedChicks ?? b.placed).toLocaleString("en-NG")} chicks
                   {b.supplierName ? ` from ${b.supplierName}` : ""}

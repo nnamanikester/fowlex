@@ -220,7 +220,7 @@ export function NewInvoiceSheet({
                         checked={picked ? picked.has(o.id) : true}
                         onChange={() => toggle(o.id)}
                       />
-                      <span className="min-w-0 flex-1">
+                      <span className="min-w-0 flex-1 space-y-1">
                         <span className="block font-semibold text-fg">{o.number}</span>
                         <span className="num block text-xs text-fg-muted">
                           {o.lines.reduce((n, l) => n + l.birds, 0).toLocaleString("en-NG")} birds · delivered{" "}

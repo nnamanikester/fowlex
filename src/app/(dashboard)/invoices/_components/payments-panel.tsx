@@ -70,7 +70,7 @@ export function PaymentsList({
         <ul className="divide-y divide-line rounded-xl border border-line">
           {state.list.map((p) => (
             <li key={p.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1">
+              <span className="min-w-0 flex-1 space-y-1">
                 <span className="num block font-semibold text-fg">{formatNaira(p.amountKobo)}</span>
                 <span className="block text-xs text-fg-muted">
                   {PAYMENT_METHOD_LABELS[p.method]} · {day(p.date)}

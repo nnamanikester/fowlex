@@ -599,7 +599,7 @@ function PriceChoice({
         checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
       )}
     >
-      <span className="min-w-0">
+      <span className="min-w-0 space-y-0.5">
         <span className="block font-semibold">{price.name}</span>
         <span className={cn("num block text-xs", checked ? "text-white/70" : "text-fg-muted")}>
           {price.pricing === "perKg"
@@ -637,7 +637,7 @@ function Choice({
       )}
     >
       {icon}
-      <span className="min-w-0">
+      <span className="min-w-0 space-y-0.5">
         <span className="block font-semibold">{title}</span>
         <span className={cn("block text-xs", checked ? "text-white/70" : "text-fg-muted")}>{detail}</span>
       </span>

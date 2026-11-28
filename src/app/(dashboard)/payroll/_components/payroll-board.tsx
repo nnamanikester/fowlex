@@ -110,13 +110,13 @@ export function PayrollBoard({
                   href={`/payroll/${r.id}`}
                   className="focus-ring flex items-center gap-3 px-5 py-4 hover:bg-surface-subtle"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block font-semibold text-fg">{monthName(r.period)}</span>
                     <span className="block text-xs text-fg-muted">
                       {r.totals.people === 1 ? "1 person" : `${r.totals.people} people`}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
+                  <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span className="block font-semibold text-fg">{formatNaira(r.totals.netKobo)}</span>
                     <Badge tone={STATE_TONE[r.payState]}>{PAY_STATE_LABELS[r.payState]}</Badge>
                   </span>

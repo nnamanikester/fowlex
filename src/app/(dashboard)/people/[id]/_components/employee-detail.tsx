@@ -214,7 +214,7 @@ export function EmployeeDetail({
           <ul className="divide-y divide-line">
             {payslips.map((p) => (
               <li key={p.lineId} className="flex items-center gap-2 px-5 py-3">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block font-semibold text-fg">{monthName(p.period)}</span>
                   <span className="block text-xs text-fg-muted">
                     {p.paidOn ? `Paid on ${formatDate(p.paidOn)}` : "Not paid yet"}

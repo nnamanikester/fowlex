@@ -102,7 +102,7 @@ export function OrdersList({
                   onClick={() => setOpen(o)}
                   className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block truncate font-semibold text-fg">
                       {showCustomer ? o.customerName : o.number}
                     </span>
@@ -111,7 +111,7 @@ export function OrdersList({
                       {birds(o).toLocaleString("en-NG")} birds · {day(o.deliveredOn ?? o.deliveryDate)}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
+                  <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span className="block font-semibold text-fg">{formatNaira(o.totalKobo)}</span>
                     <span className="flex flex-wrap justify-end gap-1">
                       {o.source === "online" && <Badge tone="brand">Online</Badge>}
