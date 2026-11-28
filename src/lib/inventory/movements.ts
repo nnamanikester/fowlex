@@ -167,36 +167,53 @@ export async function deleteMovement(actor: CurrentUser, id: string) {
 export async function syncLogFeed(
   session: ClientSession,
   actor: CurrentUser,
-  log: { id: string; batchId: string; date: string; feedKg: number; feedItemId: string | null },
+  log: {
+    id: string;
+    batchId: string;
+    date: string;
+    feedKg: number;
+    feedItemId: string | null;
+    supplies?: { itemId: string; quantity: number }[];
+  },
 ) {
   const source = { "source.kind": "daily-log" as const, "source.id": new Types.ObjectId(log.id) };
   const existing = await StockMovementModel.find({ farmId: actor.farmId, ...source }).session(session);
-  const item = log.feedItemId
-    ? await InventoryItemModel.findOne({ _id: log.feedItemId, farmId: actor.farmId }).session(session).lean()
-    : null;
-  const keep = item && log.feedKg > 0 ? existing.find((m) => String(m.itemId) === String(item._id)) : undefined;
-  for (const m of existing) if (m !== keep) await m.softDelete();
-  if (!item || !(log.feedKg > 0)) return;
-
-  const quantity = -Math.round((log.feedKg / (item.unit === "kg" ? 1 : (item.unitKg ?? 1))) * 1000) / 1000;
-  const values = { date: log.date, quantity, batchId: new Types.ObjectId(log.batchId) };
-  if (keep) {
-    keep.set(values);
-    await keep.save();
-  } else
-    await StockMovementModel.create(
-      [
-        {
-          ...values,
-          farmId: actor.farmId,
-          createdBy: actor.id,
-          itemId: item._id,
-          type: "usage",
-          source: { kind: "daily-log", id: new Types.ObjectId(log.id) },
-        },
-      ],
-      { session },
-    );
+  // What the log takes from stock: its feed (kg into the item's unit) and every other thing used.
+  const wanted = new Map<string, number>();
+  if (log.feedItemId && log.feedKg > 0) {
+    const feed = await InventoryItemModel.findOne({ _id: log.feedItemId, farmId: actor.farmId })
+      .session(session)
+      .lean();
+    if (feed) wanted.set(String(feed._id), log.feedKg / (feed.unit === "kg" ? 1 : (feed.unitKg ?? 1)));
+  }
+  for (const s of log.supplies ?? [])
+    if (s.quantity > 0) wanted.set(s.itemId, (wanted.get(s.itemId) ?? 0) + s.quantity);
+  for (const m of existing) if (!wanted.has(String(m.itemId))) await m.softDelete();
+  for (const [itemId, used] of wanted) {
+    const values = {
+      date: log.date,
+      quantity: -Math.round(used * 1000) / 1000,
+      batchId: new Types.ObjectId(log.batchId),
+    };
+    const keep = existing.find((m) => String(m.itemId) === itemId);
+    if (keep) {
+      keep.set(values);
+      await keep.save();
+    } else
+      await StockMovementModel.create(
+        [
+          {
+            ...values,
+            farmId: actor.farmId,
+            createdBy: actor.id,
+            itemId: new Types.ObjectId(itemId),
+            type: "usage",
+            source: { kind: "daily-log", id: new Types.ObjectId(log.id) },
+          },
+        ],
+        { session },
+      );
+  }
 }
 
 /** Takes a deleted log's feed back off its batch. */

@@ -24,7 +24,24 @@ export type LogInput = {
   waterLitres: number | null;
   avgWeightGrams: number | null;
   notes: string;
+  /** Other things used from stock (drugs, disinfectant, litter, fuel…), each charged to the batch like feed. */
+  supplies: Supply[];
 };
+
+/** A stock item used, in its own unit (3 sachets, 2 litres, 4 bags). */
+export type Supply = { itemId: string; quantity: number };
+export const MAX_SUPPLIES = 20;
+/** What a log can take from stock besides feed: everything but feed and chicks. */
+export const SUPPLY_CATEGORIES = [
+  "medication",
+  "vaccine",
+  "litter",
+  "disinfectant",
+  "fuel",
+  "packaging",
+  "equipment",
+  "other",
+] as const;
 
 /** How long a log covers: one day, or a week or a month logged together. */
 export const SPANS = ["day", "week", "month"] as const;
@@ -132,6 +149,23 @@ export function validateLog(
   if (weight !== null && weight !== undefined && (!count(weight) || weight < 20 || weight > 8000))
     errors.avgWeightGrams = "Enter the average weight in grams (20 to 8,000), or leave it empty.";
   if (typeof input.notes !== "string" || input.notes.length > 500) errors.notes = "Use at most 500 characters.";
+  const supplies = input.supplies ?? [];
+  if (!Array.isArray(supplies) || supplies.length > MAX_SUPPLIES)
+    errors.supplies = `At most ${MAX_SUPPLIES} things used.`;
+  else {
+    const seen = new Set<string>();
+    for (const raw of supplies as Partial<Supply>[]) {
+      const ok =
+        typeof raw?.itemId === "string" &&
+        /^[a-f\d]{24}$/i.test(raw.itemId) &&
+        amount(raw.quantity, 1_000_000) &&
+        (raw.quantity as number) > 0;
+      if (!ok) errors.supplies = "Choose each thing used and how much.";
+      else if (seen.has(raw.itemId!)) errors.supplies = "Each thing once: add up the amounts.";
+      else seen.add(raw.itemId!);
+      if (errors.supplies) break;
+    }
+  }
 
   const removed = [input.deaths, input.culls, input.sold].every(count)
     ? (input.deaths as number) + (input.culls as number) + (input.sold as number)

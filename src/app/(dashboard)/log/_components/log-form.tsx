@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CircleCheck, CloudOff, LoaderCircle, RotateCw, X } from "lucide-react";
+import { CircleCheck, CloudOff, LoaderCircle, Plus, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field, FormAlert } from "@/components/auth";
@@ -47,6 +47,8 @@ const newRequestId = () =>
 type Values = Omit<LogInput, "batchId" | "date" | "endDate">;
 /** A feed item a log can take from: id, name, kg in a unit, and what's left. */
 export type FeedStock = { id: string; name: string; unit: string; unitKg: number | null; onHand: number };
+/** Anything else a log can take from stock: drugs, vaccines, disinfectant, litter, fuel… */
+export type SupplyStock = { id: string; name: string; unit: string; category: string; onHand: number };
 
 /** The feed for this age: the stock item named after it (Starter, Finisher…), else the first. */
 function feedFor(age: number, feeds: FeedStock[]) {
@@ -65,6 +67,7 @@ const blank = ({ feedType, feedItemId }: { feedType: string; feedItemId: string 
   waterLitres: null,
   avgWeightGrams: null,
   notes: "",
+  supplies: [],
 });
 const fromLog = (l: LogView): Values => ({
   deaths: l.deaths,
@@ -76,6 +79,7 @@ const fromLog = (l: LogView): Values => ({
   waterLitres: l.waterLitres,
   avgWeightGrams: l.avgWeightGrams,
   notes: l.notes,
+  supplies: l.supplies ?? [],
 });
 const day = (d: string) => formatRange({ from: d, to: d });
 
@@ -89,8 +93,11 @@ export function LogForm({
   recent,
   health = [],
   feeds = [],
+  stock = [],
   today,
 }: {
+  /** Everything else in stock a log can use (not feed, not chicks). */
+  stock?: SupplyStock[];
   batches: BatchView[];
   recent: LogView[];
   health?: HealthView[];
@@ -110,6 +117,8 @@ export function LogForm({
   // A day, or a week or month logged together (counted from the farm's notebook, say).
   const [span, setSpan] = React.useState<Span>("day");
   const [endDate, setEndDate] = React.useState<string | null>(null);
+  // Doses ticked as given on this log, with the vaccine taken from stock if one is chosen.
+  const [vaccines, setVaccines] = React.useState<Record<string, { itemId: string; quantity: string }>>({});
   const [fetched, setFetched] = React.useState<LogView[]>([]);
   const [saved, setSaved] = React.useState<LogView[]>([]);
   const [requestId, setRequestId] = React.useState(newRequestId);
@@ -163,6 +172,7 @@ export function LogForm({
   if (key !== shownKey) {
     setShownKey(key);
     setValues(existing ? fromLog(existing) : blank(feedFor(age, feeds)));
+    setVaccines({});
     setFailure(null);
     setSubmitted(false);
   }
@@ -215,13 +225,24 @@ export function LogForm({
       document.getElementById(Object.keys(errors)[0])?.focus();
       return;
     }
-    const body = { ...values, batchId, date, endDate: span_ };
+    const body = {
+      ...values,
+      batchId,
+      date,
+      endDate: span_,
+      vaccines: Object.entries(vaccines).map(([scheduleKey, v]) => ({
+        scheduleKey,
+        itemId: v.itemId || null,
+        quantity: v.itemId && Number(v.quantity) > 0 ? Number(v.quantity) : null,
+      })),
+    };
     setBusy(true);
     try {
       const log = existing
         ? await apiRequest<LogView>(`/api/logs/${existing.id}`, "PATCH", { ...body, version: existing.version })
         : await apiRequest<LogView>("/api/logs", "POST", { ...body, requestId });
       setSaved((s) => [log, ...s.filter((l) => l.id !== log.id)]);
+      setVaccines({});
       setRequestId(newRequestId());
       const when = span_
         ? (choices.find((c) => c.from === date)?.label.toLowerCase() ?? spanLabel(date, span_))
@@ -575,6 +596,31 @@ export function LogForm({
         )}
       </Field>
 
+      {batch && (
+        <VaccinesDue
+          due={needsAttention(
+            vaccinationPlan(
+              batch,
+              new Map(
+                health.filter((e) => e.batchId === batch.id && e.scheduleKey).map((e) => [e.scheduleKey!, e.date]),
+              ),
+              span_ ?? date,
+            ),
+          )}
+          stock={stock.filter((i) => i.category === "vaccine")}
+          ticked={vaccines}
+          onChange={setVaccines}
+        />
+      )}
+
+      <SuppliesUsed
+        stock={stock}
+        supplies={values.supplies}
+        onChange={(supplies) => set("supplies", supplies)}
+        error={show("supplies")}
+        over={over}
+      />
+
       <details className="rounded-xl border border-line px-4 py-3" open={values.avgWeightGrams !== null}>
         <summary className="cursor-pointer text-sm font-semibold text-fg">Weighed some birds?</summary>
         <div className="pt-3">
@@ -647,5 +693,195 @@ export function LogForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Doses due or overdue on the day (or by the end of the week) logged: tick the ones given. Each
+ * goes on the batch's health record, the vaccine taken from stock when one is chosen.
+ */
+function VaccinesDue({
+  due,
+  stock,
+  ticked,
+  onChange,
+}: {
+  due: ReturnType<typeof needsAttention>;
+  stock: SupplyStock[];
+  ticked: Record<string, { itemId: string; quantity: string }>;
+  onChange: (next: Record<string, { itemId: string; quantity: string }>) => void;
+}) {
+  if (!due.length) return null;
+  const toggle = (key: string) => {
+    const next = { ...ticked };
+    if (next[key]) delete next[key];
+    else next[key] = { itemId: stock.length === 1 ? stock[0].id : "", quantity: stock.length === 1 ? "1" : "" };
+    onChange(next);
+  };
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold text-fg">Vaccines due</h2>
+        <p className="text-sm text-fg-muted">Tick the ones given. They go on the batch&apos;s health record.</p>
+      </div>
+      <ul className="space-y-2">
+        {due.map((d) => {
+          const on = ticked[d.key];
+          return (
+            <li
+              key={d.key}
+              className={cn("rounded-xl border p-3", on ? "border-brand bg-brand-subtle" : "border-line bg-surface")}
+            >
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={!!on}
+                  onChange={() => toggle(d.key)}
+                  className="focus-ring mt-0.5 size-5 shrink-0 accent-[rgb(var(--brand))]"
+                />
+                <span className="min-w-0 space-y-0.5">
+                  <span className="block font-semibold text-fg">{d.vaccine} given</span>
+                  <span className="block text-xs text-fg-muted">
+                    {d.disease} · {d.route.toLowerCase()} · {d.state === "overdue" ? "overdue since" : "due"}{" "}
+                    {formatRange({ from: d.dueOn, to: d.dueOn })}
+                  </span>
+                </span>
+              </label>
+              {on && stock.length > 0 && (
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_7rem] gap-2 pl-8">
+                  <Select
+                    aria-label={`${d.vaccine} from stock`}
+                    value={on.itemId}
+                    onChange={(e) => onChange({ ...ticked, [d.key]: { ...on, itemId: e.target.value } })}
+                  >
+                    <option value="">Not from stock</option>
+                    {stock.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} ({quantity(i.onHand, i.unit as Unit)} left)
+                      </option>
+                    ))}
+                  </Select>
+                  {on.itemId && (
+                    <Input
+                      aria-label={`${d.vaccine} used`}
+                      inputMode="decimal"
+                      className="num"
+                      value={on.quantity}
+                      placeholder="1"
+                      onChange={(e) =>
+                        onChange({
+                          ...ticked,
+                          [d.key]: { ...on, quantity: e.target.value.replace(/[^\d.]/g, "").slice(0, 8) },
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Everything else used from stock, like feed: drugs, disinfectant, litter, fuel. Each comes off
+ * stock and is charged to the batch.
+ */
+function SuppliesUsed({
+  stock,
+  supplies,
+  onChange,
+  error,
+  over,
+}: {
+  stock: SupplyStock[];
+  supplies: LogInput["supplies"];
+  onChange: (next: LogInput["supplies"]) => void;
+  error?: string;
+  /** " (all 7 days)" when the log covers a span. */
+  over: string;
+}) {
+  const [rows, setRows] = React.useState(() => supplies.map((s) => ({ itemId: s.itemId, qty: String(s.quantity) })));
+  // A different log loaded: its things used replace the rows.
+  const [seen, setSeen] = React.useState(supplies);
+  if (seen !== supplies && JSON.stringify(seen) !== JSON.stringify(supplies)) {
+    setSeen(supplies);
+    setRows(supplies.map((s) => ({ itemId: s.itemId, qty: String(s.quantity) })));
+  }
+  const commit = (next: { itemId: string; qty: string }[]) => {
+    setRows(next);
+    const clean = next
+      .filter((r) => r.itemId && Number(r.qty) > 0)
+      .map((r) => ({ itemId: r.itemId, quantity: Number(r.qty) }));
+    setSeen(clean);
+    onChange(clean);
+  };
+  if (!stock.length) return null;
+  const item = (id: string) => stock.find((i) => i.id === id);
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold text-fg">Other things used{over}</h2>
+        <p className="text-sm text-fg-muted">
+          Drugs, disinfectant, litter, fuel: each comes off stock, charged to this batch.
+        </p>
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="grid grid-cols-[minmax(0,1fr)_6.5rem_auto] items-start gap-2">
+          <Select
+            aria-label={`Thing used ${i + 1}`}
+            value={r.itemId}
+            onChange={(e) => commit(rows.map((x, j) => (j === i ? { ...x, itemId: e.target.value } : x)))}
+          >
+            <option value="">Choose from stock</option>
+            {stock.map((s) => (
+              <option key={s.id} value={s.id} disabled={rows.some((x, j) => j !== i && x.itemId === s.id)}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+          <label className="block">
+            <span className="sr-only">How much of thing {i + 1}</span>
+            <Input
+              inputMode="decimal"
+              className="num"
+              placeholder="0"
+              value={r.qty}
+              onChange={(e) =>
+                commit(
+                  rows.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(/[^\d.]/g, "").slice(0, 9) } : x)),
+                )
+              }
+            />
+            {item(r.itemId) && (
+              <span className="mt-1 block text-xs text-fg-subtle">
+                {item(r.itemId)!.unit}s · {quantity(item(r.itemId)!.onHand, item(r.itemId)!.unit as Unit)} left
+              </span>
+            )}
+          </label>
+          <button
+            type="button"
+            aria-label={`Remove thing used ${i + 1}`}
+            onClick={() => commit(rows.filter((_, j) => j !== i))}
+            className="focus-ring grid size-11 place-items-center rounded-lg text-fg-subtle hover:bg-surface-subtle hover:text-fg"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        </div>
+      ))}
+      {error && <p className="text-[13px] font-medium text-danger-fg">{error}</p>}
+      {rows.length < stock.length && (
+        <button
+          type="button"
+          onClick={() => setRows([...rows, { itemId: "", qty: "" }])}
+          className="focus-ring inline-flex items-center gap-2 rounded text-sm font-semibold text-brand-fg"
+        >
+          <Plus className="size-4" aria-hidden /> Add something used
+        </button>
+      )}
+    </section>
   );
 }
