@@ -16,6 +16,8 @@ const PAGES = [
   "/sales",
   "/invoices",
   "/balance",
+  "/reports",
+  "/reports?view=batches",
   "/settings",
 ];
 test("shots", async ({ page }, info) => {
