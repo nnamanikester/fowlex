@@ -20,9 +20,9 @@ const TODAY = "2026-11-28";
  * The worked example. Batch A: 1,000 chicks at ₦850 (₦850,000), 4 bags of feed bought at ₦18,000
  * and 2 vials of vaccine at ₦4,500 used from stock (₦72,000 + ₦9,000), a ₦60,000 labour bill
  * and ₦15,000 of transport for it. Not counted: a rejected ₦50,000 expense, a ₦600,000 generator
- * (equipment: spread over its life), and ₦100,000 of rent (shared: 8.2). Batch B, beside it: 500
- * chicks (₦425,000) and 2 bags of feed (₦36,000). Bags bought for A count when used: only their
- * ₦5,000 delivery counts when bought.
+ * (equipment: spread over its life), and ₦100,000 of rent (shared by bird-days). Batch B, beside
+ * it: 500 chicks (₦425,000) and 2 bags of feed (₦36,000). Bags bought for A count when used: only
+ * their ₦5,000 delivery counts when bought.
  */
 async function farm() {
   const owner: CurrentUser = { id: String(oid()), farmId: String(oid()), name: "Ada", email: "a@f.com", role: "owner" };
@@ -119,9 +119,10 @@ describe("a batch's costs", () => {
       totalKobo: 46_100_000,
     });
     expect(sheets.size).toBe(2);
-    // The batch page shows the same breakdown.
-    const page = await batchCosts(owner.farmId, a.id);
-    expect(page).toMatchObject({ totalKobo: 101_100_000, byKind: sheets.get(a.id)!.byKind });
+    // The batch page shows the same breakdown, plus its share of the rent: 28,000 of November's
+    // 42,000 bird-days so far, two thirds of ₦100,000.
+    const page = await batchCosts(owner.farmId, a.id, TODAY);
+    expect(page).toMatchObject({ sharedKobo: 6_666_667, totalKobo: 107_766_667, byKind: sheets.get(a.id)!.byKind });
     expect(await costSheets(owner.farmId, [])).toEqual(new Map());
   });
 
