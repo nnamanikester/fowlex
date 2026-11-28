@@ -85,7 +85,7 @@ export function PeopleBoard({
               >
                 <span className="flex items-start justify-between gap-2">
                   <span className="min-w-0 space-y-0.5">
-                    <span className="block truncate font-display text-lg font-bold text-fg-heading">{e.name}</span>
+                    <span className="block truncate text-lg font-bold text-fg-heading">{e.name}</span>
                     <span className="block text-sm text-fg-muted">{e.job || PAY_TYPE_LABELS[e.payType]}</span>
                   </span>
                   {e.status === "left" ? <Badge>Left</Badge> : e.hasLogin && <Badge tone="info">Uses Fowlex</Badge>}

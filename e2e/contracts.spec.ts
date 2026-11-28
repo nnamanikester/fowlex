@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { watchErrors } from "./helpers";
+import { ready, watchErrors } from "./helpers";
 
 test("write a contract from the customer's page, keep it as a template, start the next from it, and end one early", async ({
   page,
@@ -17,11 +17,10 @@ test("write a contract from the customer's page, keep it as a template, start th
   await page.goto(`/customers/${grill.id}`);
   const main = page.getByRole("main");
   const sheet = page.getByRole("dialog", { name: "Write a contract" });
-  // Under load the page can still be waking up: tap until the sheet opens.
-  await expect(async () => {
-    await main.getByRole("button", { name: "Write a contract" }).click();
-    await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass();
+  // Tapped once the page is live.
+  await ready(main.getByRole("button", { name: "Write a contract" }));
+  await main.getByRole("button", { name: "Write a contract" }).click();
+  await expect(sheet).toBeVisible();
   await expect(sheet).toContainText(`For Grill ${tag}`);
   // The customer's own terms are the starting point.
   await expect(sheet.getByLabel("Days to pay each invoice")).toHaveValue("7");

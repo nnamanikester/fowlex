@@ -81,7 +81,7 @@ export function HousesManager({ houses, density }: { houses: HouseView[]; densit
                 className="focus-ring flex w-full flex-col gap-3 rounded-xl border border-line bg-surface p-4 text-left shadow-card transition-colors hover:border-line-strong active:bg-surface-subtle"
               >
                 <span className="flex items-start justify-between gap-3">
-                  <span className="font-display text-lg font-bold text-fg-heading">{house.name}</span>
+                  <span className="text-lg font-bold text-fg-heading">{house.name}</span>
                   <Badge tone={STATUS_TONE[house.status]}>{STATUS_LABELS[house.status]}</Badge>
                 </span>
                 <span className="num text-2xl font-semibold text-fg">

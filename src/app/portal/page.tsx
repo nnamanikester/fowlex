@@ -59,7 +59,7 @@ async function Portal() {
 
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card">
         <p className="text-sm text-fg-muted">You owe {home.farm.name}</p>
-        <p className="num font-display text-3xl font-bold text-fg-heading">{formatNaira(home.owedKobo)}</p>
+        <p className="num text-3xl font-bold text-fg-heading">{formatNaira(home.owedKobo)}</p>
         <p className="mt-1 text-sm text-fg-muted">
           {unpaid.length === 0
             ? "Nothing to pay. Thank you."
@@ -174,7 +174,7 @@ function Header({ name, farm }: { name: string; farm?: string }) {
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         {farm && <p className="text-sm font-semibold text-brand-fg">{farm}</p>}
-        <h1 className="font-display text-2xl font-bold text-fg-heading [overflow-wrap:anywhere]">Welcome, {name}</h1>
+        <h1 className="text-2xl font-bold text-fg-heading [overflow-wrap:anywhere]">Welcome, {name}</h1>
       </div>
       <PortalSignOut />
     </header>

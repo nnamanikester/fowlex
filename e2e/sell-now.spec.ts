@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { watchErrors } from "./helpers";
+import { ready, watchErrors } from "./helpers";
 
 /** Birds to sell: a batch of this test's own, 40 days old. */
 async function birds(page: Page, label: string) {
@@ -25,10 +25,10 @@ async function birds(page: Page, label: string) {
 async function openSellNow(page: Page) {
   await page.goto("/sales");
   const sheet = page.getByRole("dialog", { name: "Sell now" });
-  await expect(async () => {
-    await page.getByRole("main").getByRole("button", { name: "Sell now" }).first().click();
-    await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass();
+  const button = page.getByRole("main").getByRole("button", { name: "Sell now" }).first();
+  await ready(button);
+  await button.click();
+  await expect(sheet).toBeVisible();
   return sheet;
 }
 
@@ -36,7 +36,7 @@ test("sell two birds to someone with no details, for cash, in one step", async (
   const errors = watchErrors(page);
   await birds(page, info.project.name);
   const sheet = await openSellNow(page);
-  await sheet.getByRole("button", { name: "One bird more" }).click();
+  await sheet.getByRole("button", { name: "One more bird" }).click();
   await sheet.getByRole("radio", { name: "Per bird" }).click();
   // A price per bird must be typed the first time.
   await sheet.getByLabel("Price a bird").fill("7000");

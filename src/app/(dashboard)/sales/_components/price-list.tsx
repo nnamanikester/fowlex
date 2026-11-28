@@ -49,7 +49,7 @@ export function PriceList({
             <li
               key={d.id ?? `new-${i}`}
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-2xl border bg-surface p-3 sm:grid-cols-[minmax(0,1fr)_auto_10rem_auto] sm:items-center",
+                "grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-xl border bg-surface p-3 sm:grid-cols-[minmax(0,1fr)_auto_10rem_auto] sm:items-center",
                 error ? "border-danger-line" : "border-line",
               )}
             >

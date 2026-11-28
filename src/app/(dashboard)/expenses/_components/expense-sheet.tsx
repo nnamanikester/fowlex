@@ -215,9 +215,7 @@ export function ExpenseSheet({
       >
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="num font-display text-3xl font-bold text-fg-heading">
-              {formatNaira(current.amountKobo)}
-            </span>
+            <span className="num text-3xl font-bold text-fg-heading">{formatNaira(current.amountKobo)}</span>
             <Badge tone={PAYMENT_TONE[current.paymentStatus]} dot>
               {PAYMENT_STATUS_LABELS[current.paymentStatus]}
             </Badge>
@@ -441,7 +439,7 @@ function PayStep({ expense, onCancel, onDone }: { expense: ExpenseView; onCancel
     <div className="space-y-4">
       <div className="rounded-xl border border-line bg-surface-subtle p-4">
         <p className="text-sm text-fg-muted">Sending to</p>
-        <p className="font-display text-lg font-bold text-fg-heading">{preview.recipient.accountName}</p>
+        <p className="text-lg font-bold text-fg-heading">{preview.recipient.accountName}</p>
         <p className="text-sm text-fg-muted">
           {preview.recipient.bankName} {preview.recipient.accountNumber}
         </p>

@@ -48,7 +48,7 @@ export function SupplierDetail({
         </Link>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-fg-heading">{supplier.name}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-fg-heading">{supplier.name}</h1>
             <p className="text-sm text-fg-muted">
               {supplier.supplies.map((s) => SUPPLY_LABELS[s]).join(" · ") || "Supplier"}
             </p>

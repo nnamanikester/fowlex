@@ -43,7 +43,7 @@ export function CustomerDetail({
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold text-fg-heading">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-fg-heading">
             <span className="min-w-0 [overflow-wrap:anywhere]">{c.name}</span>
             {c.status === "archived" && <Badge>Archived</Badge>}
             {c.hasLogin && <Badge tone="info">Uses the portal</Badge>}

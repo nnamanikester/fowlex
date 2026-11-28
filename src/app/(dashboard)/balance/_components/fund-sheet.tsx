@@ -126,9 +126,7 @@ export function FundSheet({
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-semibold text-fg-muted">Account number</p>
-                  <p className="num font-display text-2xl font-bold tracking-wider text-fg-heading">
-                    {topUp.accountNumber}
-                  </p>
+                  <p className="num text-2xl font-bold tracking-wider text-fg-heading">{topUp.accountNumber}</p>
                 </div>
                 <CopyButton value={topUp.accountNumber} label="Copy the account number" />
               </div>

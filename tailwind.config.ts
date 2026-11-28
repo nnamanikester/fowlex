@@ -56,8 +56,6 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-urbanist)", "ui-sans-serif", "system-ui", "sans-serif"],
-        // Titles are Urbanist too (heavier): kept as a name so existing classes still read.
-        display: ["var(--font-urbanist)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {

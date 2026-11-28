@@ -22,7 +22,7 @@ export function EntrySheet({ entry: e, onClose }: { entry: EntryView; onClose: (
     >
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="num font-display text-3xl font-bold text-fg-heading">
+          <span className="num text-3xl font-bold text-fg-heading">
             {e.direction === "credit" ? "+" : "−"}
             {formatNaira(e.amountKobo)}
           </span>

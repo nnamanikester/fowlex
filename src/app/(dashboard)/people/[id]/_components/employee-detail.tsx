@@ -87,7 +87,7 @@ export function EmployeeDetail({
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold text-fg-heading">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-fg-heading">
             <span className="min-w-0 [overflow-wrap:anywhere]">{e.name}</span>
             {e.status === "left" && <Badge>Left on {formatDate(e.leftOn!)}</Badge>}
             {e.hasLogin && <Badge tone="info">Uses Fowlex</Badge>}

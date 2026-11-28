@@ -34,7 +34,9 @@ test("turn on the order link, and a buyer orders from it in one go; the farm see
   await page.goto("/sales");
   const main = page.getByRole("main");
   const turnOn = main.getByRole("button", { name: "Turn on my order page" });
-  if (await turnOn.isVisible()) {
+  // Asked of the server, not the screen: a check of the screen can run before the page has drawn.
+  const shop = (await (await page.request.get("/api/shop")).json()) as { enabled: boolean };
+  if (!shop.enabled) {
     // One price per bird is all it takes.
     await expect(turnOn).toHaveAttribute("aria-disabled", "true");
     await main.getByLabel("Your price, a bird").fill("7000");

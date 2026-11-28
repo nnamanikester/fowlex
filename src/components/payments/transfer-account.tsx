@@ -99,10 +99,10 @@ export function TransferAccount({
     return (
       <div
         role="status"
-        className="flex flex-col items-center gap-3 rounded-3xl bg-success-subtle px-6 py-10 text-center motion-safe:animate-pop-in"
+        className="flex flex-col items-center gap-2 rounded-xl border border-success-line bg-success-subtle px-5 py-8 text-center motion-safe:animate-pop-in"
       >
-        <span className="grid size-20 place-items-center rounded-full bg-success text-white shadow-pop">
-          <svg viewBox="0 0 24 24" className="size-10" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
+        <span className="grid size-12 place-items-center rounded-full bg-success text-white">
+          <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
             <path
               d="M5 12.5l4.5 4.5L19 7.5"
               strokeLinecap="round"
@@ -112,8 +112,8 @@ export function TransferAccount({
             />
           </svg>
         </span>
-        <p className="font-display text-3xl font-bold text-fg-heading">Paid</p>
-        <p className="num text-lg text-fg">
+        <p className="text-lg font-bold text-fg-heading">Paid</p>
+        <p className="num text-sm text-fg">
           <strong>{naira(c.amountKobo)}</strong> came in for{" "}
           <span className="whitespace-nowrap">{c.invoiceNumber}.</span>
         </p>
@@ -125,63 +125,53 @@ export function TransferAccount({
   const expired = c.status === "expired" || leftMs === 0;
 
   return (
-    <div className="space-y-5">
-      {/* The slip: what to send on top, where to send it below the tear. */}
-      <div className={cn("overflow-hidden rounded-3xl shadow-pop", expired && "opacity-60 grayscale")}>
-        <div className="relative bg-charcoal px-6 pb-8 pt-6 text-white">
-          <p className="text-sm text-white/70">Transfer exactly</p>
-          <p className="num mt-1 font-display text-[clamp(2.5rem,11vw,3.25rem)] font-bold leading-none tracking-tight">
-            {naira(c.amountKobo)}
-          </p>
-          <p className="mt-3 text-sm text-white/60">For {c.invoiceNumber}, and nothing else</p>
-          {/* The tear between the two halves of the slip. */}
-          <div
-            aria-hidden
-            className="absolute inset-x-0 -bottom-px h-3 bg-surface-raised [mask:radial-gradient(circle_at_8px_0,transparent_7px,#000_7.5px)_0_0/16px_100%_repeat-x]"
-          />
+    <div className="space-y-4">
+      <div className={cn("rounded-xl border border-line bg-surface shadow-card", expired && "opacity-60")}>
+        <div className="space-y-1 border-b border-line px-5 py-4">
+          <p className="text-sm text-fg-muted">Transfer exactly</p>
+          <p className="num text-3xl font-extrabold tracking-tight text-fg-heading">{naira(c.amountKobo)}</p>
+          <p className="text-xs text-fg-subtle">For {c.invoiceNumber}, and nothing else</p>
         </div>
-        <div className="space-y-4 border-x border-b border-line bg-surface-raised px-6 pb-6 pt-4">
-          <div>
-            <p className="text-sm text-fg-muted">Bank</p>
-            <p className="text-xl font-semibold text-fg-heading">{c.bankName}</p>
+        <dl className="divide-y divide-line">
+          <div className="flex items-center justify-between gap-3 px-5 py-3">
+            <dt className="text-sm text-fg-muted">Bank</dt>
+            <dd className="text-sm font-semibold text-fg">{c.bankName}</dd>
           </div>
-          <button
-            type="button"
-            onClick={() => void copy()}
-            disabled={expired}
-            aria-label={copied ? "Copied" : "Copy the account number"}
-            className="focus-ring -mx-3 block w-[calc(100%+1.5rem)] rounded-2xl px-3 py-2 text-left transition-colors hover:bg-surface-subtle active:bg-surface-muted disabled:pointer-events-none"
-          >
-            <span className="flex items-center justify-between gap-3 text-sm text-fg-muted">
-              Account number
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors",
-                  copied ? "bg-success-subtle text-success-fg" : "bg-brand-subtle text-brand-fg",
-                )}
-              >
-                {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-                {copied ? "Copied" : "Copy"}
+          <div className="flex items-center justify-between gap-3 px-5 py-3">
+            <dt className="text-sm text-fg-muted">Account number</dt>
+            <dd className="flex items-center gap-1">
+              <span className="font-mono text-lg font-semibold tracking-wide text-fg-heading">
+                {spaced(c.accountNumber)}
               </span>
-            </span>
-            <span className="num mt-1 block whitespace-nowrap font-display text-[clamp(2rem,10vw,2.75rem)] font-bold leading-tight tracking-wide text-fg-heading">
-              {spaced(c.accountNumber)}
-            </span>
-          </button>
+              <button
+                type="button"
+                onClick={() => void copy()}
+                disabled={expired}
+                aria-label={copied ? "Copied" : "Copy the account number"}
+                className="focus-ring inline-flex size-8 items-center justify-center rounded-lg text-fg-subtle hover:bg-surface-subtle hover:text-fg disabled:opacity-40"
+              >
+                {copied ? (
+                  <Check className="size-4 text-success-fg" aria-hidden />
+                ) : (
+                  <Copy className="size-4" aria-hidden />
+                )}
+              </button>
+            </dd>
+          </div>
           {c.accountName && (
-            <div>
-              <p className="text-sm text-fg-muted">Account name</p>
-              <p className="font-semibold text-fg">{c.accountName}</p>
+            <div className="flex items-center justify-between gap-3 px-5 py-3">
+              <dt className="text-sm text-fg-muted">Account name</dt>
+              <dd className="min-w-0 truncate text-sm font-semibold text-fg">{c.accountName}</dd>
             </div>
           )}
-        </div>
+        </dl>
       </div>
       <span className="sr-only" role="status">
         {copied ? "Account number copied" : ""}
       </span>
 
       {expired ? (
-        <div className="space-y-3 rounded-2xl border border-warning-line bg-warning-subtle p-4">
+        <div className="space-y-3 rounded-xl border border-warning-line bg-warning-subtle p-4">
           <p className="font-semibold text-fg-heading">This account has stopped working</p>
           <p className="text-sm text-fg-muted">
             Money sent to it now goes back to whoever sent it. Get a new account and give them that one.
@@ -194,7 +184,7 @@ export function TransferAccount({
         </div>
       ) : (
         <>
-          <div className="space-y-3 rounded-2xl bg-surface-subtle p-4">
+          <div className="space-y-3 rounded-xl bg-surface-subtle p-4">
             <div className="flex items-center gap-3">
               <span className="relative flex size-3 shrink-0" aria-hidden>
                 <span className="absolute inset-0 rounded-full bg-brand opacity-60 motion-safe:animate-ping" />

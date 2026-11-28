@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Banknote, Check, Clock, Landmark, Minus, Plus, UserRound, X } from "lucide-react";
+import { Banknote, Check, Clock, Landmark, UserRound, X } from "lucide-react";
 
 import { Field } from "@/components/auth";
 import { TransferAccount } from "@/components/payments/transfer-account";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Select } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { Stepper } from "@/components/ui/stepper";
 import { apiRequest } from "@/lib/auth/client";
 import type { CollectionView } from "@/lib/collections/service";
 import type { Pricing } from "@/lib/contracts/rules";
@@ -194,9 +195,7 @@ export function SellNowSheet({
               <p className="text-sm font-semibold text-fg">Total</p>
               <p className="num truncate text-sm text-fg-muted">{sum}</p>
             </div>
-            <p className="num shrink-0 font-display text-3xl font-bold tracking-tight text-fg-heading">
-              {naira(total)}
-            </p>
+            <p className="num shrink-0 text-3xl font-bold tracking-tight text-fg-heading">{naira(total)}</p>
           </div>
           <ActionFeedback action={action} />
           <Button
@@ -216,39 +215,21 @@ export function SellNowSheet({
         </div>
       }
     >
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* How many: the one big thing on the sheet. */}
-        <section aria-label="How many birds" className="rounded-3xl bg-surface-subtle px-4 pb-5 pt-6">
-          <div className="flex items-center justify-center gap-4 sm:gap-6">
-            <StepButton
-              label="One bird fewer"
-              disabled={birds <= 1}
-              onClick={() => setBirds((b) => Math.max(1, b - 1))}
-            >
-              <Minus />
-            </StepButton>
-            <label className="block w-36 text-center">
-              <span className="sr-only">Birds</span>
-              <input
-                size={1}
-                inputMode="numeric"
-                value={birds ? String(birds) : ""}
-                placeholder="0"
-                onChange={(e) => setBirds(Number(e.target.value.replace(/\D/g, "").slice(0, 6)) || 0)}
-                onFocus={(e) => e.currentTarget.select()}
-                className="num w-full bg-transparent text-center font-display text-6xl font-bold leading-none tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8"
+        <section aria-label="How many birds" className="space-y-3">
+          <Field id="sellBirds" label="Birds">
+            {(a11y) => (
+              <Stepper
+                id={a11y.id}
+                label="Bird"
+                value={birds}
+                min={1}
+                onChange={(n) => setBirds(Math.min(n, 999_999))}
               />
-              <span className="mt-1 block text-sm font-medium text-fg-muted">{birds === 1 ? "bird" : "birds"}</span>
-            </label>
-            <StepButton
-              label="One bird more"
-              disabled={birds >= limit}
-              onClick={() => setBirds((b) => Math.min(limit, b + 1))}
-            >
-              <Plus />
-            </StepButton>
-          </div>
-          <div role="group" aria-label="Quick amounts" className="mt-5 flex flex-wrap justify-center gap-2">
+            )}
+          </Field>
+          <div role="group" aria-label="Quick amounts" className="flex flex-wrap gap-2">
             {QUICK.filter((q) => q <= limit).map((q) => (
               <button
                 key={q}
@@ -256,7 +237,7 @@ export function SellNowSheet({
                 aria-pressed={birds === q}
                 onClick={() => setBirds(q)}
                 className={cn(
-                  "focus-ring num min-h-10 min-w-12 rounded-full border px-4 text-sm font-semibold transition-colors",
+                  "focus-ring num min-h-9 min-w-11 rounded-lg border px-3 text-sm font-semibold transition-colors",
                   birds === q
                     ? "border-fg-heading bg-fg-heading text-surface"
                     : "border-line-strong bg-surface text-fg hover:border-fg-subtle",
@@ -266,9 +247,9 @@ export function SellNowSheet({
               </button>
             ))}
           </div>
-          <div className="mt-4 text-center text-sm">
+          <div className="text-sm">
             {choosingBatch && batches.length > 1 ? (
-              <div className="mx-auto flex max-w-sm items-center gap-2">
+              <div className="flex max-w-sm items-center gap-2">
                 <Select
                   aria-label="From batch"
                   value={batchId}
@@ -315,7 +296,7 @@ export function SellNowSheet({
         {/* The price, per bird or per kg. */}
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-fg-heading">Price</h3>
+            <h3 className="text-sm font-semibold text-fg">Price</h3>
             <PricingSwitch value={pricing} onChange={setPricing} />
           </div>
           {prices.length > 0 && (
@@ -354,7 +335,7 @@ export function SellNowSheet({
                   <Input
                     {...a11y}
                     inputMode="decimal"
-                    className="num h-12 text-lg"
+                    className="num"
                     placeholder={
                       estimate ? `About ${(Math.round(estimate / 100) / 10).toLocaleString("en-NG")}` : "4.4"
                     }
@@ -364,35 +345,19 @@ export function SellNowSheet({
                 )}
               </Field>
               <Field id="sellPerKg" label="Price a kg" error={action.fieldError("priceKobo")}>
-                {(a11y) => (
-                  <MoneyInput
-                    {...a11y}
-                    value={perKg}
-                    onChange={setPerKg}
-                    placeholder="3,200.00"
-                    className="h-12 text-lg"
-                  />
-                )}
+                {(a11y) => <MoneyInput {...a11y} value={perKg} onChange={setPerKg} placeholder="3,200.00" />}
               </Field>
             </div>
           ) : (
             <Field id="sellPerBird" label="Price a bird" error={action.fieldError("priceKobo")}>
-              {(a11y) => (
-                <MoneyInput
-                  {...a11y}
-                  value={perBird}
-                  onChange={setPerBird}
-                  placeholder="7,000.00"
-                  className="h-12 text-lg"
-                />
-              )}
+              {(a11y) => <MoneyInput {...a11y} value={perBird} onChange={setPerBird} placeholder="7,000.00" />}
             </Field>
           )}
         </section>
 
         {/* How they pay. */}
         <section className="space-y-3">
-          <h3 id="paid-by" className="font-semibold text-fg-heading">
+          <h3 id="paid-by" className="text-sm font-semibold text-fg">
             How do they pay?
           </h3>
           <div role="radiogroup" aria-labelledby="paid-by" className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -406,7 +371,7 @@ export function SellNowSheet({
                   aria-checked={on}
                   onClick={() => setPaidBy(p.value)}
                   className={cn(
-                    "focus-ring relative flex min-h-28 flex-col items-start gap-3 rounded-2xl border bg-surface p-3 text-left transition-[border-color,box-shadow] sm:p-4",
+                    "focus-ring relative flex min-h-24 flex-col items-start gap-2.5 rounded-xl border bg-surface p-3 text-left shadow-button transition-[border-color,box-shadow]",
                     on
                       ? "border-fg-heading shadow-[0_0_0_1px_rgb(var(--fg-heading))]"
                       : "border-line hover:border-line-strong",
@@ -414,7 +379,7 @@ export function SellNowSheet({
                 >
                   <span
                     className={cn(
-                      "grid size-9 place-items-center rounded-xl transition-colors [&_svg]:size-5",
+                      "grid size-8 place-items-center rounded-lg transition-colors [&_svg]:size-4",
                       on ? "bg-fg-heading text-surface" : "bg-surface-subtle text-fg-muted",
                     )}
                     aria-hidden
@@ -442,7 +407,7 @@ export function SellNowSheet({
         {/* Who: never needed, there if they want it. */}
         {who.open ? (
           <section className="space-y-3">
-            <h3 className="font-semibold text-fg-heading">Who is buying</h3>
+            <h3 className="text-sm font-semibold text-fg">Who is buying</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field id="sellName" label="Their name" hint="Optional">
                 {(a11y) => (
@@ -479,7 +444,7 @@ export function SellNowSheet({
           <button
             type="button"
             onClick={() => setWho((w) => ({ ...w, open: true }))}
-            className="focus-ring flex w-full items-center gap-3 rounded-2xl border border-dashed border-line-strong p-4 text-left transition-colors hover:bg-surface-subtle"
+            className="focus-ring flex w-full items-center gap-3 rounded-xl border border-dashed border-line-strong p-3.5 text-left transition-colors hover:bg-surface-subtle"
           >
             <span
               className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-subtle text-fg-muted"
@@ -529,29 +494,5 @@ export function PricingSwitch({ value, onChange }: { value: Pricing; onChange: (
         </button>
       ))}
     </div>
-  );
-}
-
-function StepButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="focus-ring grid size-14 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg-heading shadow-button transition active:scale-95 disabled:opacity-40 disabled:shadow-none [&_svg]:size-6"
-    >
-      {children}
-    </button>
   );
 }
