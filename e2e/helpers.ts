@@ -42,5 +42,13 @@ export async function ready(locator: Locator) {
 
 /** Waits for a dialog's opening animation to finish, so what's measured is where it comes to rest. */
 export async function settled(locator: Locator) {
-  await locator.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+  await locator.evaluate(async (el) => {
+    // Until nothing is still moving. An animation cancelled or replaced (a re-render can restart
+    // one) rejects `finished`: it isn't running any more, so that counts as done.
+    for (;;) {
+      const running = el.getAnimations({ subtree: true }).filter((a) => a.playState === "running");
+      if (!running.length) return;
+      await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+    }
+  });
 }
