@@ -23,6 +23,19 @@ const schema = new Schema(
     waterLitres: { type: Number, default: null, min: 0 },
     avgWeightGrams: { type: Number, default: null, min: 0 },
     notes: { type: String, trim: true, default: "" },
+    /** Other things used from stock, in each item's unit. */
+    supplies: {
+      type: [
+        new Schema(
+          {
+            itemId: { type: Schema.Types.ObjectId, ref: "InventoryItem", required: true },
+            quantity: { type: Number, required: true, min: 0 },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     /** The phone's id for the request that created it: a resent log returns this one. */
     clientRequestId: { type: String, default: null },
   },

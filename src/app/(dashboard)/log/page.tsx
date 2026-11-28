@@ -34,5 +34,8 @@ async function Log() {
   const feeds = (await loadItems(user.farmId))
     .filter((i) => i.category === "feed" && !i.archived)
     .map(({ id, name, unit, unitKg, onHand }) => ({ id, name, unit, unitKg, onHand }));
-  return <LogForm batches={batches} recent={recent} health={health} feeds={feeds} today={on} />;
+  const stock = (await loadItems(user.farmId))
+    .filter((i) => i.category !== "feed" && i.category !== "chicks" && !i.archived)
+    .map(({ id, name, unit, category, onHand }) => ({ id, name, unit, category, onHand }));
+  return <LogForm batches={batches} recent={recent} health={health} feeds={feeds} stock={stock} today={on} />;
 }

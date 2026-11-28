@@ -2,12 +2,14 @@ import "server-only";
 
 import { Types } from "mongoose";
 
-import { spanLabel, type LogInput, validateLog } from "./rules";
+import { spanLabel, SUPPLY_CATEGORIES, type LogInput, validateLog } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
 import { placedCount } from "@/lib/batches/rules";
 import { today as lagosToday } from "@/lib/dates";
 import { connectDb, withTransaction } from "@/lib/db";
+import { scheduleFor } from "@/lib/health/rules";
+import { createHealthEvent } from "@/lib/health/service";
 import { dropLogFeed, syncLogFeed } from "@/lib/inventory/movements";
 import { InventoryItemModel } from "@/models/inventory-item";
 import { BatchModel } from "@/models/batch";
@@ -16,11 +18,12 @@ import { SalesOrderModel } from "@/models/sales-order";
 
 export type LogView = LogInput & { id: string; version: number };
 
-type Doc = Omit<LogInput, "batchId" | "feedItemId"> & {
+type Doc = Omit<LogInput, "batchId" | "feedItemId" | "supplies"> & {
   _id: unknown;
   __v?: number;
   batchId: unknown;
   feedItemId?: unknown;
+  supplies?: { itemId: unknown; quantity: number }[];
 };
 const view = (l: Doc): LogView => ({
   id: String(l._id),
@@ -37,6 +40,7 @@ const view = (l: Doc): LogView => ({
   waterLitres: l.waterLitres ?? null,
   avgWeightGrams: l.avgWeightGrams ?? null,
   notes: l.notes ?? "",
+  supplies: (l.supplies ?? []).map((s) => ({ itemId: String(s.itemId), quantity: s.quantity })),
 });
 
 /** A batch's logs, newest day first. */
@@ -158,6 +162,11 @@ function clean(input: Record<string, unknown>) {
     waterLitres: num(input.waterLitres, null),
     avgWeightGrams: num(input.avgWeightGrams, null),
     notes: typeof input.notes === "string" ? input.notes.trim() : (input.notes ?? ""),
+    supplies: Array.isArray(input.supplies)
+      ? (input.supplies as Record<string, unknown>[])
+          .filter((s) => s && s.itemId !== "" && s.quantity !== "" && s.quantity !== null && s.quantity !== undefined)
+          .map((s) => ({ itemId: s.itemId, quantity: s.quantity }))
+      : (input.supplies ?? []),
   } as Record<keyof LogInput, unknown>;
 }
 
@@ -245,6 +254,7 @@ export async function createLog(
       await syncLogFeed(session, actor, { ...log, id: String(doc._id) });
       return doc;
     });
+    await recordVaccines(actor, batch, log, input.vaccines, today);
     return { log: view(saved.toObject() as unknown as Doc), created: true };
   } catch (error) {
     if ((error as { code?: number }).code !== 11000) throw error;
@@ -261,6 +271,52 @@ async function load(actor: CurrentUser, id: string) {
   const log = Types.ObjectId.isValid(id) ? await DailyLogModel.findOne({ _id: id, farmId: actor.farmId }) : null;
   if (!log) throw new HttpError(404, "not_found", "That log doesn't exist any more.");
   return log;
+}
+
+/**
+ * The vaccinations given that day (or week), ticked on the log: each recorded on the batch's
+ * health record like one entered there, from stock when an item is chosen. A dose already
+ * recorded is left as it is.
+ */
+async function recordVaccines(
+  actor: CurrentUser,
+  batch: { _id: unknown; breed: string },
+  log: LogInput,
+  given: unknown,
+  today: string,
+) {
+  if (!Array.isArray(given)) return;
+  const schedule = scheduleFor(batch.breed);
+  for (const raw of given as Record<string, unknown>[]) {
+    const dose = schedule.find((d) => d.key === raw?.scheduleKey);
+    if (!dose) continue;
+    const fromStock =
+      typeof raw.itemId === "string" && raw.itemId && typeof raw.quantity === "number" && raw.quantity > 0;
+    try {
+      await createHealthEvent(
+        actor,
+        {
+          batchId: String(batch._id),
+          date: log.endDate ?? log.date,
+          kind: "vaccination",
+          product: dose.vaccine,
+          scheduleKey: dose.key,
+          route: dose.route,
+          dose: "",
+          givenBy: actor.name,
+          costKobo: 0,
+          itemId: fromStock ? raw.itemId : null,
+          quantity: fromStock ? raw.quantity : null,
+          withdrawalDays: 0,
+          notes: "From the daily log",
+        },
+        {},
+        today,
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code !== "already_given") throw error;
+    }
+  }
 }
 
 /** Changes a log, from a form no older than the last save. The batch can't change; the day can. */
@@ -295,6 +351,7 @@ export async function updateLog(
       throw new HttpError(409, "stale", "Someone changed this log while you were editing. Open it again.");
     throw error;
   }
+  await recordVaccines(actor, batch, log, input.vaccines, today);
   return view(doc.toObject() as unknown as Doc);
 }
 
@@ -311,6 +368,16 @@ export async function deleteLog(actor: CurrentUser, id: string) {
 
 /** Checks the chosen feed is a feed item on the farm, and names the log's feed after it. */
 async function withFeed(farmId: string, log: LogInput) {
+  // Everything else used must be on the farm's stock list, and not feed (that has its own field).
+  if (log.supplies.length) {
+    const ids = log.supplies.map((s) => s.itemId);
+    const items = await InventoryItemModel.find(
+      { farmId, _id: { $in: ids }, category: { $in: SUPPLY_CATEGORIES } },
+      { _id: 1 },
+    ).lean();
+    if (items.length !== new Set(ids).size)
+      throw new HttpError(400, "invalid_log", "Choose things from your stock (feed goes in its own box).", "supplies");
+  }
   if (!log.feedItemId) return;
   const item = await InventoryItemModel.findOne({ _id: log.feedItemId, farmId, category: "feed" }).lean();
   if (!item) throw new HttpError(400, "invalid_log", "Choose a feed from your stock.", "feedItemId");
