@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Receipt } from "lucide-react";
 import { toast } from "sonner";
 
+import { BreakdownBar } from "@/components/charts";
 import { EmptyState, Panel, StatCard } from "@/components/kit";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { formatRange } from "@/lib/dates";
 import { type CategoryView, categoryName } from "@/lib/expenses/categories";
 import { APPROVAL_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/expenses/rules";
 import { quantity } from "@/lib/inventory/rules";
+import { COST_KIND_LABELS, COST_KINDS } from "@/lib/finance/kinds";
 import { formatNaira } from "@/lib/money";
 
 const day = (d: string) => formatRange({ from: d, to: d });
@@ -48,10 +50,40 @@ export function CostsTab({
           value={batch.placed ? formatNaira(Math.round(costs.totalKobo / batch.placed)) : "–"}
           hint={`${batch.placed.toLocaleString("en-NG")} placed`}
         />
-        <StatCard label="Expenses" value={formatNaira(costs.expensesKobo)} hint="Approved, for this batch" />
-        <StatCard label="Stock used" value={formatNaira(costs.stockKobo)} hint="Feed and drugs, at average cost" />
+        <StatCard
+          label="Per bird alive"
+          value={batch.liveBirds ? formatNaira(Math.round(costs.totalKobo / batch.liveBirds)) : "–"}
+          hint={`${batch.liveBirds.toLocaleString("en-NG")} on the farm`}
+        />
+        <StatCard
+          label="Per kg live weight"
+          value={
+            batch.liveBirds && batch.totals.lastWeight
+              ? formatNaira(Math.round(costs.totalKobo / ((batch.liveBirds * batch.totals.lastWeight.grams) / 1000)))
+              : "–"
+          }
+          hint={
+            batch.totals.lastWeight
+              ? `At ${(batch.totals.lastWeight.grams / 1000).toLocaleString("en-NG")} kg a bird`
+              : "Once they're weighed"
+          }
+        />
       </div>
       {spend}
+
+      {costs.totalKobo > 0 && (
+        <Panel
+          title="Where the money went"
+          description="Expenses for this batch and the stock it used, at average cost."
+        >
+          <BreakdownBar
+            title="This batch's costs by kind"
+            parts={COST_KINDS.map((k) => ({ label: COST_KIND_LABELS[k], value: costs.byKind[k] })).filter(
+              (p) => p.value > 0,
+            )}
+          />
+        </Panel>
+      )}
 
       <Panel title="Stock used" flush>
         {costs.stock.length ? (
