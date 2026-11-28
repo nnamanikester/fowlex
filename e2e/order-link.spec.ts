@@ -34,10 +34,24 @@ test("turn on the order link, and a buyer orders from it in one go; the farm see
   await page.goto("/sales");
   const main = page.getByRole("main");
   const turnOn = main.getByRole("button", { name: "Turn on my order page" });
-  if (await turnOn.isVisible()) {
-    await main.getByLabel("Your price per kg").fill("3200");
+  // Asked of the server, not the screen: a check of the screen can run before the page has drawn.
+  const shop = (await (await page.request.get("/api/shop")).json()) as { enabled: boolean };
+  if (!shop.enabled) {
+    // One price per bird is all it takes.
+    await expect(turnOn).toHaveAttribute("aria-disabled", "true");
+    await main.getByLabel("Your price, a bird").fill("7000");
     await turnOn.click();
     await expect(page.getByText("Your order page is on.")).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Your order link" })).toBeVisible();
+    await expect(main.getByText(/\/order\//).first()).toBeVisible();
+    // Some buyers pay by weight: a second price.
+    await main.getByRole("button", { name: "Birds at another price? Add one" }).click();
+    await main.getByLabel("Name of price 2").fill("By weight");
+    await main.getByRole("radiogroup", { name: "Priced" }).nth(1).getByRole("radio", { name: "Per kg" }).click();
+    await main.getByLabel("Price 2, a kg").fill("3200");
+    await main.getByRole("button", { name: "Save prices" }).click();
+    await expect(page.getByText("Prices saved: the page shows them now.")).toBeVisible();
+    await expect(main.getByRole("button", { name: "Save prices" })).toBeHidden();
   }
   await expect(main.getByRole("heading", { name: "Your order link" })).toBeVisible();
   await expect(main.getByRole("button", { name: "Copy the order link" })).toBeVisible();
@@ -55,7 +69,7 @@ test("turn on the order link, and a buyer orders from it in one go; the farm see
   const buyerErrors = watchErrors(buyer);
   await buyer.goto(link);
   await expect(buyer.getByRole("heading", { level: 1 })).toContainText("broilers ready today");
-  await expect(buyer.getByText("₦3,200 a kg")).toBeVisible();
+  await expect(buyer.getByText("from ₦7,000 a bird")).toBeVisible();
 
   await buyer.getByRole("button", { name: "10", exact: true }).click();
   await expect(buyer.getByLabel("Number of birds")).toHaveValue("10");
@@ -64,6 +78,23 @@ test("turn on the order link, and a buyer orders from it in one go; the farm see
   await expect(buyer.getByRole("radio", { name: /ready$/ })).toHaveCount(7);
   await buyer.getByRole("button", { name: "Later days" }).click();
   await expect(buyer.getByRole("radio", { name: /ready$/ })).toHaveCount(14);
+  // Two prices: per bird is chosen to start with, the total exact; by weight, it's an estimate.
+  const which = buyer.getByRole("radiogroup", { name: "Which birds" });
+  await expect(which.getByRole("radio", { name: /Live bird/ })).toHaveAttribute("aria-checked", "true");
+  await expect(
+    buyer
+      .getByText(/^₦77,000/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await which.getByRole("radio", { name: /By weight/ }).click();
+  await expect(
+    buyer
+      .getByText(/^About ₦/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await which.getByRole("radio", { name: /Live bird/ }).click();
   await buyer.getByRole("radio", { name: /^Today/ }).click();
   await buyer.getByRole("radio", { name: /I'll collect/ }).click();
 

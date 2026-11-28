@@ -45,7 +45,9 @@ export function Modal({
         if (e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        "m-0 mt-auto max-h-[90dvh] sm:max-h-[calc(100dvh-4rem)] w-full max-w-none overflow-visible bg-transparent p-0 text-fg backdrop:bg-charcoal/50 backdrop:backdrop-blur-[2px] sm:m-auto",
+        // A bottom sheet on phones, centred above. Margins are !important: the dialog sits inside
+        // layouts that space their children (space-y-*), which would push it off centre (see Sheet).
+        "w-full max-w-none overflow-visible bg-transparent p-0 text-fg backdrop:bg-charcoal/50 backdrop:backdrop-blur-[2px] max-sm:!m-0 max-sm:!mt-auto max-sm:max-h-[90dvh] sm:!m-auto sm:max-h-[calc(100dvh-4rem)]",
         compact ? "sm:max-w-sm" : "sm:max-w-lg",
       )}
     >

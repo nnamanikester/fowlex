@@ -5,7 +5,8 @@ import { Check, Home, LoaderCircle, Minus, Phone, Plus, Truck } from "lucide-rea
 
 import { apiRequest, asProblem, type AuthError } from "@/lib/auth/client";
 import { formatNaira as formatKobo } from "@/lib/money";
-import { dayLabel, estimate, type OnlineOrderInput, validateOnlineOrder } from "@/lib/shop/rules";
+import { type PriceOption, priceEstimate, priceLabel } from "@/lib/shop/prices";
+import { dayLabel, type OnlineOrderInput, validateOnlineOrder } from "@/lib/shop/rules";
 import type { Offer, Placed } from "@/lib/shop/service";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
   const [birds, setBirds] = React.useState(Math.min(50, offer.days[0]?.birds ?? 0) || 0);
   const [date, setDate] = React.useState(firstDay);
   const [delivery, setDelivery] = React.useState(false);
+  const [priceId, setPriceId] = React.useState(offer.prices[0]?.id ?? "");
   const [details, setDetails] = React.useState<Details>(EMPTY);
   const [returning, setReturning] = React.useState(false);
   const [notes, setNotes] = React.useState("");
@@ -80,7 +82,9 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
     errors.birds = `We have ${birdsText(max)} for ${dayLabel(date, today).toLowerCase() === "today" ? "today" : "that day"}.`;
   const show = (f: keyof OnlineOrderInput) =>
     failure?.field === f ? failure.message : submitted ? errors[f] : undefined;
-  const total = estimate(birds, offer.weightGrams, offer.pricePerKgKobo);
+  const option = offer.prices.find((p) => p.id === priceId) ?? offer.prices[0];
+  const total = priceEstimate(option, birds, offer.weightGrams);
+  const exact = option.pricing === "perBird";
   const set = (k: keyof Details, v: string) => setDetails((d) => ({ ...d, [k]: v }));
 
   const place = async () => {
@@ -98,6 +102,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
     try {
       const done = await apiRequest<Placed>(`/api/public/shop/${offer.slug}/orders`, "POST", {
         ...values,
+        priceId: option.id,
         requestId: requestId.current,
         website: trap.current?.value ?? "",
       });
@@ -139,7 +144,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 
       {offer.days.length === 0 ? (
         <section className="mx-auto max-w-xl px-4 py-12 text-center">
-          <h2 className="font-display text-2xl font-bold text-fg-heading">Everything is spoken for right now</h2>
+          <h2 className="text-xl font-bold text-fg-heading">Everything is spoken for right now</h2>
           <p className="mt-2 text-fg-muted">New birds are on the way. Call us and we&apos;ll keep some for you.</p>
           {offer.farm.phone && <CallButton phone={offer.farm.phone} name={offer.farm.name} className="mt-6" />}
         </section>
@@ -173,7 +178,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                     value={birds ? String(birds) : ""}
                     placeholder="0"
                     onChange={(e) => setBirds(Number(e.target.value.replace(/\D/g, "").slice(0, 6)) || 0)}
-                    className="num w-full bg-transparent text-center font-display text-6xl font-bold tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8 sm:text-7xl"
+                    className="num w-full bg-transparent text-center text-4xl font-extrabold tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8 sm:text-7xl"
                   />
                 </label>
                 <RoundButton
@@ -205,9 +210,32 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
               >
                 {show("birds") ??
                   (birds
-                    ? `About ${kg(birds * offer.weightGrams)} of chicken, about ${formatNaira(total)}`
+                    ? `About ${kg(birds * offer.weightGrams)} of chicken, ${exact ? "" : "about "}${formatNaira(total)}`
                     : "Tap a number, or type it")}
               </p>
+              {offer.prices.length > 1 && (
+                <>
+                  <p id="which-birds" className="mt-6 text-sm font-semibold text-fg-heading">
+                    Which birds?
+                  </p>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="which-birds"
+                    id="order-priceId"
+                    className="mt-2 grid gap-2 sm:grid-cols-2"
+                  >
+                    {offer.prices.map((p) => (
+                      <PriceChoice
+                        key={p.id}
+                        price={p}
+                        weightGrams={offer.weightGrams}
+                        checked={option.id === p.id}
+                        onClick={() => setPriceId(p.id)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </Step>
 
             <Step n={2} title="When?">
@@ -228,13 +256,13 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                       if (birds > d.birds) setBirds(d.birds);
                     }}
                     className={cn(
-                      "focus-ring min-w-[7.5rem] shrink-0 snap-start rounded-2xl border px-4 py-3 text-left transition-colors",
+                      "focus-ring min-w-[7.5rem] shrink-0 snap-start rounded-xl border px-4 py-3 text-left transition-colors",
                       date === d.date
                         ? "border-charcoal bg-charcoal text-white"
                         : "border-line bg-surface text-fg hover:border-line-strong",
                     )}
                   >
-                    <span className="block font-display text-lg font-bold">{dayLabel(d.date, today)}</span>
+                    <span className="block text-lg font-bold">{dayLabel(d.date, today)}</span>
                     <span className={cn("num block text-xs", date === d.date ? "text-white/70" : "text-fg-muted")}>
                       {d.birds.toLocaleString("en-NG")} ready
                     </span>
@@ -272,7 +300,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                     detail="We'll confirm the cost"
                   />
                 ) : (
-                  <p className="flex items-center rounded-2xl border border-dashed border-line px-4 text-sm text-fg-muted">
+                  <p className="flex items-center rounded-xl border border-dashed border-line px-4 text-sm text-fg-muted">
                     We don&apos;t deliver yet
                   </p>
                 )}
@@ -293,7 +321,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 
             <Step n={3} title="Your details">
               {returning && details.name && (
-                <p className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface px-4 py-3 text-sm text-fg">
+                <p className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface px-4 py-3 text-sm text-fg">
                   <span>
                     Welcome back, <strong>{details.name.split(" ")[0]}</strong>. Your details are filled in.
                   </span>
@@ -392,6 +420,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
               day={date ? dayLabel(date, today) : ""}
               delivery={delivery}
               total={total}
+              exact={exact}
               sending={sending}
               failure={failure && !failure.field ? failure.message : null}
               floating
@@ -405,6 +434,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                 day={date ? dayLabel(date, today) : ""}
                 delivery={delivery}
                 total={total}
+                exact={exact}
                 sending={sending}
                 failure={failure && !failure.field ? failure.message : null}
                 onPlace={() => void place()}
@@ -420,7 +450,9 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 /** The supply board: what's ready, how heavy and what it costs, in the farm's own colours. */
 function Board({ offer, today }: { offer: Offer; today: string }) {
   const next = offer.days.find((d) => d.birds > offer.readyNow);
-  const perBird = estimate(1, offer.weightGrams, offer.pricePerKgKobo);
+  const [only] = offer.prices.length === 1 ? offer.prices : [];
+  const cheapest = Math.min(...offer.prices.map((p) => priceEstimate(p, 1, offer.weightGrams)));
+  const orderable = offer.days[offer.days.length - 1]?.birds ?? 0;
   return (
     <header className="bg-charcoal text-white">
       <div className="mx-auto max-w-5xl px-4 pb-10 pt-6 sm:pb-14">
@@ -436,7 +468,7 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
             </a>
           )}
         </div>
-        <h1 className="mt-10 max-w-2xl font-display text-[clamp(2.25rem,8vw,4.25rem)] font-bold leading-[1.02] tracking-tight">
+        <h1 className="mt-10 max-w-2xl text-3xl font-extrabold leading-tight sm:text-4xl tracking-tight">
           {offer.readyNow > 0 ? (
             <>
               <span className="num text-[rgb(var(--comb-on-dark))]">{offer.readyNow.toLocaleString("en-NG")}</span>{" "}
@@ -459,15 +491,17 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
         <dl className="mt-8 grid max-w-2xl grid-cols-3 border-t border-white/15">
           {[
             ["Each bird", `about ${kg(offer.weightGrams)}`],
-            ["Price", `${formatNaira(offer.pricePerKgKobo)} a kg`],
-            ["A bird comes to", `about ${formatNaira(perBird)}`],
+            only ? ["Price", priceLabel(only)] : ["Prices", `from ${formatNaira(cheapest)} a bird`],
+            only?.pricing === "perKg"
+              ? ["A bird comes to", `about ${formatNaira(cheapest)}`]
+              : ["To order", `${orderable.toLocaleString("en-NG")} birds`],
           ].map(([label, value]) => (
             <div
               key={label}
               className="min-w-0 border-r border-white/15 py-4 pr-3 last:border-r-0 [&:not(:first-child)]:pl-3 sm:pr-5 [&:not(:first-child)]:sm:pl-5"
             >
               <dt className="text-xs text-white/60 sm:text-sm">{label}</dt>
-              <dd className="num mt-1 font-display text-base font-bold [overflow-wrap:anywhere] sm:text-xl">{value}</dd>
+              <dd className="num mt-1 text-base font-bold [overflow-wrap:anywhere] sm:text-xl">{value}</dd>
             </div>
           ))}
         </dl>
@@ -485,10 +519,7 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <section aria-labelledby={`step-${n}`} className="space-y-4">
-      <h2
-        id={`step-${n}`}
-        className="flex items-center gap-3 font-display text-xl font-bold text-fg-heading sm:text-2xl"
-      >
+      <h2 id={`step-${n}`} className="flex items-center gap-3 text-lg font-bold text-fg-heading">
         <span
           aria-hidden
           className="grid size-8 shrink-0 place-items-center rounded-full bg-charcoal text-sm text-white"
@@ -519,7 +550,7 @@ function RoundButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="focus-ring grid size-14 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg transition active:scale-95 disabled:opacity-40 [&_svg]:size-6"
+      className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg transition active:scale-95 disabled:opacity-40 [&_svg]:size-6"
     >
       {children}
     </button>
@@ -538,6 +569,42 @@ function Chip({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       )}
     >
       {children}
+    </button>
+  );
+}
+
+/** One of the farm's prices, as a card to choose: its name, the price and what a bird comes to. */
+function PriceChoice({
+  price,
+  weightGrams,
+  checked,
+  onClick,
+}: {
+  price: PriceOption;
+  weightGrams: number;
+  checked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onClick}
+      className={cn(
+        "focus-ring flex items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors",
+        checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
+      )}
+    >
+      <span className="min-w-0 space-y-0.5">
+        <span className="block font-semibold">{price.name}</span>
+        <span className={cn("num block text-xs", checked ? "text-white/70" : "text-fg-muted")}>
+          {price.pricing === "perKg"
+            ? `About ${formatNaira(priceEstimate(price, 1, weightGrams))} a bird, weighed on the day`
+            : "A set price for each bird"}
+        </span>
+      </span>
+      <span className="num shrink-0 text-lg font-bold">{priceLabel(price)}</span>
     </button>
   );
 }
@@ -562,12 +629,12 @@ function Choice({
       aria-checked={checked}
       onClick={onClick}
       className={cn(
-        "focus-ring flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors [&_svg]:size-5",
+        "focus-ring flex items-center gap-3 rounded-xl border p-4 text-left transition-colors [&_svg]:size-5",
         checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
       )}
     >
       {icon}
-      <span className="min-w-0">
+      <span className="min-w-0 space-y-0.5">
         <span className="block font-semibold">{title}</span>
         <span className={cn("block text-xs", checked ? "text-white/70" : "text-fg-muted")}>{detail}</span>
       </span>
@@ -595,7 +662,7 @@ function TextField({
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "id">) {
   const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
   const className = cn(
-    "w-full rounded-2xl border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition placeholder:text-fg-subtle focus:border-charcoal focus:ring-2 focus:ring-charcoal/15",
+    "w-full rounded-xl border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition placeholder:text-fg-subtle focus:border-charcoal focus:ring-2 focus:ring-charcoal/15",
     error ? "border-danger" : "border-line",
   );
   return (
@@ -647,6 +714,7 @@ function Summary({
   day,
   delivery,
   total,
+  exact,
   sending,
   failure,
   floating,
@@ -657,6 +725,8 @@ function Summary({
   day: string;
   delivery: boolean;
   total: number;
+  /** Priced per bird: the total is what they pay, not an estimate. */
+  exact: boolean;
   sending: boolean;
   failure: string | null;
   floating?: boolean;
@@ -668,7 +738,7 @@ function Summary({
       className={cn(
         floating
           ? "fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
-          : "rounded-3xl border border-line bg-surface p-5 shadow-card",
+          : "rounded-xl border border-line bg-surface p-5 shadow-card",
         className,
       )}
     >
@@ -681,14 +751,14 @@ function Summary({
         <div className={cn(floating ? "flex items-center gap-3" : "space-y-4")}>
           <div className="min-w-0 flex-1" aria-live="polite">
             {!floating && <p className="text-sm text-fg-muted">Your order</p>}
-            <p className="num truncate font-display text-lg font-bold text-fg-heading">
+            <p className="num truncate text-lg font-bold text-fg-heading">
               {birds ? birdsText(birds) : "Choose your birds"}
               {birds && day
                 ? `, ${day.toLowerCase() === "today" || day.toLowerCase() === "tomorrow" ? day.toLowerCase() : day}`
                 : ""}
             </p>
             <p className="num text-sm text-fg-muted">
-              {birds ? `About ${formatNaira(total)}` : " "}
+              {birds ? (exact ? formatNaira(total) : `About ${formatNaira(total)}`) : " "}
               {!floating && birds ? (delivery ? ", delivered" : ", collected") : ""}
             </p>
           </div>
@@ -698,7 +768,7 @@ function Summary({
             disabled={sending}
             aria-busy={sending || undefined}
             className={cn(
-              "focus-ring relative inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-comb px-6 text-base font-bold text-white shadow-button transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-80",
+              "focus-ring relative inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-comb px-5 text-base font-bold text-white shadow-button transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-80",
               !floating && "w-full",
             )}
           >
@@ -725,7 +795,7 @@ function CallButton({ phone, name, className }: { phone: string; name: string; c
     <a
       href={`tel:${phone.replace(/\s/g, "")}`}
       className={cn(
-        "focus-ring inline-flex min-h-12 items-center gap-2 rounded-2xl border border-line-strong bg-surface px-5 font-semibold text-fg",
+        "focus-ring inline-flex min-h-12 items-center gap-2 rounded-xl border border-line-strong bg-surface px-5 font-semibold text-fg",
         className,
       )}
     >
@@ -747,14 +817,10 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
         <div className="mx-auto max-w-xl">
           {/* eslint-disable-next-line @next/next/no-img-element -- an SVG logo, already the right size */}
           <img src="/brand/fowlex-logo-horizontal-reverse.svg" alt={placed.farm.name} className="h-7 w-auto" />
-          <span aria-hidden className="mt-10 grid size-16 animate-pop-in place-items-center rounded-full bg-comb">
+          <span aria-hidden className="mt-10 grid size-12 animate-pop-in place-items-center rounded-full bg-comb">
             <Check className="size-8" />
           </span>
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className="mt-6 font-display text-4xl font-bold tracking-tight outline-none sm:text-5xl"
-          >
+          <h1 ref={heading} tabIndex={-1} className="mt-5 text-3xl font-extrabold tracking-tight outline-none">
             Order placed
           </h1>
           <p className="mt-2 text-lg text-white/70">
@@ -764,13 +830,13 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
         </div>
       </header>
       <main className="mx-auto max-w-xl space-y-6 px-4 py-8">
-        <dl className="divide-y divide-line rounded-3xl border border-line bg-surface">
+        <dl className="divide-y divide-line rounded-xl border border-line bg-surface">
           {[
             ["Order", placed.number],
             ["Birds", birdsText(placed.birds)],
             ["Day", dayLabel(placed.date, today)],
             ["How", placed.delivery ? "We deliver to you" : "You collect from the farm"],
-            ["About", formatNaira(placed.estimateKobo)],
+            [placed.exact ? "Comes to" : "About", formatNaira(placed.estimateKobo)],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between gap-4 px-5 py-3.5">
               <dt className="text-fg-muted">{label}</dt>
@@ -789,7 +855,7 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
           <button
             type="button"
             onClick={onAgain}
-            className="focus-ring inline-flex min-h-12 items-center justify-center rounded-2xl px-5 font-semibold text-brand-fg"
+            className="focus-ring inline-flex min-h-12 items-center justify-center rounded-xl px-5 font-semibold text-brand-fg"
           >
             Order more birds
           </button>

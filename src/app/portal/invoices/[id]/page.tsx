@@ -17,6 +17,7 @@ import { INVOICE_STATUS_LABELS, INVOICE_TONE } from "@/lib/invoices/rules";
 import { formatNaira } from "@/lib/money";
 import { requestToday } from "@/lib/page-data";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments/rules";
+import { payLinkToken } from "@/lib/collections/service";
 import { portalInvoice } from "@/lib/portal/service";
 import { paystackMode } from "@/lib/paystack/client";
 import { readSettings } from "@/lib/settings/service";
@@ -47,6 +48,8 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
   const { invoice: i, payments } = found;
   const settings = await readSettings(user.farmId);
   const owed = i.balanceKobo > 0;
+  // Card, bank app or USSD: the invoice's own pay link.
+  const payUrl = owed && i.state !== "void" ? `/pay/${await payLinkToken(user.farmId, i.id)}` : null;
   return (
     <>
       <Link
@@ -57,7 +60,7 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
       </Link>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold text-fg-heading">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-fg-heading">
             {i.number} <Badge tone={INVOICE_TONE[i.status]}>{INVOICE_STATUS_LABELS[i.status]}</Badge>
           </h1>
           <p className="text-sm text-fg-muted">
@@ -74,13 +77,13 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
       </header>
 
       <section className="space-y-3 rounded-xl border border-line bg-surface p-5 shadow-card">
-        <p className="num font-display text-3xl font-bold text-fg-heading">{formatNaira(i.balanceKobo)}</p>
+        <p className="num text-3xl font-bold text-fg-heading">{formatNaira(i.balanceKobo)}</p>
         <p className="text-sm text-fg-muted">
           {owed ? (i.paidKobo ? `left of ${formatNaira(i.totalKobo)}` : "to pay") : "Paid in full. Thank you."}
         </p>
         {owed && (
           <>
-            <PayNow invoiceId={i.id} simulated={paystackMode() === "simulated"} />
+            <PayNow invoiceId={i.id} payUrl={payUrl} simulated={paystackMode() === "simulated"} />
             {settings.bankName && settings.accountNumber && (
               <p className="text-sm text-fg">
                 Or transfer to <strong>{settings.accountName || settings.businessName}</strong>, {settings.bankName}{" "}

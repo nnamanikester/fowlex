@@ -43,6 +43,20 @@ const schema = new Schema({
   shopSlug: { type: String, default: null },
   /** Whether customers can ask for delivery, or only collect from the farm. */
   shopDelivers: { type: Boolean, default: true },
+  /**
+   * The farm's prices, the usual one first: each named, per bird or per kg. The order page shows
+   * them all; new orders and "Sell now" start from the first.
+   */
+  prices: {
+    type: [
+      {
+        name: { type: String, trim: true, required: true, maxlength: 40 },
+        pricing: { type: String, enum: ["perKg", "perBird"], required: true },
+        priceKobo: { type: Number, required: true, min: 1 },
+      },
+    ],
+    default: [],
+  },
 });
 schema.index({ shopSlug: 1 }, { unique: true, partialFilterExpression: { shopSlug: { $type: "string" } } });
 schema.plugin(basePlugin, {

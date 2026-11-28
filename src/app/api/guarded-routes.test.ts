@@ -106,6 +106,13 @@ import { POST as collectInvoice } from "./invoices/[id]/collect/route";
 import { GET as portalCollection } from "./portal/collections/[id]/route";
 import { POST as portalCollect } from "./portal/invoices/[id]/collect/route";
 import { POST as quickSaleRoute } from "./sales/quick/route";
+import { POST as decideContractChange } from "./contracts/changes/[id]/route";
+import { GET as devCharge } from "./dev/paystack/charge/route";
+import { POST as payLink } from "./invoices/[id]/pay-link/route";
+import { POST as payCheckout } from "./public/pay/[token]/checkout/route";
+import { GET as payCheck } from "./public/pay/[token]/collections/[id]/route";
+import { GET as payPdf } from "./public/pay/[token]/pdf/route";
+import { POST as payTransfer } from "./public/pay/[token]/transfer/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -162,7 +169,15 @@ describe("GET /api/reports/summary", () => {
     const manager = await signInAs("manager");
     const ok = await summary();
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ farmId: manager.farmId, revenueKobo: 0, expensesKobo: 0, profitKobo: 0 });
+    // This month's numbers: a new farm has none yet.
+    expect(await ok.json()).toEqual({
+      farmId: manager.farmId,
+      month: expect.stringMatching(/^\d{4}-\d{2}$/),
+      revenueKobo: 0,
+      expensesKobo: 0,
+      profitKobo: 0,
+      marginPct: null,
+    });
   });
 });
 
@@ -344,6 +359,13 @@ describe("log routes", () => {
     const listed = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${today}`));
     expect((await listed.json()).map((l: { id: string }) => l.id)).toEqual([log.id]);
     expect(await (await listLogs(req("GET", `/api/logs?batchId=${batch.id}`))).json()).toHaveLength(1);
+    // A week logged together is found by any day in it.
+    const back = (n: number) => new Date(Date.parse(today) - n * 86_400_000).toISOString().slice(0, 10);
+    const week = await (
+      await createLog(req("POST", "/api/logs", { batchId: batch.id, date: back(9), endDate: back(3), deaths: 7 }))
+    ).json();
+    const inWeek = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${back(5)}`));
+    expect((await inWeek.json()).map((l: { id: string }) => l.id)).toEqual([week.id]);
 
     const saved = await updateLog(
       req("PATCH", `/api/logs/${log.id}`, { ...body, deaths: 4, version: log.version }),
@@ -1197,7 +1219,27 @@ describe("contract routes", () => {
       req("PATCH", "/x", { ...terms, priceKobo: 900_000, version: active.version }),
       ctx(draft.id),
     );
-    expect((await changed.json()).priceKobo).toBe(900_000);
+    // Sales asks; the agreed price stands until an owner approves.
+    const asked = await changed.json();
+    expect(asked).toMatchObject({
+      priceKobo: 850_000,
+      pendingChange: { status: "pending", after: { priceKobo: 900_000 } },
+    });
+    expect((await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id))).status).toBe(
+      403,
+    );
+    session.user = { ...session.user!, role: "owner" };
+    const approved = await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id));
+    expect((await approved.json()).priceKobo).toBe(900_000);
+    expect(
+      (
+        await decideContractChange(
+          new Request(`${BASE}/x`, { method: "POST", body: "{oops" }),
+          ctx(asked.pendingChange.id),
+        )
+      ).status,
+    ).toBe(409);
+    session.user = { ...session.user!, role: "sales" };
     expect((await (await endContract(req("POST", "/x", {}), ctx(draft.id))).json()).status).toBe("terminated");
     expect(await (await listContracts(req("GET", `/api/contracts?customerId=${customer.id}`))).json()).toHaveLength(1);
     const other = await (
@@ -1461,7 +1503,11 @@ describe("order page routes", () => {
     );
     session.user = { ...session.user!, role: "sales" };
     expect((await (await getShop()).json()).enabled).toBe(false);
-    const on = await (await updateShopRoute(req("PATCH", "/x", { enabled: true, pricePerKgKobo: 320_000 }))).json();
+    const on = await (
+      await updateShopRoute(
+        req("PATCH", "/x", { enabled: true, prices: [{ name: "", pricing: "perKg", priceKobo: 320_000 }] }),
+      )
+    ).json();
     expect(on.slug).toBe("fowlex-farms");
     expect((await updateShopRoute(new Request(`${BASE}/x`, { method: "PATCH", body: "{oops" }))).status).toBe(200);
 
@@ -1564,6 +1610,63 @@ describe("selling now and transfer accounts", () => {
     expect((await collectInvoice(req("POST", "/x"), ctx(invoice.id))).status).toBe(403);
     vi.stubEnv("PAYSTACK_SIMULATE", "");
     expect((await devPay(req("POST", "/x", {}))).status).toBe(404);
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("pay links", () => {
+  it("staff make a link; anyone with it pays by checkout or transfer and downloads the bill", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("PAYSTACK_SIMULATE", "1");
+    await signInAs("owner");
+    const house = await (await createHouse(req("POST", "/api/houses", { name: "House 1", capacity: 5000 }))).json();
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    await createBatch(
+      req("POST", "/api/batches", {
+        houseId: house.id,
+        placedOn: new Date(Date.parse(today) - 40 * 86_400_000).toISOString().slice(0, 10),
+        breed: "Ross 308",
+        delivered: 50,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      }),
+    );
+    const { invoice } = await (
+      await quickSaleRoute(req("POST", "/x", { birds: 1, pricing: "perBird", priceKobo: 700_000, paidBy: "later" }))
+    ).json();
+    const link = await (await payLink(req("POST", "/x"), ctx(invoice.id))).json();
+    expect(link.url).toMatch(new RegExp(`^${BASE}/pay/[\\w-]{20,}$`));
+    const token = link.url.split("/pay/")[1];
+    const tokenCtx = { params: Promise.resolve({ token }) };
+
+    // The customer, signed in to nothing.
+    session.user = null;
+    const checkout = await (await payCheckout(req("POST", "/x"), tokenCtx)).json();
+    expect(checkout.url).toContain("/dev/paystack/checkout?reference=fwx-chk-");
+    const reference = new URL(checkout.url).searchParams.get("reference")!;
+    expect(await (await devCharge(req("GET", `/api/dev/paystack/charge?reference=${reference}`))).json()).toMatchObject(
+      {
+        amount: 700_000,
+        paid: false,
+      },
+    );
+    expect((await devCharge(req("GET", "/api/dev/paystack/charge?reference=nope"))).status).toBe(404);
+    const account = await (await payTransfer(req("POST", "/x"), tokenCtx)).json();
+    expect(account.status).toBe("waiting");
+    const checked = await payCheck(req("GET", "/x"), { params: Promise.resolve({ token, id: account.id }) });
+    expect((await checked.json()).id).toBe(account.id);
+    const pdf = await payPdf(req("GET", "/x"), tokenCtx);
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    const nope = { params: Promise.resolve({ token: "not-a-real-token-xyz" }) };
+    expect((await payPdf(req("GET", "/x"), nope)).status).toBe(404);
+    expect((await payTransfer(req("POST", "/x"), nope)).status).toBe(404);
+
+    await signInAs("staff");
+    expect((await payLink(req("POST", "/x"), ctx(invoice.id))).status).toBe(403);
+    vi.stubEnv("PAYSTACK_SIMULATE", "");
+    expect((await devCharge(req("GET", "/x"))).status).toBe(404);
     vi.unstubAllEnvs();
   });
 });

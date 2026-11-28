@@ -7,7 +7,7 @@ import { PRICINGS, type Pricing } from "@/lib/contracts/rules";
 import { walkInCustomer } from "@/lib/customers/service";
 import { today as lagosToday } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
-import { createInvoice, getInvoice, type InvoiceView } from "@/lib/invoices/service";
+import { getInvoice, type InvoiceView } from "@/lib/invoices/service";
 import { recordPayment } from "@/lib/payments/service";
 import { createOrder, deliverOrder } from "@/lib/sales/service";
 import { findOrAddCustomer, sellable } from "@/lib/shop/service";
@@ -48,8 +48,6 @@ export async function quickSale(
   const grams = input.weightGrams ?? 0;
   if (typeof grams !== "number" || !Number.isInteger(grams) || grams < 0)
     throw new HttpError(400, "invalid_sale", "Enter their weight in kg.", "weightGrams");
-  if (pricing === "perKg" && grams < 1)
-    throw new HttpError(400, "invalid_sale", "Weigh the birds: the price is per kg.", "weightGrams");
   const paidBy = input.paidBy as PaidBy;
   if (!PAID_BY.includes(paidBy)) throw new HttpError(400, "invalid_sale", "Choose how they pay.", "paidBy");
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -127,7 +125,8 @@ export async function quickSale(
     },
   );
   const delivered = await deliverOrder(actor, order.id, { confirm: true }, order.version, today);
-  const made = await createInvoice(actor, { orderIds: [delivered.id] }, today);
+  // The order made its invoice; delivering it brought it up to date.
+  const made = (await getInvoice(actor.farmId, delivered.invoiceId!, today))!;
   // Handed over in person: it's issued, whether or not there's an email to send it to.
   await InvoiceModel.updateOne(
     { _id: made.id, state: "draft" },

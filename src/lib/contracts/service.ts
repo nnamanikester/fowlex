@@ -21,7 +21,9 @@ import { connectDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { formatNaira } from "@/lib/money";
 import { nextSequence } from "@/models/counter";
+import { can } from "@/lib/auth/permissions";
 import { ContractModel, ContractTemplateModel } from "@/models/contract";
+import { ContractChangeModel } from "@/models/contract-change";
 import { CustomerModel } from "@/models/customer";
 import { UserModel } from "@/models/user";
 
@@ -32,6 +34,39 @@ export type ContractView = ContractInput & {
   customerName: string;
   status: ContractStatus;
   terminatedOn: string | null;
+  /** A change asked for and waiting for an owner, if there is one. */
+  pendingChange: ChangeView | null;
+};
+
+/** The terms a change can touch, in the order a contract reads. */
+export const CHANGEABLE = [
+  "pricing",
+  "priceKobo",
+  "minBirds",
+  "minPer",
+  "deliveryEvery",
+  "termsDays",
+  "startDate",
+  "endDate",
+  "reviewOn",
+  "notes",
+  "document",
+] as const;
+export type Changeable = (typeof CHANGEABLE)[number];
+export type ChangeTerms = Partial<Pick<ContractInput, Changeable>>;
+
+export type ChangeView = {
+  id: string;
+  contractId: string;
+  status: "pending" | "approved" | "rejected";
+  before: ChangeTerms;
+  after: ChangeTerms;
+  reason: string;
+  requestedBy: string;
+  requestedAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string;
 };
 
 /** As stored: every field has a default, so nothing is missing. */
@@ -44,7 +79,7 @@ type Doc = Omit<ContractInput, "customerId"> & {
   terminatedOn?: string | null;
 };
 
-const view = (c: Doc, names: Map<string, string>, today: string): ContractView => ({
+const view = (c: Doc, names: Map<string, string>, today: string, pending: ChangeView | null = null): ContractView => ({
   id: String(c._id),
   version: c.__v,
   number: c.number,
@@ -63,6 +98,7 @@ const view = (c: Doc, names: Map<string, string>, today: string): ContractView =
   document: c.document ? { url: c.document.url, name: c.document.name } : null,
   status: contractStatus(c, today),
   terminatedOn: c.terminatedOn ?? null,
+  pendingChange: pending,
 });
 
 async function customerNames(farmId: string) {
@@ -83,7 +119,12 @@ export async function listContracts(
       .lean(),
     customerNames(farmId),
   ]);
-  return docs.map((d) => view(d as unknown as Doc, names, today));
+  const waiting = (await ContractChangeModel.find({ farmId, status: "pending" }).lean()) as unknown as ChangeDoc[];
+  const who = await namesOf(waiting.map((w) => w.createdBy));
+  const pending = new Map(
+    await Promise.all(waiting.map(async (w) => [String(w.contractId), await changeView(w, who)] as const)),
+  );
+  return docs.map((d) => view(d as unknown as Doc, names, today, pending.get(String(d._id)) ?? null));
 }
 
 /**
@@ -205,6 +246,7 @@ export async function updateContract(
   input: Record<string, unknown>,
   version: unknown,
   today = lagosToday(),
+  origin = "",
 ) {
   const doc = await load(actor, id);
   if (typeof version !== "number" || version !== doc.__v) throw stale();
@@ -212,7 +254,56 @@ export async function updateContract(
   if (status === "terminated" || status === "expired")
     throw new HttpError(409, "ended", `${doc.number} has ended, so it stays as agreed. Write a new contract instead.`);
   const values = clean({ ...input, customerId: String(doc.customerId) });
-  if (doc.status === "active") await assertNoOverlap(actor.farmId, values, doc._id);
+  // An agreed contract changes only with an owner's say: anyone else's change waits for one.
+  if (doc.status === "active") {
+    const { before, after } = diff(doc.toObject() as unknown as ContractInput, values);
+    if (!Object.keys(after).length)
+      return view(
+        doc.toObject() as unknown as Doc,
+        await customerNames(actor.farmId),
+        today,
+        await pendingFor(actor.farmId, doc._id),
+      );
+    await assertNoOverlap(actor.farmId, values, doc._id);
+    const reason = typeof input.reason === "string" ? input.reason.trim().slice(0, 500) : "";
+    if (!can(actor.role, "contract.approve")) {
+      if (await ContractChangeModel.exists({ farmId: actor.farmId, contractId: doc._id, status: "pending" }))
+        throw new HttpError(
+          409,
+          "change_waiting",
+          `A change to ${doc.number} is already waiting for an owner. Wait for their answer, or ask them.`,
+        );
+      const change = await ContractChangeModel.create({
+        farmId: actor.farmId,
+        createdBy: actor.id,
+        contractId: doc._id,
+        before,
+        after,
+        reason,
+      });
+      await tellOwners(actor, doc.number, `${origin}/contracts/${String(doc._id)}`).catch((error) =>
+        console.error("[contracts] change email", error),
+      );
+      return view(
+        doc.toObject() as unknown as Doc,
+        await customerNames(actor.farmId),
+        today,
+        await changeView(change.toObject()),
+      );
+    }
+    // An owner's change is approved as it's made, and kept on the record like any other.
+    await ContractChangeModel.create({
+      farmId: actor.farmId,
+      createdBy: actor.id,
+      contractId: doc._id,
+      before,
+      after,
+      reason,
+      status: "approved",
+      decidedBy: actor.id,
+      decidedAt: new Date(),
+    });
+  }
   // A new end date may be close again: warn about it then.
   if (values.endDate !== doc.endDate) doc.endingWarnedAt = null;
   doc.set(values);
@@ -223,6 +314,153 @@ export async function updateContract(
     throw error;
   }
   return view(doc.toObject() as unknown as Doc, await customerNames(actor.farmId), today);
+}
+
+type ChangeDoc = {
+  _id: unknown;
+  contractId: unknown;
+  status: ChangeView["status"];
+  before: ChangeTerms;
+  after: ChangeTerms;
+  reason?: string;
+  createdBy?: unknown;
+  createdAt?: Date;
+  decidedBy?: unknown;
+  decidedAt?: Date | null;
+  decisionNote?: string;
+};
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** Only the terms that differ, as they were and as they would be. */
+function diff(current: Partial<ContractInput>, next: ContractInput) {
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  for (const k of CHANGEABLE) {
+    const was =
+      k === "document" && current.document
+        ? { url: current.document.url, name: current.document.name ?? "" }
+        : current[k];
+    if (!same(was, next[k])) {
+      before[k] = was ?? null;
+      after[k] = next[k];
+    }
+  }
+  return { before: before as ChangeTerms, after: after as ChangeTerms };
+}
+
+async function namesOf(ids: unknown[]) {
+  const users = await UserModel.find({ _id: { $in: ids.filter(Boolean) } }, { name: 1 })
+    .setOptions({ withDeleted: true })
+    .lean();
+  return new Map(users.map((u) => [String(u._id), u.name]));
+}
+
+async function changeView(c: ChangeDoc, who?: Map<string, string>): Promise<ChangeView> {
+  const people = who ?? (await namesOf([c.createdBy, c.decidedBy]));
+  return {
+    id: String(c._id),
+    contractId: String(c.contractId),
+    status: c.status,
+    before: c.before,
+    after: c.after,
+    reason: c.reason ?? "",
+    requestedBy: people.get(String(c.createdBy)) ?? "Someone",
+    requestedAt: (c.createdAt ?? new Date()).toISOString(),
+    decidedBy: c.decidedBy ? (people.get(String(c.decidedBy)) ?? "An owner") : null,
+    decidedAt: c.decidedAt ? c.decidedAt.toISOString() : null,
+    decisionNote: c.decisionNote ?? "",
+  };
+}
+
+async function pendingFor(farmId: string, contractId: unknown) {
+  const c = await ContractChangeModel.findOne({
+    farmId,
+    contractId: contractId as Types.ObjectId,
+    status: "pending",
+  }).lean();
+  return c ? changeView(c as unknown as ChangeDoc) : null;
+}
+
+/** Every change to a contract, newest first: waiting, approved and turned down. */
+export async function listChanges(farmId: string, contractId: string) {
+  await connectDb();
+  if (!Types.ObjectId.isValid(contractId)) return [];
+  const docs = (await ContractChangeModel.find({ farmId, contractId })
+    .sort({ _id: -1 })
+    .lean()) as unknown as ChangeDoc[];
+  const who = await namesOf(docs.flatMap((d) => [d.createdBy, d.decidedBy]));
+  return Promise.all(docs.map((d) => changeView(d, who)));
+}
+
+async function tellOwners(actor: CurrentUser, number: string, link: string) {
+  const owners = await UserModel.find(
+    { farmId: actor.farmId, role: "owner", status: "active" },
+    { email: 1, name: 1 },
+  ).lean();
+  for (const o of owners)
+    await sendEmail({
+      to: o.email,
+      subject: `${actor.name} asks to change ${number}`,
+      text: `Hi ${o.name},\n\n${actor.name} asked to change the terms of ${number}. Nothing changes until you approve it:\n\n${link}\n\nFowlex`,
+    });
+}
+
+/**
+ * An owner approves a change (the contract takes the new terms, checked as any edit is) or turns
+ * it down with a reason. Either way it stays on the contract's record, and whoever asked is told.
+ */
+export async function decideChange(
+  actor: CurrentUser,
+  changeId: string,
+  input: { approve?: unknown; note?: unknown },
+  today = lagosToday(),
+) {
+  await connectDb();
+  const change = Types.ObjectId.isValid(changeId)
+    ? await ContractChangeModel.findOne({ _id: changeId, farmId: actor.farmId })
+    : null;
+  if (!change) throw new HttpError(404, "not_found", "That change isn't here any more.");
+  if (change.status !== "pending") throw new HttpError(409, "decided", `That change was ${change.status} already.`);
+  const doc = await load(actor, String(change.contractId));
+  const note = typeof input.note === "string" ? input.note.trim().slice(0, 500) : "";
+  if (input.approve === true) {
+    const status = contractStatus(doc as unknown as Doc, today);
+    if (status !== "active" && status !== "draft")
+      throw new HttpError(409, "ended", `${doc.number} has ended, so it stays as agreed.`);
+    const values = clean({
+      ...(doc.toObject() as object),
+      ...(change.after as object),
+      customerId: String(doc.customerId),
+    });
+    if (doc.status === "active") await assertNoOverlap(actor.farmId, values, doc._id);
+    if (values.endDate !== doc.endDate) doc.endingWarnedAt = null;
+    doc.set(values);
+    await doc.save();
+  } else if (!note) throw new HttpError(400, "invalid_change", "Say why, so they know what to change.", "note");
+  change.set({
+    status: input.approve === true ? "approved" : "rejected",
+    decidedBy: actor.id,
+    decidedAt: new Date(),
+    decisionNote: note,
+  });
+  await change.save();
+  const asker = await UserModel.findById(change.createdBy, { email: 1, name: 1 }).lean();
+  if (asker)
+    await sendEmail({
+      to: asker.email,
+      subject: `Your change to ${doc.number} was ${input.approve === true ? "approved" : "turned down"}`,
+      text: `Hi ${asker.name},\n\n${actor.name} ${input.approve === true ? "approved your change: the contract has its new terms" : `turned down your change${note ? `: ${note}` : "."}`}\n\nFowlex`,
+    }).catch((error) => console.error("[contracts] decision email", error));
+  return view(doc.toObject() as unknown as Doc, await customerNames(actor.farmId), today);
+}
+
+/** One contract, with any change waiting. */
+export async function getContract(farmId: string, id: string, today = lagosToday()) {
+  await connectDb();
+  const doc = Types.ObjectId.isValid(id) ? await ContractModel.findOne({ _id: id, farmId }).lean() : null;
+  if (!doc) return null;
+  return view(doc as unknown as Doc, await customerNames(farmId), today, await pendingFor(farmId, doc._id));
 }
 
 /** A draft is agreed: from now its price sets the customer's orders on its days. */
@@ -345,7 +583,7 @@ export async function sendEndingWarnings(origin: string, today = lagosToday()) {
       await sendEmail({
         to: person.email,
         subject: `${who}'s contract ends ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`,
-        text: `Hi ${person.name},\n\n${c.number} with ${who} (${formatNaira(c.priceKobo)} ${c.pricing === "perKg" ? "a kg" : "a bird"}) ends on ${formatRange({ from: c.endDate, to: c.endDate })}. Agree the next one in time:\n\n${origin}/contracts?open=${String(c._id)}\n\nFowlex`,
+        text: `Hi ${person.name},\n\n${c.number} with ${who} (${formatNaira(c.priceKobo)} ${c.pricing === "perKg" ? "a kg" : "a bird"}) ends on ${formatRange({ from: c.endDate, to: c.endDate })}. Agree the next one in time:\n\n${origin}/contracts/${String(c._id)}\n\nFowlex`,
       });
     await ContractModel.updateOne({ _id: c._id }, { $set: { endingWarnedAt: new Date() } });
     sent++;

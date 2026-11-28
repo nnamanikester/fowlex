@@ -54,9 +54,35 @@ export async function startTransferCharge(input: {
   };
 }
 
-/** Where a charge stands at Paystack: "success" once the money is in, with the amount and when. */
+/**
+ * Paystack's checkout for `amountKobo` (card, bank app, USSD, transfer): the page to send the
+ * customer to. They come back to `callbackUrl` with the reference; the money is confirmed with
+ * `verifyCharge`, never taken from the return.
+ */
+export async function startCheckout(input: {
+  email: string;
+  amountKobo: number;
+  reference: string;
+  callbackUrl: string;
+  metadata: Record<string, string>;
+}) {
+  const res = await paystack<{ authorization_url?: string; reference?: string }>("/transaction/initialize", {
+    method: "POST",
+    body: {
+      email: input.email,
+      amount: input.amountKobo,
+      reference: input.reference,
+      callback_url: input.callbackUrl,
+      metadata: input.metadata,
+    },
+  });
+  if (!res.status || !res.data?.authorization_url) throw paystackTrouble(res, "opening a checkout");
+  return { url: res.data.authorization_url, reference: res.data.reference ?? input.reference };
+}
+
+/** Where a charge stands at Paystack: "success" once the money is in, with the amount, its fee and when. */
 export async function verifyCharge(reference: string) {
-  const res = await paystack<{ status?: string; amount?: number; paid_at?: string | null }>(
+  const res = await paystack<{ status?: string; amount?: number; fees?: number | null; paid_at?: string | null }>(
     `/transaction/verify/${encodeURIComponent(reference)}`,
   );
   if (res.httpStatus === 404) return null;
@@ -64,6 +90,7 @@ export async function verifyCharge(reference: string) {
   return {
     status: String(res.data.status ?? ""),
     amountKobo: Number(res.data.amount ?? 0),
+    feeKobo: Number(res.data.fees ?? 0),
     paidAt: res.data.paid_at ? new Date(res.data.paid_at) : null,
   };
 }

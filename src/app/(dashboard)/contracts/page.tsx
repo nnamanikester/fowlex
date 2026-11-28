@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { ContractsList } from "./_components/contracts-list";
@@ -30,7 +31,9 @@ export default function ContractsPage({ searchParams }: PageProps<"/contracts">)
 async function Contracts({ searchParams }: Pick<PageProps<"/contracts">, "searchParams">) {
   const user = await requireUser();
   const now = await requestToday();
+  // Old links (emails, bookmarks) opened a contract on this page: it has its own now.
   const { open } = await searchParams;
+  if (typeof open === "string") redirect(`/contracts/${open}`);
   const [contracts, customers, templates] = await Promise.all([
     listContracts(user.farmId, { today: now }),
     listCustomers(user.farmId),
@@ -45,7 +48,6 @@ async function Contracts({ searchParams }: Pick<PageProps<"/contracts">, "search
         templates={templates}
         today={now}
         canWrite={canWrite}
-        openId={typeof open === "string" ? open : undefined}
       />
       <TemplatesPanel templates={templates} canWrite={canWrite} />
     </div>

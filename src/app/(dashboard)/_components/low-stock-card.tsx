@@ -26,7 +26,7 @@ export function LowStockCard({ items }: { items: ItemView[] }) {
               href={`/inventory/${i.id}?buy=1`}
               className="focus-ring flex items-center gap-3 px-5 py-3 hover:bg-surface-subtle"
             >
-              <span className="min-w-0 flex-1">
+              <span className="min-w-0 flex-1 space-y-1">
                 <span className="block font-semibold text-fg">{i.name}</span>
                 <span className="block text-xs text-fg-muted">Reorder below {quantity(i.reorderLevel!, i.unit)}</span>
               </span>

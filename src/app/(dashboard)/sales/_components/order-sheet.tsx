@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CircleAlert, Plus, ReceiptText, Truck, X } from "lucide-react";
+import { CircleAlert, Plus, ReceiptText, Trash2, Truck, X } from "lucide-react";
 
 import { Field } from "@/components/auth";
 import { ConfirmDialog } from "@/components/kit";
@@ -23,7 +23,7 @@ import type { OrderView, Quote } from "@/lib/sales/service";
 import { useAction } from "@/lib/use-action";
 import { cn } from "@/lib/utils";
 
-export type BatchOption = { id: string; code: string; liveBirds: number };
+export type BatchOption = { id: string; code: string; liveBirds: number; birdGrams?: number };
 export type CustomerOption = { id: string; name: string };
 type Row = { key: number; batchId: string; birds: string; kg: string };
 
@@ -57,6 +57,7 @@ export function OrderSheet({
   onSaved: (message: string) => void;
 }) {
   const [mode, setMode] = React.useState<"book" | "deliver">("book");
+  const batchFor = (id: string) => batches.find((b) => b.id === id);
   const [customer, setCustomer] = React.useState(order?.customerId ?? customerId ?? "");
   const [date, setDate] = React.useState(order?.deliveryDate ?? today);
   const [deliveredOn, setDeliveredOn] = React.useState(today);
@@ -66,7 +67,8 @@ export function OrderSheet({
           key: keys++,
           batchId: l.batchId,
           birds: String(l.birds),
-          kg: fromGrams(l.weightGrams),
+          // An estimate isn't a weighing: the field stays empty until they're weighed.
+          kg: l.weighed === false ? "" : fromGrams(l.weightGrams),
         }))
       : [{ key: keys++, batchId: batches.length === 1 ? batches[0].id : "", birds: "", kg: "" }],
   );
@@ -80,7 +82,8 @@ export function OrderSheet({
   const action = useAction();
 
   const status = order?.status ?? "pending";
-  const editable = canWrite && status === "pending";
+  // Delivered or not, an order can be put right until its invoice is paid.
+  const editable = canWrite && (status === "pending" || status === "delivered") && !order?.locked;
   const delivering = mode === "deliver";
   // The price on the day it's delivered (when delivering) or booked for.
   const priceDay = delivering ? deliveredOn : date;
@@ -114,8 +117,11 @@ export function OrderSheet({
     priceKobo: price ?? 0,
     pricing,
   }));
+  /** Not weighed: the batch's weight a bird times the birds, as the server will price it. */
+  const estimate = (l: OrderLine) => Math.round((batchFor(l.batchId)?.birdGrams ?? 0) * l.birds);
+  const priced = (l: OrderLine) => (l.pricing === "perKg" && !l.weightGrams ? { ...l, weightGrams: estimate(l) } : l);
   const total =
-    (status === "pending" ? lines : (order?.lines ?? [])).reduce((n, l) => n + lineAmount(l), 0) + (deliveryKobo ?? 0);
+    (editable ? lines.map(priced) : (order?.lines ?? [])).reduce((n, l) => n + lineAmount(l), 0) + (deliveryKobo ?? 0);
   const owed = quote?.owedKobo ?? 0;
   const over = quote?.limitKobo !== null && quote?.limitKobo !== undefined && owed + total > quote.limitKobo;
   const lineError = (i: number, f: keyof OrderLine) => action.fieldError(`lines.${i}.${f}`);
@@ -125,10 +131,6 @@ export function OrderSheet({
     !price && "Enter the price.",
     rows.some((r) => !r.batchId) && "Choose the batch on every line.",
     lines.some((l) => l.birds < 1) && "Enter how many birds on every line.",
-    delivering &&
-      pricing === "perKg" &&
-      lines.some((l) => l.weightGrams < 1) &&
-      "Weigh the birds: the price is per kg.",
   ].filter(Boolean) as string[];
 
   const send = (confirm = false) => {
@@ -161,7 +163,6 @@ export function OrderSheet({
   };
   const overCredit = action.failure?.code === "over_credit";
 
-  const batchFor = (id: string) => batches.find((b) => b.id === id);
   const title = order ? `${order.number} · ${order.customerName}` : "New order";
 
   return (
@@ -213,9 +214,9 @@ export function OrderSheet({
                 </div>
               ) : order ? (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className={cn("grid gap-2", status === "pending" && "grid-cols-2")}>
                     <Button
-                      variant="secondary"
+                      variant={status === "pending" ? "secondary" : "primary"}
                       size="lg"
                       loading={action.isPending("save")}
                       disabled={action.busy}
@@ -223,9 +224,11 @@ export function OrderSheet({
                     >
                       Save changes
                     </Button>
-                    <Button size="lg" disabled={action.busy} onClick={() => setMode("deliver")}>
-                      <Truck /> Delivered
-                    </Button>
+                    {status === "pending" && (
+                      <Button size="lg" disabled={action.busy} onClick={() => setMode("deliver")}>
+                        <Truck /> Delivered
+                      </Button>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
@@ -234,7 +237,7 @@ export function OrderSheet({
                     disabled={action.busy}
                     onClick={() => setCancelling(true)}
                   >
-                    Cancel order
+                    <Trash2 /> Delete order
                   </Button>
                 </>
               ) : (
@@ -253,6 +256,14 @@ export function OrderSheet({
         }
       >
         {order?.contact && <OnlineContact contact={order.contact} />}
+        {editable && order?.invoiceId && (
+          <p className="mb-4 flex flex-wrap items-center gap-x-2 rounded-xl bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
+            Its invoice follows every change until it&apos;s paid.
+            <Link href={`/invoices?open=${order.invoiceId}`} className="focus-ring rounded font-semibold text-brand-fg">
+              See its invoice
+            </Link>
+          </p>
+        )}
         {!editable && order ? (
           <OrderSummary order={order} />
         ) : (
@@ -395,7 +406,11 @@ export function OrderSheet({
                         id={`lines.${i}.weightGrams`}
                         label="Total weight (kg)"
                         error={lineError(i, "weightGrams")}
-                        hint={delivering ? undefined : pricing === "perKg" ? "Weighed on the day" : "Optional"}
+                        hint={
+                          pricing === "perKg" && !toGrams(r.kg) && r.batchId && Number(r.birds)
+                            ? `Not weighed: about ${kg(estimate(lines[i]))}`
+                            : "Optional"
+                        }
                       >
                         {(a11y) => (
                           <Input
@@ -418,7 +433,7 @@ export function OrderSheet({
                     {price ? (
                       <p className="num text-right text-sm text-fg-muted">
                         {pricing === "perKg" && !lines[i].weightGrams
-                          ? "Priced once weighed"
+                          ? `About ${formatNaira(lineAmount(priced(lines[i])))}`
                           : formatNaira(lineAmount(lines[i]))}
                       </p>
                     ) : null}
@@ -479,12 +494,14 @@ export function OrderSheet({
         <ConfirmDialog
           open={cancelling}
           onOpenChange={setCancelling}
-          title={`Cancel ${order.number}?`}
-          description="Nothing was delivered, so no birds move. It stays on record as cancelled."
-          confirmLabel="Cancel order"
+          title={`Delete ${order.number}?`}
+          description={`Its invoice goes with it${
+            status === "delivered" ? ", and the birds count as on the farm again" : ""
+          }. Use this for an order made by mistake.`}
+          confirmLabel="Delete order"
           onConfirm={async () => {
-            await apiRequest(`/api/sales/${order.id}/cancel`, "POST");
-            onSaved(`${order.number} cancelled.`);
+            await apiRequest(`/api/sales/${order.id}`, "DELETE");
+            onSaved(`${order.number} deleted, with its invoice.`);
           }}
         />
       )}
@@ -528,16 +545,20 @@ function OrderSummary({ order }: { order: OrderView }) {
         </ul>
       </div>
       {order.notes && <p className="text-sm text-fg-muted">{order.notes}</p>}
-      {order.status === "delivered" && (
+      {order.status === "delivered" && !order.invoiceId && (
         <LinkButton href={`/invoices?new=${order.customerId}&orders=${order.id}`} fullWidth>
           <ReceiptText /> Make an invoice
         </LinkButton>
       )}
-      {order.status === "invoiced" && (
+      {order.invoiceId && (
         <p className="text-sm text-fg-muted">
-          On an invoice:{" "}
-          <Link href="/invoices" className="focus-ring rounded font-semibold text-brand-fg">
-            see Invoices
+          {order.locked && order.status !== "invoiced"
+            ? "Money is paid on its invoice, so it stays as it is. "
+            : order.status === "invoiced"
+              ? "It's on an invoice with other orders. "
+              : ""}
+          <Link href={`/invoices?open=${order.invoiceId}`} className="focus-ring rounded font-semibold text-brand-fg">
+            See its invoice
           </Link>
         </p>
       )}

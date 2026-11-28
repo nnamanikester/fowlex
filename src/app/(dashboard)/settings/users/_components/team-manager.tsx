@@ -128,7 +128,7 @@ export function TeamManager({ team }: { team: Team }) {
                 <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-subtle text-fg-subtle">
                   <MailPlus className="size-4" aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block truncate font-semibold text-fg">{invite.email}</span>
                   <span className="block truncate text-xs text-fg-subtle">
                     Sent {when(invite.sentAt)}

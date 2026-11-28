@@ -2,6 +2,7 @@ import "server-only";
 
 import { Types } from "mongoose";
 
+import { defaultName, type PriceDraft, type PriceOption, validatePrices } from "./prices";
 import { ORDER_DAYS, type OnlineOrderInput, readyOn, slugFrom, validateOnlineOrder } from "./rules";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { HttpError } from "@/lib/auth/guard";
@@ -11,6 +12,8 @@ import { addDays, today as lagosToday } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { formatNaira } from "@/lib/money";
+import { syncOrderInvoice } from "@/lib/invoices/service";
+import { orderTotal } from "@/lib/sales/rules";
 import { readSettings } from "@/lib/settings/service";
 import { normalisePhone } from "@/lib/suppliers/rules";
 import { nextSequence } from "@/models/counter";
@@ -19,17 +22,48 @@ import { SalesOrderModel } from "@/models/sales-order";
 import { SettingsModel } from "@/models/settings";
 import { UserModel } from "@/models/user";
 
-export type ShopSettings = { enabled: boolean; slug: string | null; delivers: boolean; pricePerKgKobo: number | null };
+export type ShopSettings = { enabled: boolean; slug: string | null; delivers: boolean; prices: PriceOption[] };
+
+type PriceDoc = {
+  prices?: { _id?: unknown; name: string; pricing: string; priceKobo: number }[] | null;
+  defaultPricePerKgKobo?: number | null;
+};
+
+/**
+ * The farm's prices, the usual one first. A farm that only ever set a price per kg (in Settings)
+ * has that one, as "By weight", until it saves a list.
+ */
+export function pricesOf(doc: PriceDoc | null | undefined): PriceOption[] {
+  if (doc?.prices?.length)
+    return doc.prices.map((p) => ({
+      id: String(p._id),
+      name: p.name,
+      pricing: p.pricing as PriceOption["pricing"],
+      priceKobo: p.priceKobo,
+    }));
+  return doc?.defaultPricePerKgKobo
+    ? [{ id: "kg", name: defaultName("perKg"), pricing: "perKg", priceKobo: doc.defaultPricePerKgKobo }]
+    : [];
+}
+
+/** The farm's prices, for orders, "Sell now" and the Sales page. */
+export async function farmPrices(farmId: string) {
+  await connectDb();
+  return pricesOf(await SettingsModel.findOne({ farmId }, { prices: 1, defaultPricePerKgKobo: 1 }).lean());
+}
 
 /** The order page's settings, for the Sales page. */
 export async function shopSettings(farmId: string): Promise<ShopSettings> {
-  const s = await readSettings(farmId);
-  const doc = await SettingsModel.findOne({ farmId }, { shopEnabled: 1, shopSlug: 1, shopDelivers: 1 }).lean();
+  await readSettings(farmId);
+  const doc = await SettingsModel.findOne(
+    { farmId },
+    { shopEnabled: 1, shopSlug: 1, shopDelivers: 1, prices: 1, defaultPricePerKgKobo: 1 },
+  ).lean();
   return {
     enabled: !!doc?.shopEnabled,
     slug: doc?.shopSlug ?? null,
     delivers: doc?.shopDelivers ?? true,
-    pricePerKgKobo: s.defaultPricePerKgKobo,
+    prices: pricesOf(doc),
   };
 }
 
@@ -44,29 +78,35 @@ async function freeSlug(farmId: string, name: string) {
 }
 
 /**
- * Turns the order page on or off, says whether the farm delivers, and sets the price per kg it
- * shows (the farm's usual price, also used for orders without a contract). Turning it on needs a
- * price, so customers always see one; the page's address is made from the farm's name once.
+ * Turns the order page on or off, says whether the farm delivers, and saves the farm's prices
+ * (per bird, per kg, or several: the usual one first). Turning it on needs a price, so customers
+ * always see one; the page's address is made from the farm's name once.
  */
 export async function updateShop(actor: CurrentUser, input: Record<string, unknown>) {
   await connectDb();
   await readSettings(actor.farmId); // Makes the settings if they're not there yet.
   const doc = (await SettingsModel.findOne({ farmId: actor.farmId }))!;
-  const price = input.pricePerKgKobo === undefined ? doc.defaultPricePerKgKobo : input.pricePerKgKobo;
-  if (price !== null && (typeof price !== "number" || !Number.isInteger(price) || price < 1 || price > 10_000_000_00))
-    throw new HttpError(400, "invalid_shop", "Enter your price per kg.", "pricePerKgKobo");
+  if (input.prices !== undefined) {
+    const errors = validatePrices(input.prices);
+    const [field] = Object.keys(errors);
+    if (field) throw new HttpError(400, "invalid_shop", errors[field], field === "prices" ? field : `prices.${field}`);
+    const list = (input.prices as PriceDraft[]).map((p) => ({
+      ...(typeof p.id === "string" && Types.ObjectId.isValid(p.id) && { _id: p.id }),
+      name: p.name.trim() || defaultName(p.pricing),
+      pricing: p.pricing,
+      priceKobo: p.priceKobo!,
+    }));
+    doc.set({ prices: list });
+    // Settings' price per kg follows the list, for anything still reading it.
+    const kg = list.find((p) => p.pricing === "perKg");
+    if (kg) doc.set({ defaultPricePerKgKobo: kg.priceKobo });
+  }
   const enabled = input.enabled === undefined ? doc.shopEnabled : input.enabled === true;
-  if (enabled && !price)
-    throw new HttpError(
-      400,
-      "invalid_shop",
-      "Set your price per kg first: customers see it on the page.",
-      "pricePerKgKobo",
-    );
+  if (enabled && !pricesOf(doc.toObject()).length)
+    throw new HttpError(400, "invalid_shop", "Add your price first: customers see it on the page.", "prices");
   doc.set({
     shopEnabled: enabled,
     shopDelivers: input.delivers === undefined ? doc.shopDelivers : input.delivers === true,
-    defaultPricePerKgKobo: price,
     ...(enabled && !doc.shopSlug && { shopSlug: await freeSlug(actor.farmId, doc.businessName) }),
   });
   await doc.save();
@@ -105,7 +145,8 @@ export async function sellable(farmId: string, today: string): Promise<Sellable[
 export type Offer = {
   farm: { name: string; phone: string; email: string; address: string };
   slug: string;
-  pricePerKgKobo: number;
+  /** What the farm sells at, the usual price first. */
+  prices: PriceOption[];
   delivers: boolean;
   /** Birds that can be had on each day from today, for the days that have any. */
   days: { date: string; birds: number }[];
@@ -118,7 +159,7 @@ async function shopFarm(slug: string) {
   await connectDb();
   if (typeof slug !== "string" || !/^[a-z0-9-]{1,60}$/.test(slug)) return null;
   const doc = await SettingsModel.findOne({ shopSlug: slug, shopEnabled: true }).lean();
-  return doc && doc.defaultPricePerKgKobo ? doc : null;
+  return doc && pricesOf(doc).length ? { ...doc, priceList: pricesOf(doc) } : null;
 }
 
 /** What the public order page shows, or null when there's no such page or it's off. */
@@ -138,7 +179,7 @@ export async function shopOffer(slug: string, today = lagosToday()): Promise<Off
   return {
     farm: { name: doc.businessName, phone: doc.phone, email: doc.email, address: doc.address },
     slug: doc.shopSlug!,
-    pricePerKgKobo: doc.defaultPricePerKgKobo!,
+    prices: doc.priceList,
     delivers: doc.shopDelivers,
     days,
     readyNow: days[0]?.date === today ? days[0].birds : 0,
@@ -161,6 +202,8 @@ export type Placed = {
   date: string;
   delivery: boolean;
   estimateKobo: number;
+  /** Priced per bird: the amount is what they pay, not an estimate. */
+  exact: boolean;
   name: string;
   phone: string;
   email: string;
@@ -196,6 +239,8 @@ export async function placeOnlineOrder(
     address: text(input.address ?? ""),
     notes: text(input.notes ?? ""),
   };
+  // Which price: the one there is, or the one they chose.
+  const option = doc.priceList.length === 1 ? doc.priceList[0] : doc.priceList.find((p) => p.id === input.priceId);
   const errors = validateOnlineOrder(values, { delivers: doc.shopDelivers });
   const [field] = Object.keys(errors) as (keyof OnlineOrderInput)[];
   if (field) throw new HttpError(400, "invalid_order", errors[field]!, field);
@@ -207,8 +252,9 @@ export async function placeOnlineOrder(
 
   if (requestId) {
     const again = await SalesOrderModel.findOne({ farmId, requestId }).lean();
-    if (again) return placedView(again, farm, doc.defaultPricePerKgKobo!);
+    if (again) return placedView(again, farm);
   }
+  if (!option) throw new HttpError(400, "invalid_order", "Choose which birds you want.", "priceId");
   throttle(`${slug}|${ip}`);
   if (v.date < today || v.date > addDays(today, ORDER_DAYS - 1))
     throw new HttpError(400, "invalid_order", "Choose one of the days shown.", "date");
@@ -236,9 +282,18 @@ export async function placeOnlineOrder(
 
   const customer = await findOrAddCustomer(farmId, { ...v, phone });
   const contract = await contractFor(farmId, String(customer._id), v.date);
-  const pricing = contract?.pricing ?? "perKg";
-  const priceKobo = contract?.priceKobo ?? doc.defaultPricePerKgKobo!;
+  const pricing = contract?.pricing ?? option.pricing;
+  const priceKobo = contract?.priceKobo ?? option.priceKobo;
   const where = v.delivery ? `Deliver to: ${v.address}` : "Collecting from the farm";
+  const lines = take.map((t) => ({
+    ...t,
+    weightGrams:
+      pricing === "perKg" ? Math.round((batches.find((b) => b.id === t.batchId)?.weightGrams ?? 0) * t.birds) : 0,
+    weighed: false,
+    priceKobo,
+    pricing,
+  }));
+  const which = doc.priceList.length > 1 && !contract ? option.name : "";
   const year = v.date.slice(0, 4);
   const seq = await nextSequence(farmId, `order:${year}`);
   let order;
@@ -250,11 +305,11 @@ export async function placeOnlineOrder(
       customerId: customer._id,
       contractId: contract?.id ?? null,
       deliveryDate: v.date,
-      // Per kg, the birds are weighed on the day: the amount is worked out then.
-      lines: take.map((t) => ({ ...t, weightGrams: 0, priceKobo, pricing })),
+      // Per kg, priced on the batches' weight until the birds are weighed on the day.
+      lines: lines,
       deliveryKobo: 0,
-      totalKobo: pricing === "perBird" ? v.birds * priceKobo : 0,
-      notes: [where, v.notes].filter(Boolean).join(". ").slice(0, 500),
+      totalKobo: orderTotal({ lines, deliveryKobo: 0 }),
+      notes: [which, where, v.notes].filter(Boolean).join(". ").slice(0, 500),
       source: "online",
       contact: { name: v.name, phone, email: v.email, business: v.business, delivery: v.delivery, address: v.address },
       requestId,
@@ -263,11 +318,13 @@ export async function placeOnlineOrder(
     // The same form, sent twice at once: the first booked it.
     if ((error as { code?: number }).code === 11000 && requestId) {
       const again = await SalesOrderModel.findOne({ farmId, requestId }).lean();
-      if (again) return placedView(again, farm, doc.defaultPricePerKgKobo!);
+      if (again) return placedView(again, farm);
     }
     throw error;
   }
-  const placed = placedView(order.toObject(), farm, doc.defaultPricePerKgKobo!, {
+  // Its invoice with it, not sent: the farm sends it when it's ready.
+  await syncOrderInvoice(farmId, null, order._id);
+  const placed = placedView(order.toObject(), farm, {
     weightGrams: batchesWeight(batches, take),
   });
   await tell(farmId, placed, String(order._id), customer.name, origin).catch((error) =>
@@ -293,21 +350,19 @@ function placedView(
     contact?: { name?: string; phone?: string; email?: string; delivery?: boolean } | null;
   },
   farm: Offer["farm"],
-  pricePerKgKobo: number,
   { weightGrams = 2200 }: { weightGrams?: number } = {},
 ): Placed {
   const birds = o.lines.reduce((n, l) => n + l.birds, 0);
   const first = o.lines[0];
   const estimateKobo =
-    first?.pricing === "perBird"
-      ? birds * first.priceKobo
-      : Math.round((birds * weightGrams * (first?.priceKobo ?? pricePerKgKobo)) / 1000);
+    first.pricing === "perBird" ? birds * first.priceKobo : Math.round((birds * weightGrams * first.priceKobo) / 1000);
   return {
     number: o.number,
     birds,
     date: o.deliveryDate,
     delivery: !!o.contact?.delivery,
     estimateKobo,
+    exact: first.pricing === "perBird",
     name: o.contact?.name ?? "",
     phone: o.contact?.phone ?? "",
     email: o.contact?.email ?? "",
@@ -386,7 +441,9 @@ async function tell(farmId: string, p: Placed, orderId: string, customerName: st
         `Hello ${p.name},`,
         "",
         `Thank you. We have your order for ${p.birds.toLocaleString("en-NG")} birds on ${day}, ${p.delivery ? "delivered to you" : "to collect from the farm"}.`,
-        `It comes to about ${formatNaira(p.estimateKobo)}; the final amount is worked out when the birds are weighed.`,
+        p.exact
+          ? `It comes to ${formatNaira(p.estimateKobo)}.`
+          : `It comes to about ${formatNaira(p.estimateKobo)}; the final amount is worked out when the birds are weighed.`,
         `We'll call you on ${prettyPhone(p.phone)} to confirm${p.farm.phone ? `, or call us on ${p.farm.phone}` : ""}.`,
         "",
         p.farm.name,

@@ -2,7 +2,7 @@
 
 The Fowlex dashboard is built on the **Pickriders dashboard design system** (tokens, shapes, motion,
 components), re-coloured with the Fowlex brand (`brand/README.md`): Fowlex charcoal, comb red and
-cream, with Inter, Jost and Geist Mono. Two kinds of people use it: the partners and managers at a
+cream, with Urbanist and Geist Mono (the Pickriders pair). Two kinds of people use it: the partners and managers at a
 desk reading money, and farm staff on a phone in a poultry house logging deaths and feed.
 
 See it live at **`/design`** (every token and, from step 1.3, every component, in the current theme).
@@ -25,7 +25,7 @@ Radix: the components are our own.
    persistent amber banner and amber "Test" pills while test keys are set.
 5. **Roomy controls, calm surfaces.** 44px buttons and inputs (`min-h-11`), 16px text in inputs on
    phones (no iOS zoom), cards with a hairline and `shadow-card` on the warm `canvas`.
-6. **Numbers line up.** Money and counts use tabular figures (`num`, Inter's `tnum`), right-aligned
+6. **Numbers line up.** Money and counts use tabular figures (`num`), right-aligned
    in tables. Naira are shown with ₦ and two decimals; they are stored as kobo integers.
 7. **Mono for what you copy.** Invoice numbers (`INV-2026-0001`), batch codes (`B-2026-07`) and
    Paystack references use Geist Mono, with a copy button where it helps.
@@ -69,22 +69,30 @@ accident.
 
 ## Type
 
-Inter for the interface (tabular figures for money), Jost for headings (the free cousin of Futura,
-the wordmark's face), Geist Mono for codes. Tailwind's default scale, with weight doing the work:
+The Pickriders pair: Urbanist for the interface, Geist Mono for codes (invoice numbers, batch
+codes, references). Money and counts use tabular figures (`num`). Tailwind's default scale, with
+weight doing the work, exactly as the Pickriders developer dashboard:
 
-| Use                        | Classes                                                                |
-| -------------------------- | ---------------------------------------------------------------------- |
-| Brand panel headline       | `font-display text-[2.5rem] font-bold tracking-tight`                  |
-| Auth and empty-state title | `font-display text-[1.75rem] font-bold tracking-tight text-fg-heading` |
-| Page title (PageHeader)    | `font-display text-2xl font-bold tracking-tight text-fg-heading`       |
-| Section and dialog title   | `text-lg font-bold text-fg-heading`                                    |
-| Headline numbers           | `num text-2xl font-semibold` (StatCard, MetricCard)                    |
-| Reading text               | `text-[15px] leading-6 text-fg-muted`                                  |
-| Controls, labels, tables   | `text-sm` (labels `font-semibold`)                                     |
-| Meta                       | `text-xs text-fg-subtle`                                               |
+| Use                        | Classes                                                    |
+| -------------------------- | ---------------------------------------------------------- |
+| Brand panel headline       | `text-[2.5rem] font-black tracking-tight`                  |
+| Auth and empty-state title | `text-[1.75rem] font-black tracking-tight text-fg-heading` |
+| Page title (PageHeader)    | `text-2xl font-extrabold tracking-tight text-fg-heading`   |
+| Section and dialog title   | `text-lg font-bold text-fg-heading`                        |
+| Headline numbers           | `num text-3xl font-extrabold tracking-tight` (StatCard)    |
+| Reading text               | `text-[15px] leading-6 text-fg-muted`                      |
+| Controls, labels, tables   | `text-sm` (labels `font-semibold`)                         |
+| Meta                       | `text-xs text-fg-subtle`                                   |
+
+Screens are built from these and the kit (PageHeader, Panel, StatCard, Badge, Button, Sheet):
+no one-off sizes, no radius beyond `rounded-xl` on cards (`rounded-2xl` is for dialogs only),
+no display-size numbers outside a page's one hero figure.
 
 ## Shape, space and motion
 
+- **Breathing room:** nothing touches. A title and the line under it get `space-y-1`; an amount
+  over its status pill is a column with `gap-1.5`; a label (`dt`) over its value (`dd`) gets 4px
+  on its own (a base rule). `e2e/spacing.spec.ts` fails if any two controls overlap on any page.
 - **Radius:** buttons `rounded-xl` (12px), inputs `rounded-lg`, cards and panels `rounded-xl`,
   modals `rounded-2xl` (a bottom sheet with `rounded-t-2xl` on phones), pills `rounded-full`.
 - **Heights:** buttons and inputs 44px (`min-h-11`), small buttons 36px.

@@ -3,6 +3,10 @@ import "server-only";
 import { Types } from "mongoose";
 
 import { connectDb } from "@/lib/db";
+import { costSheets, type CostSheet } from "@/lib/finance/batch-costs";
+import { batchOverhead } from "@/lib/finance/overhead";
+import { today as lagosToday } from "@/lib/dates";
+import { BatchModel } from "@/models/batch";
 import { ledger } from "@/lib/inventory/stock";
 import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
@@ -26,15 +30,27 @@ export type BatchCosts = {
   expensesKobo: number;
   stockKobo: number;
   totalKobo: number;
+  /** Its share of the farm's shared costs (rent, power, salaried staff, depreciation), by bird-days. */
+  sharedKobo: number;
+  /** The direct costs by kind: chicks, feed, drugs and vaccines, labour, everything else. */
+  byKind: CostSheet["byKind"];
 };
 
 /**
  * What a batch has cost so far: expenses charged to it (approved, not equipment) and the stock it
  * used. Phase 8 adds its share of the farm's shared costs.
  */
-export async function batchCosts(farmId: string, batchId: string): Promise<BatchCosts> {
+export async function batchCosts(farmId: string, batchId: string, today = lagosToday()): Promise<BatchCosts> {
   await connectDb();
-  const empty = { expenses: [], stock: [], expensesKobo: 0, stockKobo: 0, totalKobo: 0 };
+  const empty = {
+    expenses: [],
+    stock: [],
+    expensesKobo: 0,
+    stockKobo: 0,
+    totalKobo: 0,
+    sharedKobo: 0,
+    byKind: { chicks: 0, feed: 0, medication: 0, labour: 0, other: 0 },
+  };
   if (!Types.ObjectId.isValid(batchId)) return empty;
   const id = new Types.ObjectId(batchId);
   const [expenses, used] = await Promise.all([
@@ -87,9 +103,21 @@ export async function batchCosts(farmId: string, batchId: string): Promise<Batch
     paymentStatus: e.paymentStatus,
     capital: e.capital ?? false,
   }));
-  const expensesKobo = list
-    .filter((e) => e.approval === "approved" && !e.capital)
-    .reduce((n, e) => n + e.amountKobo, 0);
-  const stockKobo = stock.reduce((n, s) => n + s.costKobo, 0);
-  return { expenses: list, stock, expensesKobo, stockKobo, totalKobo: expensesKobo + stockKobo };
+  // The totals are the cost sheet's, so the page and every report agree.
+  const sheet = (await costSheets(farmId, [batchId])).get(batchId)!;
+  const batch = await BatchModel.findOne({ farmId, _id: id }, { placedOn: 1, closedOn: 1 }).lean();
+  const sharedKobo = batch
+    ? (
+        await batchOverhead(farmId, { id: batchId, placedOn: batch.placedOn, closedOn: batch.closedOn ?? null }, today)
+      ).reduce((n, m) => n + m.shareKobo, 0)
+    : 0;
+  return {
+    expenses: list,
+    stock,
+    expensesKobo: sheet.expensesKobo,
+    stockKobo: sheet.stockKobo,
+    totalKobo: sheet.totalKobo + sharedKobo,
+    sharedKobo,
+    byKind: sheet.byKind,
+  };
 }

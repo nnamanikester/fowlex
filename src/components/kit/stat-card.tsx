@@ -24,9 +24,9 @@ export function StatCard({
   const good = trend && trend.direction !== "flat" && (trend.direction === "up") !== !!trend.invert;
   return (
     // min-w-0: a long amount never widens its column (on a phone that zooms the whole page out).
-    <div className={cn("min-w-0 rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5", className)}>
+    <div className={cn("min-w-0 rounded-xl border border-line bg-surface p-5 shadow-card", className)}>
       <p className="text-sm text-fg-muted">{label}</p>
-      <p className="mt-1.5 text-[clamp(1.125rem,4.6vw,1.875rem)] font-extrabold leading-tight tracking-tight tabular-nums text-fg-heading [overflow-wrap:anywhere] sm:text-3xl">
+      <p className="num mt-1.5 text-3xl font-extrabold tracking-tight text-fg-heading [overflow-wrap:anywhere]">
         {value}
       </p>
       {(hint || trend) && (

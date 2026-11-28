@@ -119,7 +119,7 @@ export function FileDrop({
           {files.map((file, i) => (
             <li key={`${file.name}-${file.lastModified}-${i}`} className="flex items-center gap-3 px-3 py-2">
               <Thumb file={file} />
-              <span className="min-w-0 flex-1">
+              <span className="min-w-0 flex-1 space-y-1">
                 <span className="block truncate text-sm font-medium text-fg">{file.name}</span>
                 <span className="text-xs text-fg-subtle">{size(file.size)}</span>
               </span>

@@ -86,7 +86,7 @@ export function AttendanceSheet({
           <ChevronLeft />
         </Button>
         <label className="relative min-w-0 flex-1 text-center">
-          <span className="block font-display text-lg font-bold text-fg-heading">{dayName(date, today)}</span>
+          <span className="block text-lg font-bold text-fg-heading">{dayName(date, today)}</span>
           <input
             type="date"
             aria-label="Day"
@@ -142,7 +142,7 @@ export function AttendanceSheet({
                 return (
                   <li key={r.employeeId} className="space-y-3 px-4 py-4 sm:px-5">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 space-y-0.5">
                         <p className="truncate font-semibold text-fg">{r.name}</p>
                         <p className="text-xs text-fg-muted">
                           {r.logged && !r.status

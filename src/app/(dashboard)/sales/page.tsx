@@ -45,8 +45,8 @@ async function Sales({ searchParams }: Pick<PageProps<"/sales">, "searchParams">
     <div className="space-y-5">
       {canSell && (
         <SellNow
-          batches={free.map((b) => ({ id: b.id, code: b.code, free: b.free }))}
-          pricePerKgKobo={shop.pricePerKgKobo}
+          batches={free.map((b) => ({ id: b.id, code: b.code, free: b.free, birdGrams: b.weightGrams }))}
+          prices={shop.prices}
           simulated={paystackMode() === "simulated"}
         />
       )}
@@ -59,7 +59,6 @@ async function Sales({ searchParams }: Pick<PageProps<"/sales">, "searchParams">
         today={now}
         canWrite={can(user.role, "sales.write")}
         filters
-        fab
       />
     </div>
   );

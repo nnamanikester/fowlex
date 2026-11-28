@@ -172,6 +172,11 @@
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
+  /* A label over its value (dt then dd, stacked) never touches it. Zero specificity: any
+     explicit margin wins, and side-by-side rows (flex) are left alone. */
+  :where(div:not([class*="flex"]) > dt + dd) {
+    margin-top: 0.25rem;
+  }
   /* Money and counts line up in columns. */
   .num {
     font-variant-numeric: tabular-nums;

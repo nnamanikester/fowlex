@@ -39,6 +39,12 @@ test("placing a batch records its chicks: owed to the hatchery, one tap from pay
   await page.getByRole("navigation", { name: "Batch sections" }).getByRole("link", { name: "Costs" }).click();
   await expect(main.getByText("₦450,000.00").first()).toBeVisible();
   await expect(main.getByRole("link", { name: new RegExp(`500 day-old chicks for ${code}`) })).toBeVisible();
+  // Where the money went: chicks, so far, plus its share of the farm's shared costs (which other
+  // tests add to), so per bird placed is the ₦900 a chick cost or a little more.
+  const spent = main.locator("section", { hasText: "Where the money went" });
+  await expect(spent.first()).toContainText("Chicks");
+  const perBird = await main.getByText("Per bird placed").locator("..").innerText();
+  expect(Number(perBird.match(/₦([\d,]+\.\d\d)/)![1].replace(/,/g, ""))).toBeGreaterThanOrEqual(900);
 
   await page.getByRole("navigation", { name: "Batch sections" }).getByRole("link", { name: "Overview" }).click();
   await chicks.click();

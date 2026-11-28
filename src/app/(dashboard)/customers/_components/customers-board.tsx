@@ -86,8 +86,8 @@ export function CustomersBoard({
                     className="focus-ring flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4 pb-14 text-left shadow-card hover:border-line-strong"
                   >
                     <span className="flex items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <span className="block truncate font-display text-lg font-bold text-fg-heading">{c.name}</span>
+                      <span className="min-w-0 space-y-0.5">
+                        <span className="block truncate text-lg font-bold text-fg-heading">{c.name}</span>
                         <span className="block text-sm text-fg-muted">
                           {CUSTOMER_TYPE_LABELS[c.type]}
                           {c.contactName && ` · ${c.contactName}`}

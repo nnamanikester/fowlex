@@ -8,45 +8,46 @@ import { toast } from "sonner";
 import { SellNowSheet } from "./sell-now-sheet";
 import { Fab } from "@/components/kit";
 import { Button } from "@/components/ui/button";
+import type { PriceOption } from "@/lib/shop/prices";
 
 /** The Sales page's first action: sell to whoever's in front of you, in one sheet. */
 export function SellNow({
   batches,
-  pricePerKgKobo,
+  prices,
   simulated,
 }: {
-  batches: { id: string; code: string; free: number }[];
-  pricePerKgKobo: number | null;
+  batches: { id: string; code: string; free: number; birdGrams?: number }[];
+  prices: PriceOption[];
   simulated: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const none = !batches.length;
+  const free = batches.reduce((n, b) => n + b.free, 0);
+  const none = !free;
   return (
     <>
-      <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-card sm:flex-row sm:items-center">
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-fg">Someone buying now?</p>
+      <section className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-5 shadow-card sm:flex-row sm:items-center">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-brand-fg" aria-hidden>
+          <Banknote className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <h2 className="text-lg font-bold text-fg-heading">Someone buying now?</h2>
           <p className="text-sm text-fg-muted">
-            Sell to anyone in one step: no details needed. Paid in cash, by transfer to an account made for the sale, or
-            later.
+            Sell to anyone in one step, no details needed: cash, transfer or pay later.{" "}
+            <span className="num font-semibold text-fg">
+              {none ? "No birds free to sell." : `${free.toLocaleString("en-NG")} birds free.`}
+            </span>
           </p>
         </div>
-        <Button
-          size="lg"
-          disabled={none}
-          reason="There are no birds free to sell."
-          onClick={() => setOpen(true)}
-          className="sm:w-auto"
-        >
+        <Button disabled={none} reason="There are no birds free to sell." onClick={() => setOpen(true)}>
           <Banknote /> Sell now
         </Button>
-      </div>
+      </section>
       {!none && <Fab label="Sell now" icon={<Banknote />} onClick={() => setOpen(true)} />}
       {open && (
         <SellNowSheet
           batches={batches}
-          pricePerKgKobo={pricePerKgKobo}
+          prices={prices}
           simulated={simulated}
           onClose={() => {
             setOpen(false);

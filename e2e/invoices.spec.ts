@@ -44,26 +44,27 @@ async function delivered(page: Page, label: string, count = 1) {
   return { customer, orders, email };
 }
 
-test("invoice a delivered order from the order, send it as a PDF, and download it", async ({ page }, info) => {
+test("an order comes with its invoice: open it from the order, send it as a PDF, and download it", async ({
+  page,
+}, info) => {
   const errors = watchErrors(page);
   const { customer, orders, email } = await delivered(page, info.project.name);
   await page.goto(`/customers/${customer.id}`);
   const main = page.getByRole("main");
   await main.getByRole("listitem").filter({ hasText: orders[0].number }).getByRole("button").click();
+  // Booking the order made its invoice: a draft, nothing to do but send it.
   await page
     .getByRole("dialog", { name: new RegExp(orders[0].number) })
-    .getByRole("link", { name: "Make an invoice" })
+    .getByRole("link", { name: "See its invoice" })
     .click();
 
-  const sheet = page.getByRole("dialog", { name: "New invoice" });
-  await expect(sheet).toContainText(`For ${customer.name}`);
-  await expect(sheet.getByRole("checkbox")).toBeChecked();
-  await expect(sheet).toContainText("₦85,000.00");
-  await sheet.getByRole("button", { name: "Create and send" }).click();
+  const invoice = page.getByRole("dialog", { name: new RegExp(`INV-\\d{4}-\\d{4} · ${customer.name}`) });
+  await expect(invoice).toContainText("Draft");
+  await expect(invoice).toContainText("₦85,000.00");
+  await invoice.getByRole("button", { name: "Send", exact: true }).click();
   await expect(
     page.getByText(new RegExp(`^INV-\\d{4}-\\d{4} sent to ${email.replace(/[.+]/g, "\\$&")}\\.$`)),
   ).toBeVisible();
-
   const mails = (await (await page.request.get("/api/dev/outbox")).json()) as { to: string; subject: string }[];
   expect(mails.find((m) => m.to === email)?.subject).toMatch(/^Invoice INV-\d{4}-\d{4} from .*: ₦85,000\.00$/);
 
@@ -71,14 +72,11 @@ test("invoice a delivered order from the order, send it as a PDF, and download i
   const row = main.getByRole("listitem").filter({ hasText: /^INV-/ });
   await expect(row).toContainText("Sent");
   await row.getByRole("button").click();
-  const invoice = page.getByRole("dialog", { name: new RegExp(`INV-\\d{4}-\\d{4} · ${customer.name}`) });
-  await expect(invoice).toContainText("₦85,000.00");
-  await expect(invoice).toContainText(`To ${email}`);
+  const sent = page.getByRole("dialog", { name: new RegExp(`INV-\\d{4}-\\d{4} · ${customer.name}`) });
+  await expect(sent).toContainText(`To ${email}`);
   const download = page.waitForEvent("download");
-  await invoice.getByRole("link", { name: "PDF" }).click();
+  await sent.getByRole("link", { name: "PDF" }).click();
   expect((await download).suggestedFilename()).toMatch(/^Invoice INV-\d{4}-\d{4}\.pdf$/);
-  await page.keyboard.press("Escape");
-  await expect(main.getByRole("listitem").filter({ hasText: orders[0].number })).toContainText("Invoiced");
   expect(errors).toEqual([]);
 });
 
@@ -98,6 +96,8 @@ test("a draft invoice is checked, then voided: its orders can be billed again", 
 
   const invoices = page.getByRole("main").locator("section", { has: page.getByRole("heading", { name: "Invoices" }) });
   const row = invoices.getByRole("listitem").filter({ hasText: customer.name });
+  // The two orders' own drafts became this one invoice once the list refreshes.
+  await expect(row).toHaveCount(1);
   await expect(row).toContainText("Draft");
   await row.getByRole("button").click();
   const invoice = page.getByRole("dialog", { name: new RegExp(customer.name) });

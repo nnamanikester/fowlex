@@ -169,7 +169,7 @@ describe("contracts", () => {
       ["ada@f.com", "The Grill's contract ends in 23 days"],
       ["chidi@f.com", "The Grill's contract ends in 23 days"],
     ]);
-    expect(outbox()[0].text).toContain(`https://app.fowlex.com/contracts?open=${c.id}`);
+    expect(outbox()[0].text).toContain(`https://app.fowlex.com/contracts/${c.id}`);
     expect(await sendEndingWarnings("x", TODAY)).toBe(0);
     // A new end date that's close again is warned about again.
     const fresh = (await listContracts(owner.farmId)).find((x) => x.id === c.id)!;

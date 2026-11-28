@@ -32,6 +32,7 @@ export function InvoicesList({
   canPay = false,
   simulated = false,
   start,
+  openId,
   title = "Invoices",
   description,
   filters = false,
@@ -48,6 +49,8 @@ export function InvoicesList({
   simulated?: boolean;
   /** Open "New invoice" at once, for a customer and orders (from an order's "Make an invoice"). */
   start?: { customerId?: string; orderIds?: string[] };
+  /** Open this invoice at once (from an order's "See its invoice"). */
+  openId?: string;
   title?: string;
   description?: string;
   filters?: boolean;
@@ -55,7 +58,9 @@ export function InvoicesList({
   showCustomer?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState<InvoiceView | "new" | null>(start ? "new" : null);
+  const [open, setOpen] = React.useState<InvoiceView | "new" | null>(
+    start ? "new" : (invoices.find((i) => i.id === openId) ?? null),
+  );
   const [show, setShow] = React.useState<"unpaid" | "paid" | "all">("unpaid");
   const unpaid = (i: InvoiceView) => i.status !== "paid" && i.status !== "void";
   const shown = filters
@@ -113,7 +118,7 @@ export function InvoicesList({
                   onClick={() => setOpen(i)}
                   className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1">
                     <span className="block truncate font-semibold text-fg">
                       {showCustomer ? i.customerName : i.number}
                     </span>
@@ -121,7 +126,7 @@ export function InvoicesList({
                       {showCustomer && `${i.number} · `}due {day(i.dueDate)}
                     </span>
                   </span>
-                  <span className="num shrink-0 text-right">
+                  <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                     <span className="block font-semibold text-fg">
                       {formatNaira(i.status === "paid" || i.status === "void" ? i.totalKobo : i.balanceKobo)}
                     </span>

@@ -12,6 +12,8 @@ import { isISODate, today as lagosToday } from "@/lib/dates";
 import { connectDb } from "@/lib/db";
 import { formatNaira } from "@/lib/money";
 import { readSettings } from "@/lib/settings/service";
+import { assertOrderUnpaid, dropOrderInvoice, syncOrderInvoice } from "@/lib/invoices/service";
+import { farmPrices } from "@/lib/shop/service";
 import { BatchModel } from "@/models/batch";
 import { ContractModel } from "@/models/contract";
 import { nextSequence } from "@/models/counter";
@@ -29,6 +31,8 @@ export type OrderView = OrderInput & {
   totalKobo: number;
   deliveredOn: string | null;
   invoiceId: string | null;
+  /** Money is paid on its invoice, or its invoice bills other orders too: it can't be changed here. */
+  locked: boolean;
   /** Each line's batch code, for showing. */
   batchCodes: Record<string, string>;
   /** Booked by the farm, or by the customer on the order page (with how to reach them). */
@@ -55,7 +59,13 @@ type Doc = {
   contact: OrderView["contact"];
 };
 
-type Names = { customers: Map<string, string>; batches: Map<string, string>; contracts: Map<string, string> };
+type Names = {
+  customers: Map<string, string>;
+  batches: Map<string, string>;
+  contracts: Map<string, string>;
+  /** Invoices with money paid on them, or billing more than one order. */
+  locked: Set<string>;
+};
 
 const view = (o: Doc, names: Names): OrderView => ({
   id: String(o._id),
@@ -69,6 +79,7 @@ const view = (o: Doc, names: Names): OrderView => ({
     batchId: String(l.batchId),
     birds: l.birds,
     weightGrams: l.weightGrams,
+    weighed: l.weighed !== false,
     priceKobo: l.priceKobo,
     pricing: l.pricing,
   })),
@@ -78,6 +89,7 @@ const view = (o: Doc, names: Names): OrderView => ({
   status: o.status,
   deliveredOn: o.deliveredOn ?? null,
   invoiceId: o.invoiceId ? String(o.invoiceId) : null,
+  locked: o.status === "invoiced" || (!!o.invoiceId && names.locked.has(String(o.invoiceId))),
   batchCodes: Object.fromEntries(o.lines.map((l) => [String(l.batchId), names.batches.get(String(l.batchId)) ?? "?"])),
   source: o.source,
   contact: o.contact,
@@ -85,7 +97,7 @@ const view = (o: Doc, names: Names): OrderView => ({
 
 async function namesFor(farmId: string, docs: Doc[]): Promise<Names> {
   const ids = (key: (d: Doc) => unknown[]) => [...new Set(docs.flatMap(key).filter(Boolean).map(String))];
-  const [customers, batches, contracts] = await Promise.all([
+  const [customers, batches, contracts, invoices] = await Promise.all([
     CustomerModel.find({ farmId, _id: { $in: ids((d) => [d.customerId]) } }, { name: 1 })
       .setOptions({ withDeleted: true })
       .lean(),
@@ -95,11 +107,16 @@ async function namesFor(farmId: string, docs: Doc[]): Promise<Names> {
     ContractModel.find({ farmId, _id: { $in: ids((d) => [d.contractId]) } }, { number: 1 })
       .setOptions({ withDeleted: true })
       .lean(),
+    InvoiceModel.find(
+      { farmId, _id: { $in: ids((d) => [d.invoiceId]) }, state: { $ne: "void" } },
+      { paidKobo: 1, orderIds: 1 },
+    ).lean(),
   ]);
   return {
     customers: new Map(customers.map((c) => [String(c._id), c.name])),
     batches: new Map(batches.map((b) => [String(b._id), b.code])),
     contracts: new Map(contracts.map((c) => [String(c._id), c.number])),
+    locked: new Set(invoices.filter((i) => i.paidKobo > 0 || i.orderIds.length > 1).map((i) => String(i._id))),
   };
 }
 
@@ -135,7 +152,7 @@ export type Price = {
   contract: { id: string; number: string } | null;
 };
 
-/** What a customer pays on a day: their running contract's price, or the farm's price per kg. */
+/** What a customer pays on a day: their running contract's price, or the farm's usual price. */
 export async function priceFor(farmId: string, customerId: string, day: string): Promise<Price> {
   const contract = await contractFor(farmId, customerId, day);
   if (contract)
@@ -144,6 +161,9 @@ export async function priceFor(farmId: string, customerId: string, day: string):
       priceKobo: contract.priceKobo,
       contract: { id: contract.id, number: contract.number },
     };
+  // The farm's usual price, the first on its list (or its price per kg, from Settings).
+  const [usual] = await farmPrices(farmId);
+  if (usual) return { pricing: usual.pricing, priceKobo: usual.priceKobo, contract: null };
   return { pricing: "perKg", priceKobo: (await readSettings(farmId)).defaultPricePerKgKobo ?? null, contract: null };
 }
 
@@ -160,13 +180,22 @@ export async function outstanding(farmId: string, customerId: string, exceptOrde
         $match: {
           ...match,
           status: { $in: ["pending", "delivered"] },
+          // An order with its invoice is counted once, in what's left on the invoice.
+          invoiceId: null,
           ...(exceptOrderId ? { _id: { $ne: exceptOrderId } } : {}),
         },
       },
       { $group: { _id: null, kobo: { $sum: "$totalKobo" } } },
     ]),
     InvoiceModel.aggregate<{ kobo: number }>([
-      { $match: { ...match, state: { $ne: "void" } } },
+      {
+        $match: {
+          ...match,
+          state: { $ne: "void" },
+          // The order being changed is counted at its new total: its own invoice is left out.
+          ...(exceptOrderId ? { orderIds: { $ne: [exceptOrderId] } } : {}),
+        },
+      },
       { $group: { _id: null, kobo: { $sum: { $max: [0, { $subtract: ["$totalKobo", "$paidKobo"] }] } } } },
     ]),
   ]);
@@ -200,7 +229,7 @@ const credit = (name: string, owed: number, adding: number, limit: number) =>
  * Cleans an order and prices it: on a contract's days every line takes the contract's price (it
  * can't be typed over); otherwise each line keeps the price given.
  */
-async function prepare(farmId: string, input: Record<string, unknown>, opts: { delivered?: boolean } = {}) {
+async function prepare(farmId: string, input: Record<string, unknown>) {
   const lines = Array.isArray(input.lines) ? (input.lines as Record<string, unknown>[]) : input.lines;
   const values = {
     customerId: input.customerId,
@@ -214,6 +243,8 @@ async function prepare(farmId: string, input: Record<string, unknown>, opts: { d
           weightGrams: l?.weightGrams ?? 0,
           priceKobo: l?.priceKobo,
           pricing: l?.pricing ?? "perKg",
+          // An estimate passed back (not weighed) is worked out again, never taken as a weighing.
+          ...(l?.weighed === false && { weighed: false }),
         }))
       : lines,
   };
@@ -224,10 +255,11 @@ async function prepare(farmId: string, input: Record<string, unknown>, opts: { d
     customerOk && dayOk ? await priceFor(farmId, values.customerId as string, values.deliveryDate as string) : null;
   if (price?.contract && Array.isArray(values.lines))
     values.lines = values.lines.map((l) => ({ ...l, pricing: price.pricing, priceKobo: price.priceKobo }));
-  const errors = validateOrder(values, opts);
+  const errors = validateOrder(values);
   const [field] = Object.keys(errors);
   if (field) throw new HttpError(400, "invalid_order", errors[field as keyof typeof errors]!, field);
   const v = values as OrderInput;
+  await estimateWeights(farmId, v.lines);
   const customer = await CustomerModel.findOne(
     { _id: v.customerId, farmId },
     { name: 1, status: 1, creditLimitKobo: 1 },
@@ -245,6 +277,24 @@ async function prepare(farmId: string, input: Record<string, unknown>, opts: { d
   return { values: v, contractId: price?.contract?.id ?? null, customer };
 }
 
+/**
+ * Weighing is never required: a per-kg line with no weight is priced on its batch's weight (the
+ * last weighing, or the weight it's grown to) times the birds, marked as not weighed. A weight
+ * given is a weighing.
+ */
+async function estimateWeights(farmId: string, lines: OrderLine[]) {
+  const unweighed = lines.filter((l) => !(l.weightGrams > 0) || l.weighed === false);
+  for (const l of lines) l.weighed = !unweighed.includes(l);
+  if (!unweighed.some((l) => l.pricing === "perKg")) return;
+  const batches = new Map((await listBatches(farmId, lagosToday())).map((b) => [b.id, b]));
+  for (const l of unweighed)
+    if (l.pricing === "perKg") {
+      const b = batches.get(l.batchId);
+      const each = b ? (b.totals.lastWeight?.grams ?? b.targetWeightGrams) : 0;
+      l.weightGrams = Math.round(each * l.birds);
+    }
+}
+
 function checkCredit(
   customer: { name: string; creditLimitKobo?: number | null },
   owed: number,
@@ -256,7 +306,10 @@ function checkCredit(
     throw credit(customer.name, owed, total, limit);
 }
 
-/** Books an order. Over the customer's limit it's refused with the figures, unless `confirm` says it was agreed. */
+/**
+ * Books an order, and its invoice with it (a draft, not sent): one step, nothing to redo later.
+ * Over the customer's limit it's refused with the figures, unless `confirm` says it was agreed.
+ */
 export async function createOrder(actor: CurrentUser, input: Record<string, unknown>) {
   await connectDb();
   const { values, contractId, customer } = await prepare(actor.farmId, input);
@@ -272,7 +325,14 @@ export async function createOrder(actor: CurrentUser, input: Record<string, unkn
     farmId: actor.farmId,
     createdBy: actor.id,
   });
-  return (await views(actor.farmId, [doc.toObject() as unknown as Doc]))[0];
+  await syncOrderInvoice(actor.farmId, actor.id, doc._id);
+  return fresh(actor.farmId, doc._id);
+}
+
+/** The order as it is now (its invoice may have just been made). */
+async function fresh(farmId: string, id: unknown) {
+  const doc = (await SalesOrderModel.findById(id).lean())!;
+  return (await views(farmId, [doc as unknown as Doc]))[0];
 }
 
 async function load(actor: CurrentUser, id: string) {
@@ -294,21 +354,59 @@ async function saveDoc(doc: InstanceType<typeof SalesOrderModel>) {
   }
 }
 
-/** Changes an order still to deliver, from a form no older than the last save. */
+/**
+ * Changes an order, delivered or not, until money is paid on its invoice (the invoice follows):
+ * the birds, their weight once weighed, the price, the day. A delivered order can't take more
+ * birds than its batches have, counting its own.
+ */
 export async function updateOrder(actor: CurrentUser, id: string, input: Record<string, unknown>, version: unknown) {
   const doc = await load(actor, id);
   if (typeof version !== "number" || version !== doc.__v) throw stale();
-  if (doc.status !== "pending")
-    throw new HttpError(409, "not_pending", `${doc.number} is ${doc.status}, so it can't be changed.`);
+  if (doc.status === "cancelled" || doc.status === "invoiced")
+    throw new HttpError(
+      409,
+      "not_pending",
+      doc.status === "cancelled"
+        ? `${doc.number} was cancelled, so it stays as it was.`
+        : `${doc.number} is on an invoice with other orders: change it there.`,
+    );
+  await assertOrderUnpaid(actor.farmId, doc);
+  const delivered = doc.status === "delivered";
   const { values, contractId, customer } = await prepare(actor.farmId, {
     ...input,
     customerId: String(doc.customerId),
+    ...(delivered && { deliveryDate: doc.deliveredOn ?? doc.deliveryDate }),
   });
+  if (delivered) await assertBirds(actor.farmId, values.lines, doc.lines, values.deliveryDate);
   const total = orderTotal(values);
   checkCredit(customer, await outstanding(actor.farmId, values.customerId, doc._id), total, input.confirm);
   doc.set({ ...values, contractId, totalKobo: total });
   await saveDoc(doc);
-  return (await views(actor.farmId, [doc.toObject() as unknown as Doc]))[0];
+  await syncOrderInvoice(actor.farmId, actor.id, doc._id);
+  return fresh(actor.farmId, doc._id);
+}
+
+/** No batch gives more birds than it has; `own` (the order's birds already out) count as there. */
+async function assertBirds(farmId: string, lines: OrderLine[], own: { batchId: unknown; birds: number }[], on: string) {
+  const batches = new Map((await listBatches(farmId, lagosToday())).map((b) => [b.id, b]));
+  const back = new Map<string, number>();
+  for (const l of own) back.set(String(l.batchId), (back.get(String(l.batchId)) ?? 0) + l.birds);
+  const wanted = new Map<string, number>();
+  for (const l of lines) wanted.set(l.batchId, (wanted.get(l.batchId) ?? 0) + l.birds);
+  for (const [batchId, birds] of wanted) {
+    const b = batches.get(batchId)!;
+    if (b.placedOn > on)
+      throw new HttpError(409, "not_placed", `${b.code}'s chicks weren't placed by then.`, "deliveredOn");
+    const has = b.liveBirds + (back.get(batchId) ?? 0);
+    if (birds > has)
+      throw new HttpError(
+        409,
+        "not_enough_birds",
+        `${b.code} has ${has.toLocaleString("en-NG")} birds left, not ${birds.toLocaleString("en-NG")}.`,
+        `lines.${lines.findIndex((l) => l.batchId === batchId)}.birds`,
+      );
+  }
+  return wanted;
 }
 
 /**
@@ -327,43 +425,27 @@ export async function deliverOrder(
   if (typeof version !== "number" || version !== doc.__v) throw stale();
   if (doc.status !== "pending")
     throw new HttpError(409, "not_pending", `${doc.number} is ${doc.status}, not waiting to be delivered.`);
+  await assertOrderUnpaid(actor.farmId, doc);
   const on = input.deliveredOn === undefined || input.deliveredOn === "" ? today : input.deliveredOn;
   if (typeof on !== "string" || !isISODate(on) || on > today)
     throw new HttpError(400, "invalid_order", "Choose the day it was delivered: today or before.", "deliveredOn");
-  const { values, contractId, customer } = await prepare(
-    actor.farmId,
-    {
-      customerId: String(doc.customerId),
-      deliveryDate: on,
-      deliveryKobo: input.deliveryKobo ?? doc.deliveryKobo,
-      notes: input.notes ?? doc.notes,
-      lines:
-        input.lines ??
-        doc.lines.map((l) => ({
-          batchId: String(l.batchId),
-          birds: l.birds,
-          weightGrams: l.weightGrams,
-          priceKobo: l.priceKobo,
-          pricing: l.pricing,
-        })),
-    },
-    { delivered: true },
-  );
-  const batches = new Map((await listBatches(actor.farmId, today)).map((b) => [b.id, b]));
-  const wanted = new Map<string, number>();
-  for (const l of values.lines) wanted.set(l.batchId, (wanted.get(l.batchId) ?? 0) + l.birds);
-  for (const [batchId, birds] of wanted) {
-    const b = batches.get(batchId)!;
-    if (b.placedOn > on)
-      throw new HttpError(409, "not_placed", `${b.code}'s chicks weren't placed by then.`, "deliveredOn");
-    if (birds > b.liveBirds)
-      throw new HttpError(
-        409,
-        "not_enough_birds",
-        `${b.code} has ${b.liveBirds.toLocaleString("en-NG")} birds left, not ${birds.toLocaleString("en-NG")}.`,
-        `lines.${values.lines.findIndex((l) => l.batchId === batchId)}.birds`,
-      );
-  }
+  const { values, contractId, customer } = await prepare(actor.farmId, {
+    customerId: String(doc.customerId),
+    deliveryDate: on,
+    deliveryKobo: input.deliveryKobo ?? doc.deliveryKobo,
+    notes: input.notes ?? doc.notes,
+    lines:
+      input.lines ??
+      doc.lines.map((l) => ({
+        batchId: String(l.batchId),
+        birds: l.birds,
+        weightGrams: l.weightGrams,
+        priceKobo: l.priceKobo,
+        pricing: l.pricing,
+        weighed: l.weighed,
+      })),
+  });
+  const wanted = await assertBirds(actor.farmId, values.lines, [], on);
   const total = orderTotal(values);
   checkCredit(customer, await outstanding(actor.farmId, values.customerId, doc._id), total, input.confirm);
   doc.set({ ...values, contractId, totalKobo: total, status: "delivered", deliveredOn: on });
@@ -373,7 +455,8 @@ export async function deliverOrder(
     { farmId: actor.farmId, _id: { $in: [...wanted.keys()] }, status: "active" },
     { $set: { status: "selling" } },
   );
-  return (await views(actor.farmId, [doc.toObject() as unknown as Doc]))[0];
+  await syncOrderInvoice(actor.farmId, actor.id, doc._id);
+  return fresh(actor.farmId, doc._id);
 }
 
 /** Calls off an order still to deliver; it stays on record as cancelled. */
@@ -385,9 +468,30 @@ export async function cancelOrder(actor: CurrentUser, id: string) {
       "not_pending",
       `${doc.number} was ${doc.status === "cancelled" ? "cancelled already" : "delivered"}.`,
     );
+  await assertOrderUnpaid(actor.farmId, doc);
   doc.status = "cancelled";
   await doc.save();
+  await dropOrderInvoice(actor.farmId, doc, `${doc.number} was cancelled`);
   return (await views(actor.farmId, [doc.toObject() as unknown as Doc]))[0];
+}
+
+/**
+ * Deletes an order made by mistake, delivered or not, until money is paid on its invoice. Its
+ * invoice goes with it (removed, or voided if the customer was sent it), and whatever it changed
+ * comes back: delivered birds count as live again, the customer owes nothing for it, a contract's
+ * record no longer counts it. Kept hidden in the audit trail.
+ */
+export async function deleteOrder(actor: CurrentUser, id: string) {
+  const doc = await load(actor, id);
+  if (doc.status === "invoiced")
+    throw new HttpError(
+      409,
+      "on_invoice",
+      `${doc.number} is on an invoice with other orders: take it off there first.`,
+    );
+  await assertOrderUnpaid(actor.farmId, doc);
+  await dropOrderInvoice(actor.farmId, doc, `${doc.number} was deleted`);
+  await doc.softDelete();
 }
 
 /** Each line's amount and the total, for showing a delivered order. */

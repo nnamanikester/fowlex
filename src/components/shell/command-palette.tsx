@@ -68,7 +68,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         onClose();
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      className="m-0 mx-auto mt-[12vh] w-[min(40rem,calc(100vw-1.5rem))] max-w-none overflow-visible bg-transparent p-0 text-fg backdrop:bg-charcoal/50 backdrop:backdrop-blur-sm"
+      className="!m-0 !mx-auto !mt-[12vh] w-[min(40rem,calc(100vw-1.5rem))] max-w-none overflow-visible bg-transparent p-0 text-fg backdrop:bg-charcoal/50 backdrop:backdrop-blur-sm"
     >
       {open && <PaletteBody key={session} onClose={onClose} />}
     </dialog>

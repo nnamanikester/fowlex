@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { apiRoute, requirePermission } from "@/lib/auth/guard";
+import { today } from "@/lib/dates";
+import { monthPnl } from "@/lib/finance/pnl";
 
-/** Profit and loss headline numbers. A stub until step 8.3 fills it; guarded like the real thing. */
+/** This month's profit and loss so far, as invoiced: the headline numbers. */
 export const GET = apiRoute(async () => {
   const user = await requirePermission("finance.read");
-  return NextResponse.json({ farmId: user.farmId, revenueKobo: 0, expensesKobo: 0, profitKobo: 0 });
+  const day = today();
+  const month = await monthPnl(user.farmId, day.slice(0, 7), "accrual", day);
+  return NextResponse.json({
+    farmId: user.farmId,
+    month: month.month,
+    revenueKobo: month.incomeKobo,
+    expensesKobo: month.costKobo,
+    profitKobo: month.profitKobo,
+    marginPct: month.marginPct,
+  });
 });

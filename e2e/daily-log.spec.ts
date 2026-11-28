@@ -57,6 +57,63 @@ test("with no signal the log waits on the phone, then sends itself", async ({ pa
   await expect(page.getByRole("radio", { name: new RegExp(batch.code) }).getByLabel("Logged")).toBeVisible();
 });
 
+test("a week's numbers are logged in one go, and its days can't be logged again", async ({
+  page,
+  isMobile,
+  playwright,
+}) => {
+  test.skip(!isMobile, "The daily log is for phones");
+  const errors = watchErrors(page);
+  // A batch of its own, placed by the owner a month ago, so no other test's logs are in its weeks.
+  const owner = await playwright.request.newContext({
+    baseURL: test.info().project.use.baseURL,
+    storageState: "playwright/.auth/owner.json",
+  });
+  const house = await (
+    await owner.post("/api/houses", { data: { name: `Week log ${Date.now().toString(36)}`, capacity: 5000 } })
+  ).json();
+  const placed = new Date(`${todayLagos()}T00:00:00Z`);
+  placed.setUTCDate(placed.getUTCDate() - 30);
+  const made = await (
+    await owner.post("/api/batches", {
+      data: {
+        houseId: house.id,
+        placedOn: placed.toISOString().slice(0, 10),
+        breed: "Ross 308",
+        delivered: 500,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      },
+    })
+  ).json();
+  const batch: { code: string } = made.batch ?? made;
+  await owner.dispose();
+
+  await signInAs(page, E2E_USERS.staff.email);
+  await page.getByRole("radio", { name: new RegExp(batch.code) }).click();
+  await page.getByRole("radio", { name: "A week" }).click();
+  await page.getByRole("radio", { name: /^Last week/ }).click();
+  await expect(page.getByText("Enter the totals for the whole week.")).toBeVisible();
+  await page.getByLabel(/^Deaths \(all 7 days\)/).fill("12");
+  await page.getByLabel(/^Feed used \(kg\) \(all 7 days\)/).fill("420");
+  await page.getByRole("button", { name: "Save log for last week" }).click();
+  await expect(page.getByText(`Logged ${batch.code} for last week.`)).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^Last week/ }).getByLabel("Logged")).toBeVisible();
+
+  // A day inside it points back to the week's log.
+  await page.getByRole("radio", { name: "A day" }).click();
+  const inWeek = new Date(`${todayLagos()}T00:00:00Z`);
+  inWeek.setUTCDate(inWeek.getUTCDate() - ((inWeek.getUTCDay() + 6) % 7) - 3);
+  await page.getByLabel("Date").fill(inWeek.toISOString().slice(0, 10));
+  await expect(page.getByText(/This day is in the log for/)).toBeVisible();
+  await page.getByRole("button", { name: "Open it" }).click();
+  await expect(page.getByText(/is already logged for .* You're editing that log\./)).toBeVisible();
+  await expect(page.getByLabel(/^Deaths/)).toHaveValue("12");
+  expect(errors).toEqual([]);
+});
+
 function todayLagos() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
 }
@@ -83,4 +140,69 @@ test("many batches scroll sideways without widening the page", async ({ page, is
   );
   expect(sticking).toEqual([]);
   expect(await page.evaluate(() => window.innerWidth)).toBe(width);
+});
+
+test("vaccines given and other things used go in the log: on the health record, off stock", async ({
+  page,
+  isMobile,
+  playwright,
+}) => {
+  test.skip(!isMobile, "The daily log is for phones");
+  const errors = watchErrors(page);
+  // A batch of its own (24 days old: the Gumboro booster is due) and stock of its own.
+  const tag = Date.now().toString(36);
+  const owner = await playwright.request.newContext({
+    baseURL: test.info().project.use.baseURL,
+    storageState: "playwright/.auth/owner.json",
+  });
+  const house = await (await owner.post("/api/houses", { data: { name: `Supplies ${tag}`, capacity: 5000 } })).json();
+  const placed = new Date(`${todayLagos()}T00:00:00Z`);
+  placed.setUTCDate(placed.getUTCDate() - 24);
+  const made = await (
+    await owner.post("/api/batches", {
+      data: {
+        houseId: house.id,
+        placedOn: placed.toISOString().slice(0, 10),
+        breed: "Ross 308",
+        delivered: 500,
+        pricePerChickKobo: 85_000,
+        targetSellAgeDays: 42,
+        targetWeightGrams: 2200,
+        confirm: true,
+      },
+    })
+  ).json();
+  const batch: { id: string; code: string } = made.batch ?? made;
+  const stocked = async (name: string, category: string, unit: string) => {
+    const item = await (await owner.post("/api/inventory/items", { data: { name, category, unit } })).json();
+    await owner.post("/api/inventory/movements", {
+      data: { itemId: item.id, type: "opening", quantity: 10, unitCostKobo: 100_000, date: todayLagos() },
+    });
+    return item as { id: string; name: string };
+  };
+  const vaccine = await stocked(`Gumboro vaccine ${tag}`, "vaccine", "vial");
+  const drug = await stocked(`Amprolium ${tag}`, "medication", "sachet");
+  await owner.dispose();
+
+  await signInAs(page, E2E_USERS.staff.email);
+  await page.goto(`/log?batch=${batch.id}`);
+  await expect(page.getByRole("radio", { name: new RegExp(batch.code) })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("checkbox", { name: /Gumboro booster given/ }).check();
+  await page.getByLabel("Gumboro booster from stock").selectOption(vaccine.id);
+  await page.getByLabel("Gumboro booster used").fill("1");
+  await page.getByRole("button", { name: "Add something used" }).click();
+  await page.getByLabel("Thing used 1", { exact: true }).selectOption({ label: drug.name });
+  await page.getByLabel("How much of thing 1").fill("3");
+  await expect(page.getByText("sachets · 10 sachets left")).toBeVisible();
+  await page.getByLabel("Feed used (kg)").fill("50");
+  await page.getByRole("button", { name: /^Save log for/ }).click();
+  await expect(page.getByText(`Logged ${batch.code} for today.`)).toBeVisible();
+
+  // The dose is on the health record (no longer due), and both came off stock.
+  await expect(page.getByRole("checkbox", { name: /Gumboro booster given/ })).toHaveCount(0);
+  await page.reload();
+  await page.getByLabel("Thing used 1", { exact: true }).waitFor();
+  await expect(page.getByLabel("How much of thing 1")).toHaveValue("3");
+  await expect(page.getByText("sachets · 7 sachets left")).toBeVisible();
+  expect(errors).toEqual([]);
 });

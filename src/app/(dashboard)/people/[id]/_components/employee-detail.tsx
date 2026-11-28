@@ -87,7 +87,7 @@ export function EmployeeDetail({
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 font-display text-2xl font-bold text-fg-heading">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-fg-heading">
             <span className="min-w-0 [overflow-wrap:anywhere]">{e.name}</span>
             {e.status === "left" && <Badge>Left on {formatDate(e.leftOn!)}</Badge>}
             {e.hasLogin && <Badge tone="info">Uses Fowlex</Badge>}
@@ -214,7 +214,7 @@ export function EmployeeDetail({
           <ul className="divide-y divide-line">
             {payslips.map((p) => (
               <li key={p.lineId} className="flex items-center gap-2 px-5 py-3">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block font-semibold text-fg">{monthName(p.period)}</span>
                   <span className="block text-xs text-fg-muted">
                     {p.paidOn ? `Paid on ${formatDate(p.paidOn)}` : "Not paid yet"}

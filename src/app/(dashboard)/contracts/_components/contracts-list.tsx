@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileSignature, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +26,6 @@ export function ContractsList({
   templates,
   today,
   canWrite,
-  openId,
   title = "Contracts",
   description,
   showCustomer = true,
@@ -36,15 +36,12 @@ export function ContractsList({
   templates: TemplateView[];
   today: string;
   canWrite: boolean;
-  openId?: string;
   title?: string;
   description?: string;
   showCustomer?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState<ContractView | "new" | null>(
-    () => contracts.find((c) => c.id === openId) ?? null,
-  );
+  const [open, setOpen] = React.useState<ContractView | "new" | null>(null);
   const write = canWrite ? (
     <Button size="sm" onClick={() => setOpen("new")} disabled={!customers.length} reason="Add a customer first.">
       <Plus /> Write a contract
@@ -64,12 +61,11 @@ export function ContractsList({
         <ul className="divide-y divide-line">
           {contracts.map((c) => (
             <li key={c.id}>
-              <button
-                type="button"
-                onClick={() => setOpen(c)}
+              <Link
+                href={`/contracts/${c.id}`}
                 className="focus-ring flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-surface-subtle"
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 space-y-1">
                   <span className="block truncate font-semibold text-fg">
                     {showCustomer ? c.customerName : c.number}
                   </span>
@@ -78,13 +74,16 @@ export function ContractsList({
                     {formatRange({ from: c.startDate, to: c.terminatedOn ?? c.endDate })}
                   </span>
                 </span>
-                <span className="num shrink-0 text-right">
+                <span className="num flex shrink-0 flex-col items-end gap-1.5 text-right">
                   <span className="block font-semibold text-fg">
                     {formatNaira(c.priceKobo)} <span className="font-normal text-fg-muted">{PER_UNIT[c.pricing]}</span>
                   </span>
-                  <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABELS[c.status]}</Badge>
+                  <span className="flex flex-wrap justify-end gap-1.5">
+                    {c.pendingChange && <Badge tone="warning">Change waiting</Badge>}
+                    <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABELS[c.status]}</Badge>
+                  </span>
                 </span>
-              </button>
+              </Link>
             </li>
           ))}
         </ul>

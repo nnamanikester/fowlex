@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { watchErrors } from "./helpers";
+import { ready, watchErrors } from "./helpers";
 import { E2E_BATCHES } from "./users";
 
 const lagos = (offset = 0) =>
@@ -29,11 +29,10 @@ test("opening stock, feed logged from it comes off, and a count sets it right", 
   await page.goto("/batches");
   const batchHref = (await page.getByRole("link", { name: new RegExp(E2E_BATCHES[0].code) }).getAttribute("href"))!;
   await page.goto(`/log?batch=${batchHref.split("/").pop()}`);
-  // Filled before the page hydrates, the date resets to today: fill until the form shows it.
-  await expect(async () => {
-    await page.getByLabel("Date").fill(lagos(info.project.name === "mobile" ? -6 : -5));
-    await expect(page.getByRole("button", { name: /^Save log for \d/ })).toBeVisible({ timeout: 1000 });
-  }).toPass();
+  // Filled once the form is live (filled before, the date would reset to today).
+  await ready(page.getByLabel("Date"));
+  await page.getByLabel("Date").fill(lagos(info.project.name === "mobile" ? -6 : -5));
+  await expect(page.getByRole("button", { name: /^Save log for \d/ })).toBeVisible();
   await page.getByLabel("Feed", { exact: true }).selectOption({ label: name });
   await expect(page.getByText("20 bags left")).toBeVisible();
   await page.getByLabel("Feed used (kg)").fill("125");
