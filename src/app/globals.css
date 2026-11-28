@@ -177,19 +177,9 @@
   :where(div:not([class*="flex"]) > dt + dd) {
     margin-top: 0.25rem;
   }
-  /* Titles: Fraunces, softened (round terminals, no quirky letters) so it reads warm, not stern. */
-  .font-display {
-    font-variation-settings:
-      "SOFT" 100,
-      "WONK" 0;
-  }
-  /* Money and counts: in the figures face, lined up in columns. `[class]` lifts it over
-     font-display, so a big amount set in the title size still reads as a number. */
-  .num,
-  .num[class] {
-    font-family: var(--font-figures), var(--font-body), ui-sans-serif, sans-serif;
-    font-variant-numeric: tabular-nums lining-nums;
-    font-feature-settings: "tnum", "lnum";
+  /* Money and counts line up in columns. */
+  .num {
+    font-variant-numeric: tabular-nums;
   }
 }
 
