@@ -3,6 +3,7 @@ import "server-only";
 import { Types } from "mongoose";
 
 import { connectDb } from "@/lib/db";
+import { costSheets, type CostSheet } from "@/lib/finance/batch-costs";
 import { ledger } from "@/lib/inventory/stock";
 import { ExpenseModel } from "@/models/expense";
 import { InventoryItemModel } from "@/models/inventory-item";
@@ -26,6 +27,8 @@ export type BatchCosts = {
   expensesKobo: number;
   stockKobo: number;
   totalKobo: number;
+  /** The total by kind: chicks, feed, drugs and vaccines, labour, everything else. */
+  byKind: CostSheet["byKind"];
 };
 
 /**
@@ -34,7 +37,14 @@ export type BatchCosts = {
  */
 export async function batchCosts(farmId: string, batchId: string): Promise<BatchCosts> {
   await connectDb();
-  const empty = { expenses: [], stock: [], expensesKobo: 0, stockKobo: 0, totalKobo: 0 };
+  const empty = {
+    expenses: [],
+    stock: [],
+    expensesKobo: 0,
+    stockKobo: 0,
+    totalKobo: 0,
+    byKind: { chicks: 0, feed: 0, medication: 0, labour: 0, other: 0 },
+  };
   if (!Types.ObjectId.isValid(batchId)) return empty;
   const id = new Types.ObjectId(batchId);
   const [expenses, used] = await Promise.all([
@@ -87,9 +97,14 @@ export async function batchCosts(farmId: string, batchId: string): Promise<Batch
     paymentStatus: e.paymentStatus,
     capital: e.capital ?? false,
   }));
-  const expensesKobo = list
-    .filter((e) => e.approval === "approved" && !e.capital)
-    .reduce((n, e) => n + e.amountKobo, 0);
-  const stockKobo = stock.reduce((n, s) => n + s.costKobo, 0);
-  return { expenses: list, stock, expensesKobo, stockKobo, totalKobo: expensesKobo + stockKobo };
+  // The totals are the cost sheet's, so the page and every report agree.
+  const sheet = (await costSheets(farmId, [batchId])).get(batchId)!;
+  return {
+    expenses: list,
+    stock,
+    expensesKobo: sheet.expensesKobo,
+    stockKobo: sheet.stockKobo,
+    totalKobo: sheet.totalKobo,
+    byKind: sheet.byKind,
+  };
 }
