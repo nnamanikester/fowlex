@@ -17,6 +17,7 @@ import { INVOICE_STATUS_LABELS, INVOICE_TONE } from "@/lib/invoices/rules";
 import { formatNaira } from "@/lib/money";
 import { requestToday } from "@/lib/page-data";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payments/rules";
+import { payLinkToken } from "@/lib/collections/service";
 import { portalInvoice } from "@/lib/portal/service";
 import { paystackMode } from "@/lib/paystack/client";
 import { readSettings } from "@/lib/settings/service";
@@ -47,6 +48,8 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
   const { invoice: i, payments } = found;
   const settings = await readSettings(user.farmId);
   const owed = i.balanceKobo > 0;
+  // Card, bank app or USSD: the invoice's own pay link.
+  const payUrl = owed && i.state !== "void" ? `/pay/${await payLinkToken(user.farmId, i.id)}` : null;
   return (
     <>
       <Link
@@ -80,7 +83,7 @@ async function Invoice({ params }: Pick<PageProps<"/portal/invoices/[id]">, "par
         </p>
         {owed && (
           <>
-            <PayNow invoiceId={i.id} simulated={paystackMode() === "simulated"} />
+            <PayNow invoiceId={i.id} payUrl={payUrl} simulated={paystackMode() === "simulated"} />
             {settings.bankName && settings.accountNumber && (
               <p className="text-sm text-fg">
                 Or transfer to <strong>{settings.accountName || settings.businessName}</strong>, {settings.bankName}{" "}

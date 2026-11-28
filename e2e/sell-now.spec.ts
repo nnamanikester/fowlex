@@ -47,8 +47,14 @@ test("sell two birds to someone with no details, for cash, in one step", async (
 
   await page.goto("/invoices");
   await page.getByRole("radio", { name: "Paid", exact: true }).click();
+  // An invoice row (it has a number), not the "money owed" summary that lists customers too.
   await expect(
-    page.getByRole("main").getByRole("listitem").filter({ hasText: "Walk-in customers" }).first(),
+    page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({ hasText: "Walk-in customers" })
+      .filter({ hasText: /INV-\d{4}-\d{4}/ })
+      .first(),
   ).toContainText("Paid");
   expect(errors).toEqual([]);
 });

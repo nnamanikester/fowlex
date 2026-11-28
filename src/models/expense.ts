@@ -67,7 +67,11 @@ const schema = new Schema(
      * for a transfer, a batch's chicks, a health record's cost, a salary advance or a payslip.
      */
     source: {
-      kind: { type: String, enum: ["payout-fee", "batch", "health", "advance", "payslip", null], default: null },
+      kind: {
+        type: String,
+        enum: ["payout-fee", "collection-fee", "batch", "health", "advance", "payslip", null],
+        default: null,
+      },
       id: { type: Schema.Types.ObjectId, default: null },
     },
     clientRequestId: { type: String, default: null },

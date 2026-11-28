@@ -349,6 +349,8 @@ export async function sendInvoice(actor: CurrentUser, id: string, origin: string
   const { bytes, filename } = await invoicePdf(actor.farmId, id, today);
   const settings = await readSettings(actor.farmId);
   const v = (await views(actor.farmId, [doc.toObject() as unknown as Doc], today))[0];
+  const { payLinkToken } = await import("@/lib/collections/service");
+  const payLink = v.balanceKobo > 0 ? `${origin}/pay/${await payLinkToken(actor.farmId, id)}` : "";
   await sendEmail({
     to: customer.email,
     subject: `Invoice ${doc.number} from ${settings.businessName}: ${formatNaira(v.balanceKobo)}`,
@@ -356,8 +358,9 @@ export async function sendInvoice(actor: CurrentUser, id: string, origin: string
       `Hello ${customer.name},`,
       "",
       `Here is invoice ${doc.number} for ${formatNaira(doc.totalKobo)}, due on ${pdfDay(doc.dueDate)}.`,
+      ...(payLink ? ["", `Pay it online, by card, bank app, USSD or transfer:`, payLink, ""] : []),
       settings.bankName && settings.accountNumber
-        ? `Pay by transfer to ${settings.accountName || settings.businessName}, ${settings.bankName} ${settings.accountNumber}, with ${doc.number} as the reference.`
+        ? `${payLink ? "Or pay" : "Pay"} by transfer to ${settings.accountName || settings.businessName}, ${settings.bankName} ${settings.accountNumber}, with ${doc.number} as the reference.`
         : "",
       "The invoice is attached.",
       "",
