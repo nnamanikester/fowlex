@@ -74,7 +74,7 @@ export function ItemDetail({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-fg-heading">{item.name}</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-fg-heading">{item.name}</h1>
               {item.low && <Badge tone="warning">Low</Badge>}
               {item.onHand < 0 && <Badge tone="danger">Count needed</Badge>}
               {item.archived && <Badge>Archived</Badge>}

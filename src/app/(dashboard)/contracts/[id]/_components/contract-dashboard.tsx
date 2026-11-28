@@ -134,7 +134,7 @@ export function ContractDashboardView({
 
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0 space-y-2">
-          <h1 className="font-display text-3xl font-bold tracking-tight text-fg-heading [overflow-wrap:anywhere]">
+          <h1 className="text-2xl font-extrabold tracking-tight text-fg-heading [overflow-wrap:anywhere]">
             {customer.name}
           </h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-fg-muted">
@@ -353,18 +353,18 @@ const SIDE = {
 function SideCard({ who, note, side }: { who: string; note: string; side: Side }) {
   const s = SIDE[side.state];
   return (
-    <div className={cn("space-y-3 rounded-2xl border p-5 sm:p-6", s.ring)}>
+    <div className={cn("space-y-3 rounded-xl border p-5", s.ring)}>
       <div className="flex items-start gap-3">
-        <s.icon className={cn("mt-0.5 size-7 shrink-0", s.ink)} aria-hidden />
+        <s.icon className={cn("mt-0.5 size-5 shrink-0", s.ink)} aria-hidden />
         <div className="min-w-0 space-y-1">
           <p className="text-sm font-semibold text-fg-muted">
             {who} <span className="font-normal">· {note}</span>
           </p>
-          <p className="font-display text-2xl font-bold leading-tight text-fg-heading">{side.headline}</p>
+          <p className="text-lg font-bold leading-snug text-fg-heading">{side.headline}</p>
         </div>
       </div>
       {side.reasons.length > 0 && (
-        <ul className="space-y-1.5 pl-10 text-sm text-fg">
+        <ul className="space-y-1.5 pl-8 text-sm text-fg">
           {side.reasons.map((r) => (
             <li key={r} className="list-disc">
               {r}
@@ -402,7 +402,7 @@ function Kpi({
         <span aria-hidden className={cn("size-2 rounded-full", TONES[tone])} />
         {label}
       </p>
-      <p className="num text-2xl font-semibold leading-tight text-fg-heading [overflow-wrap:anywhere]">{value}</p>
+      <p className="num text-2xl font-extrabold tracking-tight text-fg-heading [overflow-wrap:anywhere]">{value}</p>
       {bar !== undefined && bar !== null && (
         <div
           className="h-1.5 overflow-hidden rounded-full bg-surface-muted"
@@ -547,12 +547,11 @@ function Agreement({ data }: { data: ContractDashboard }) {
     ...(c.notes ? [["Also agreed", c.notes] as [string, string]] : []),
   ];
   return (
-    <article className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-      <div className="h-1.5 bg-[rgb(var(--comb))]" aria-hidden />
-      <div className="space-y-8 p-6 sm:p-8">
+    <article className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+      <div className="space-y-6 p-5 sm:p-6">
         <header className="space-y-1.5 text-center">
           <p className="text-sm text-fg-muted">Supply agreement</p>
-          <h2 className="font-display text-2xl font-bold text-fg-heading">Broilers for {customer.name}</h2>
+          <h2 className="text-lg font-bold text-fg-heading">Broilers for {customer.name}</h2>
           <p className="font-mono text-sm text-fg-muted">{c.number}</p>
         </header>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -640,7 +639,7 @@ function PendingChange({
   return (
     <section
       aria-label="A change waiting for approval"
-      className="space-y-4 rounded-2xl border border-warning-line bg-warning-subtle p-5 sm:p-6"
+      className="space-y-4 rounded-xl border border-warning-line bg-warning-subtle p-5"
     >
       <div className="space-y-1">
         <p className="font-semibold text-fg-heading">

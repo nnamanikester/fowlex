@@ -86,7 +86,7 @@ export function AttendanceSheet({
           <ChevronLeft />
         </Button>
         <label className="relative min-w-0 flex-1 text-center">
-          <span className="block font-display text-lg font-bold text-fg-heading">{dayName(date, today)}</span>
+          <span className="block text-lg font-bold text-fg-heading">{dayName(date, today)}</span>
           <input
             type="date"
             aria-label="Day"

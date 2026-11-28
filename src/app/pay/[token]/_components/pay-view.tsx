@@ -70,20 +70,20 @@ export function PayView({
       </header>
 
       <main className="mx-auto -mt-16 max-w-xl space-y-5 px-4 pb-16">
-        <section className="space-y-5 rounded-3xl bg-surface p-6 shadow-pop sm:p-8">
+        <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6">
           {data.state === "void" ? (
             <div className="space-y-1">
-              <h1 className="font-display text-2xl font-bold text-fg-heading">This bill was cancelled</h1>
+              <h1 className="text-lg font-bold text-fg-heading">This bill was cancelled</h1>
               <p className="text-fg-muted">
                 There&apos;s nothing to pay on it. Ask {data.farm.name} if you&apos;re unsure.
               </p>
             </div>
           ) : paid ? (
             <div role="status" className="space-y-3 text-center">
-              <span className="mx-auto grid size-16 place-items-center rounded-full bg-success text-white motion-safe:animate-pop-in">
+              <span className="mx-auto grid size-12 place-items-center rounded-full bg-success text-white motion-safe:animate-pop-in">
                 <CircleCheck className="size-9" aria-hidden />
               </span>
-              <h1 className="font-display text-3xl font-bold text-fg-heading">Paid. Thank you</h1>
+              <h1 className="text-2xl font-extrabold text-fg-heading">Paid. Thank you</h1>
               <p className="text-fg-muted">
                 <span className="num font-semibold text-fg">{naira(data.totalKobo)}</span> for {data.number} is paid in
                 full{data.lastPaid ? `, the last of it on ${day(data.lastPaid.at.slice(0, 10))}` : ""}.
@@ -92,7 +92,7 @@ export function PayView({
           ) : (
             <div className="space-y-1">
               <p className="text-sm text-fg-muted">To pay</p>
-              <h1 className="num font-display text-5xl font-bold leading-none tracking-tight text-fg-heading">
+              <h1 className="num text-4xl font-extrabold leading-none tracking-tight text-fg-heading">
                 {naira(data.balanceKobo)}
               </h1>
               <p className="text-sm text-fg-muted">
@@ -147,10 +147,10 @@ export function PayView({
         {!paid && data.state !== "void" && (
           <section aria-label="How to pay" className="space-y-3">
             <h2 className="px-1 font-semibold text-fg-heading">How would you like to pay?</h2>
-            <div className="space-y-3 rounded-3xl bg-surface p-5 shadow-card sm:p-6">
+            <div className="space-y-3 rounded-xl border border-line bg-surface p-5 shadow-card">
               <div className="flex items-start gap-4">
                 <span
-                  className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-subtle text-brand-fg"
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-brand-fg"
                   aria-hidden
                 >
                   <CreditCard className="size-5" />
@@ -170,10 +170,10 @@ export function PayView({
               </p>
             </div>
 
-            <div className="space-y-4 rounded-3xl bg-surface p-5 shadow-card sm:p-6">
+            <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
               <div className="flex items-start gap-4">
                 <span
-                  className="grid size-11 shrink-0 place-items-center rounded-2xl bg-surface-subtle text-fg-muted"
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-subtle text-fg-muted"
                   aria-hidden
                 >
                   <Landmark className="size-5" />

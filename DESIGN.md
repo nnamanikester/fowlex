@@ -2,7 +2,7 @@
 
 The Fowlex dashboard is built on the **Pickriders dashboard design system** (tokens, shapes, motion,
 components), re-coloured with the Fowlex brand (`brand/README.md`): Fowlex charcoal, comb red and
-cream, with Fraunces, Lexend, IBM Plex Sans and Geist Mono. Two kinds of people use it: the partners and managers at a
+cream, with Urbanist and Geist Mono (the Pickriders pair). Two kinds of people use it: the partners and managers at a
 desk reading money, and farm staff on a phone in a poultry house logging deaths and feed.
 
 See it live at **`/design`** (every token and, from step 1.3, every component, in the current theme).
@@ -25,7 +25,7 @@ Radix: the components are our own.
    persistent amber banner and amber "Test" pills while test keys are set.
 5. **Roomy controls, calm surfaces.** 44px buttons and inputs (`min-h-11`), 16px text in inputs on
    phones (no iOS zoom), cards with a hairline and `shadow-card` on the warm `canvas`.
-6. **Numbers line up.** Money and counts use the figures face with tabular figures (`num`), right-aligned
+6. **Numbers line up.** Money and counts use tabular figures (`num`), right-aligned
    in tables. Naira are shown with ₦ and two decimals; they are stored as kobo integers.
 7. **Mono for what you copy.** Invoice numbers (`INV-2026-0001`), batch codes (`B-2026-07`) and
    Paystack references use Geist Mono, with a copy button where it helps.
@@ -69,29 +69,24 @@ accident.
 
 ## Type
 
-Three faces, each with one job, so titles, reading and numbers never look alike:
+The Pickriders pair: Urbanist for the interface, Geist Mono for codes (invoice numbers, batch
+codes, references). Money and counts use tabular figures (`num`). Tailwind's default scale, with
+weight doing the work, exactly as the Pickriders developer dashboard:
 
-- **Fraunces** (`font-display`) for titles: a soft serif, set with `SOFT 100` and no quirky
-  letters, warm like the land rather than stern like a newspaper.
-- **Lexend** (`font-sans`, the default) for everything you read: drawn from reading-proficiency
-  research to cut visual stress, for people new to screens. Its zero is plain (a slashed zero, as
-  in Atkinson Hyperlegible, made every amount look technical).
-- **IBM Plex Sans** (`num`) for money and counts: tabular, lining figures that line up in columns,
-  with a clear 1 and 7. `num` wins over `font-display`, so a big amount stays a number.
-- **Geist Mono** for codes: invoice numbers, batch codes, references.
+| Use                        | Classes                                                    |
+| -------------------------- | ---------------------------------------------------------- |
+| Brand panel headline       | `text-[2.5rem] font-black tracking-tight`                  |
+| Auth and empty-state title | `text-[1.75rem] font-black tracking-tight text-fg-heading` |
+| Page title (PageHeader)    | `text-2xl font-extrabold tracking-tight text-fg-heading`   |
+| Section and dialog title   | `text-lg font-bold text-fg-heading`                        |
+| Headline numbers           | `num text-3xl font-extrabold tracking-tight` (StatCard)    |
+| Reading text               | `text-[15px] leading-6 text-fg-muted`                      |
+| Controls, labels, tables   | `text-sm` (labels `font-semibold`)                         |
+| Meta                       | `text-xs text-fg-subtle`                                   |
 
-Tailwind's default scale, with weight doing the work:
-
-| Use                        | Classes                                                                |
-| -------------------------- | ---------------------------------------------------------------------- |
-| Brand panel headline       | `font-display text-[2.5rem] font-bold tracking-tight`                  |
-| Auth and empty-state title | `font-display text-[1.75rem] font-bold tracking-tight text-fg-heading` |
-| Page title (PageHeader)    | `font-display text-2xl font-bold tracking-tight text-fg-heading`       |
-| Section and dialog title   | `text-lg font-bold text-fg-heading`                                    |
-| Headline numbers           | `num text-2xl font-semibold` (StatCard, MetricCard)                    |
-| Reading text               | `text-[15px] leading-6 text-fg-muted`                                  |
-| Controls, labels, tables   | `text-sm` (labels `font-semibold`)                                     |
-| Meta                       | `text-xs text-fg-subtle`                                               |
+Screens are built from these and the kit (PageHeader, Panel, StatCard, Badge, Button, Sheet):
+no one-off sizes, no radius beyond `rounded-xl` on cards (`rounded-2xl` is for dialogs only),
+no display-size numbers outside a page's one hero figure.
 
 ## Shape, space and motion
 

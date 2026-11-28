@@ -27,7 +27,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <Image src="/brand/fowlex-logo-horizontal-reverse.svg" alt="" width={136} height={48} />
         <div className="relative max-w-[30rem] space-y-9">
           <div className="space-y-3">
-            <h2 className="text-balance font-display text-[2.5rem] font-bold leading-[1.05] tracking-tight">
+            <h2 className="text-balance text-[2.5rem] font-bold leading-[1.05] tracking-tight">
               Your farm, in one place.
             </h2>
             <p className="max-w-sm text-base leading-7 text-white/75">
@@ -95,9 +95,7 @@ export function AuthHeading({
 }) {
   return (
     <div className={cn("mb-7", className)}>
-      <h1 className="text-balance font-display text-[1.75rem] font-bold leading-tight tracking-tight text-fg-heading">
-        {title}
-      </h1>
+      <h1 className="text-balance text-[1.75rem] font-bold leading-tight tracking-tight text-fg-heading">{title}</h1>
       {description && <p className="mt-2 text-[15px] leading-6 text-fg-muted">{description}</p>}
     </div>
   );

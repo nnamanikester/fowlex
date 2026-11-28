@@ -26,7 +26,7 @@ export function SimulatedCheckout({ reference }: { reference: string }) {
   };
   return (
     <main className="grid min-h-dvh place-items-center bg-surface-subtle px-4">
-      <div className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-6 shadow-pop">
+      <div className="w-full max-w-sm space-y-5 rounded-xl border border-line bg-surface p-6 shadow-card">
         <p className="flex items-center gap-2 text-sm font-semibold text-warning-fg">
           <FlaskConical className="size-4" aria-hidden /> Paystack test checkout
         </p>
@@ -34,7 +34,7 @@ export function SimulatedCheckout({ reference }: { reference: string }) {
           <>
             <div className="space-y-1">
               <p className="text-sm text-fg-muted">Pay</p>
-              <p className="num font-display text-4xl font-bold text-fg-heading">{formatNaira(charge.amount)}</p>
+              <p className="num text-3xl font-extrabold text-fg-heading">{formatNaira(charge.amount)}</p>
             </div>
             <Button
               size="lg"

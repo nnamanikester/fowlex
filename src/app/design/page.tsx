@@ -121,7 +121,7 @@ function Tokens() {
           ]}
         />
         <div className="h-28 rounded-xl bg-gradient-to-br from-charcoal via-charcoal-mid to-comb p-5">
-          <p className="font-display text-2xl font-bold text-white">The auth brand panel</p>
+          <p className="text-2xl font-bold text-white">The auth brand panel</p>
           <p className="text-sm text-white/75">from-charcoal via-charcoal-mid to-comb</p>
         </div>
         <nav aria-label="Sidebar sample" className="grid max-w-xs gap-1 rounded-xl bg-nav p-3 text-sm">
@@ -156,7 +156,7 @@ function Tokens() {
           ]}
         />
         <div className="grid gap-2 rounded-xl border bg-surface p-5 shadow-card">
-          <p className="font-display text-xl font-bold text-fg-heading">fg-heading: Batch B-2026-07</p>
+          <p className="text-xl font-bold text-fg-heading">fg-heading: Batch B-2026-07</p>
           <p className="text-fg">fg: 1,000 birds placed on 3 Nov, 785 alive today.</p>
           <p className="text-fg-muted">fg-muted: Starter feed, 25 kg bags</p>
           <p className="text-xs text-fg-subtle">fg-subtle: Logged by Musa · 2 hours ago</p>
@@ -173,10 +173,8 @@ function Tokens() {
 
       <Section id="type" title="Type">
         <div className="grid gap-3 rounded-xl border bg-surface p-5 shadow-card">
-          <p className="font-display text-[2.5rem] font-bold leading-tight tracking-tight text-fg-heading">
-            Display, Jost
-          </p>
-          <p className="font-display text-2xl font-bold tracking-tight text-fg-heading">Page title</p>
+          <p className="text-[2.5rem] font-bold leading-tight tracking-tight text-fg-heading">Display, Jost</p>
+          <p className="text-2xl font-bold tracking-tight text-fg-heading">Page title</p>
           <p className="text-lg font-bold text-fg-heading">Section title</p>
           <p className="text-[15px] leading-6 text-fg-muted">Reading text for descriptions and empty states.</p>
           <p className="num text-2xl font-semibold text-fg">₦1,234,567.00 · ₦98,450.50 · ₦7,000.00</p>

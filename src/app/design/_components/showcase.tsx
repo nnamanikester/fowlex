@@ -32,7 +32,7 @@ import { ToggleSwitch } from "@/components/ui/toggle-switch";
 export function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-24 space-y-4 border-t border-line pt-10 first:border-0 first:pt-0">
-      <h2 className="font-display text-xl font-bold tracking-tight text-fg-heading">{title}</h2>
+      <h2 className="text-xl font-bold tracking-tight text-fg-heading">{title}</h2>
       {children}
     </section>
   );

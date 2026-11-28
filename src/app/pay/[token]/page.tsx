@@ -31,7 +31,7 @@ async function Pay({ params, searchParams }: Pick<PageProps<"/pay/[token]">, "pa
     return (
       <main className="grid min-h-dvh place-items-center bg-canvas px-4 text-center">
         <div className="max-w-sm space-y-2">
-          <h1 className="font-display text-2xl font-bold text-fg-heading">This pay link doesn&apos;t work</h1>
+          <h1 className="text-2xl font-bold text-fg-heading">This pay link doesn&apos;t work</h1>
           <p className="text-fg-muted">Ask the farm to send you a new one.</p>
         </div>
       </main>

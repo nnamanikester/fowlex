@@ -35,9 +35,7 @@ async function Offer({ params }: Pick<PageProps<"/order/[slug]">, "params">) {
     return (
       <main className="grid min-h-dvh place-items-center bg-canvas px-4 text-center">
         <div className="max-w-sm space-y-2">
-          <h1 className="font-display text-2xl font-bold text-fg-heading">
-            This page isn&apos;t taking orders right now
-          </h1>
+          <h1 className="text-2xl font-bold text-fg-heading">This page isn&apos;t taking orders right now</h1>
           <p className="text-fg-muted">Call the farm to order, or try this link again later.</p>
         </div>
       </main>

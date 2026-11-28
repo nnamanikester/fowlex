@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { watchErrors } from "./helpers";
+import { ready, settled, watchErrors } from "./helpers";
 
 /** Where the open drawer and its footer sit, against the window. */
 async function placed(page: Page) {
@@ -21,14 +21,16 @@ test("drawers sit flush with the screen, their buttons in full view", async ({ p
     ["/customers", "Add a customer"],
   ] as const) {
     await page.goto(path);
-    await page.getByRole("main").getByRole("button", { name: button }).first().click();
+    const open = page.getByRole("main").getByRole("button", { name: button }).first();
+    await ready(open);
+    await open.click();
     await expect(page.locator("dialog[open]")).toBeVisible();
-    await expect(async () => {
-      const at = await placed(page);
-      if (!isMobile) expect(at.top).toBe(0);
-      expect(at.bottom).toBeCloseTo(at.height, 0);
-      expect(at.footer).toBeLessThanOrEqual(at.height);
-    }).toPass();
+    // Measured where it comes to rest, once its opening animation is done.
+    await settled(page.locator("dialog[open]"));
+    const at = await placed(page);
+    if (!isMobile) expect(at.top).toBe(0);
+    expect(at.bottom).toBeCloseTo(at.height, 0);
+    expect(at.footer).toBeLessThanOrEqual(at.height);
     await page.keyboard.press("Escape");
   }
   expect(errors).toEqual([]);

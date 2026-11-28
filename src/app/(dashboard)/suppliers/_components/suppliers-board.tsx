@@ -100,7 +100,7 @@ export function SuppliersBoard({
                   className="focus-ring flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4 pb-14 text-left shadow-card hover:border-line-strong"
                 >
                   <span className="flex items-start justify-between gap-2">
-                    <span className="font-display text-lg font-bold text-fg-heading">{s.name}</span>
+                    <span className="text-lg font-bold text-fg-heading">{s.name}</span>
                     {s.archived && <Badge>Archived</Badge>}
                   </span>
                   <span className="text-sm text-fg-muted">

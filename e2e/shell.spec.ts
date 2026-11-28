@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { watchErrors } from "./helpers";
+import { ready, watchErrors } from "./helpers";
 import { E2E_BATCHES } from "./users";
 
 const PAGES = [
@@ -22,13 +22,12 @@ const PAGES = [
   ["Settings", "/settings"],
 ] as const;
 
-/** Keyboard shortcuts listen once React has hydrated: retry the first press until one lands. */
+/** Keyboard shortcuts listen once React has hydrated: wait for the shell to be live, then press once. */
 async function openPalette(page: Page) {
   const search = page.getByRole("combobox", { name: "Search pages and actions" });
-  await expect(async () => {
-    await page.keyboard.press("ControlOrMeta+K");
-    await expect(search).toBeFocused({ timeout: 500 });
-  }).toPass();
+  await ready(page.getByRole("button", { name: "Search or jump to" }).first());
+  await page.keyboard.press("ControlOrMeta+K");
+  await expect(search).toBeFocused();
   return search;
 }
 
@@ -60,11 +59,10 @@ test.describe("desktop", () => {
 
   test("G then a letter jumps to a page; [ folds the sidebar and it stays folded", async ({ page }) => {
     await page.goto("/");
-    await expect(async () => {
-      await page.keyboard.press("g");
-      await page.keyboard.press("b");
-      await expect(page).toHaveURL("/batches", { timeout: 500 });
-    }).toPass();
+    await ready(page.getByRole("button", { name: "Search or jump to" }).first());
+    await page.keyboard.press("g");
+    await page.keyboard.press("b");
+    await expect(page).toHaveURL("/batches");
 
     const sidebar = page.getByRole("complementary", { name: "Sidebar" });
     await page.keyboard.press("[");

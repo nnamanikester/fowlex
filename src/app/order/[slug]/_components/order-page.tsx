@@ -144,7 +144,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 
       {offer.days.length === 0 ? (
         <section className="mx-auto max-w-xl px-4 py-12 text-center">
-          <h2 className="font-display text-2xl font-bold text-fg-heading">Everything is spoken for right now</h2>
+          <h2 className="text-xl font-bold text-fg-heading">Everything is spoken for right now</h2>
           <p className="mt-2 text-fg-muted">New birds are on the way. Call us and we&apos;ll keep some for you.</p>
           {offer.farm.phone && <CallButton phone={offer.farm.phone} name={offer.farm.name} className="mt-6" />}
         </section>
@@ -178,7 +178,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                     value={birds ? String(birds) : ""}
                     placeholder="0"
                     onChange={(e) => setBirds(Number(e.target.value.replace(/\D/g, "").slice(0, 6)) || 0)}
-                    className="num w-full bg-transparent text-center font-display text-6xl font-bold tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8 sm:text-7xl"
+                    className="num w-full bg-transparent text-center text-4xl font-extrabold tracking-tight text-fg-heading outline-none placeholder:text-fg-subtle focus-visible:underline focus-visible:decoration-comb focus-visible:decoration-4 focus-visible:underline-offset-8 sm:text-7xl"
                   />
                 </label>
                 <RoundButton
@@ -256,13 +256,13 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                       if (birds > d.birds) setBirds(d.birds);
                     }}
                     className={cn(
-                      "focus-ring min-w-[7.5rem] shrink-0 snap-start rounded-2xl border px-4 py-3 text-left transition-colors",
+                      "focus-ring min-w-[7.5rem] shrink-0 snap-start rounded-xl border px-4 py-3 text-left transition-colors",
                       date === d.date
                         ? "border-charcoal bg-charcoal text-white"
                         : "border-line bg-surface text-fg hover:border-line-strong",
                     )}
                   >
-                    <span className="block font-display text-lg font-bold">{dayLabel(d.date, today)}</span>
+                    <span className="block text-lg font-bold">{dayLabel(d.date, today)}</span>
                     <span className={cn("num block text-xs", date === d.date ? "text-white/70" : "text-fg-muted")}>
                       {d.birds.toLocaleString("en-NG")} ready
                     </span>
@@ -300,7 +300,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
                     detail="We'll confirm the cost"
                   />
                 ) : (
-                  <p className="flex items-center rounded-2xl border border-dashed border-line px-4 text-sm text-fg-muted">
+                  <p className="flex items-center rounded-xl border border-dashed border-line px-4 text-sm text-fg-muted">
                     We don&apos;t deliver yet
                   </p>
                 )}
@@ -321,7 +321,7 @@ export function OrderPage({ offer, today }: { offer: Offer; today: string }) {
 
             <Step n={3} title="Your details">
               {returning && details.name && (
-                <p className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface px-4 py-3 text-sm text-fg">
+                <p className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface px-4 py-3 text-sm text-fg">
                   <span>
                     Welcome back, <strong>{details.name.split(" ")[0]}</strong>. Your details are filled in.
                   </span>
@@ -468,7 +468,7 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
             </a>
           )}
         </div>
-        <h1 className="mt-10 max-w-2xl font-display text-[clamp(2.25rem,8vw,4.25rem)] font-bold leading-[1.02] tracking-tight">
+        <h1 className="mt-10 max-w-2xl text-3xl font-extrabold leading-tight sm:text-4xl tracking-tight">
           {offer.readyNow > 0 ? (
             <>
               <span className="num text-[rgb(var(--comb-on-dark))]">{offer.readyNow.toLocaleString("en-NG")}</span>{" "}
@@ -501,7 +501,7 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
               className="min-w-0 border-r border-white/15 py-4 pr-3 last:border-r-0 [&:not(:first-child)]:pl-3 sm:pr-5 [&:not(:first-child)]:sm:pl-5"
             >
               <dt className="text-xs text-white/60 sm:text-sm">{label}</dt>
-              <dd className="num mt-1 font-display text-base font-bold [overflow-wrap:anywhere] sm:text-xl">{value}</dd>
+              <dd className="num mt-1 text-base font-bold [overflow-wrap:anywhere] sm:text-xl">{value}</dd>
             </div>
           ))}
         </dl>
@@ -519,10 +519,7 @@ function Board({ offer, today }: { offer: Offer; today: string }) {
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <section aria-labelledby={`step-${n}`} className="space-y-4">
-      <h2
-        id={`step-${n}`}
-        className="flex items-center gap-3 font-display text-xl font-bold text-fg-heading sm:text-2xl"
-      >
+      <h2 id={`step-${n}`} className="flex items-center gap-3 text-lg font-bold text-fg-heading">
         <span
           aria-hidden
           className="grid size-8 shrink-0 place-items-center rounded-full bg-charcoal text-sm text-white"
@@ -553,7 +550,7 @@ function RoundButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="focus-ring grid size-14 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg transition active:scale-95 disabled:opacity-40 [&_svg]:size-6"
+      className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-line-strong bg-surface text-fg transition active:scale-95 disabled:opacity-40 [&_svg]:size-6"
     >
       {children}
     </button>
@@ -595,7 +592,7 @@ function PriceChoice({
       aria-checked={checked}
       onClick={onClick}
       className={cn(
-        "focus-ring flex items-center justify-between gap-3 rounded-2xl border p-4 text-left transition-colors",
+        "focus-ring flex items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors",
         checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
       )}
     >
@@ -607,7 +604,7 @@ function PriceChoice({
             : "A set price for each bird"}
         </span>
       </span>
-      <span className="num shrink-0 font-display text-lg font-bold">{priceLabel(price)}</span>
+      <span className="num shrink-0 text-lg font-bold">{priceLabel(price)}</span>
     </button>
   );
 }
@@ -632,7 +629,7 @@ function Choice({
       aria-checked={checked}
       onClick={onClick}
       className={cn(
-        "focus-ring flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors [&_svg]:size-5",
+        "focus-ring flex items-center gap-3 rounded-xl border p-4 text-left transition-colors [&_svg]:size-5",
         checked ? "border-charcoal bg-charcoal text-white" : "border-line bg-surface text-fg hover:border-line-strong",
       )}
     >
@@ -665,7 +662,7 @@ function TextField({
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "id">) {
   const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
   const className = cn(
-    "w-full rounded-2xl border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition placeholder:text-fg-subtle focus:border-charcoal focus:ring-2 focus:ring-charcoal/15",
+    "w-full rounded-xl border bg-surface px-4 py-3 text-[16px] text-fg outline-none transition placeholder:text-fg-subtle focus:border-charcoal focus:ring-2 focus:ring-charcoal/15",
     error ? "border-danger" : "border-line",
   );
   return (
@@ -741,7 +738,7 @@ function Summary({
       className={cn(
         floating
           ? "fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
-          : "rounded-3xl border border-line bg-surface p-5 shadow-card",
+          : "rounded-xl border border-line bg-surface p-5 shadow-card",
         className,
       )}
     >
@@ -754,7 +751,7 @@ function Summary({
         <div className={cn(floating ? "flex items-center gap-3" : "space-y-4")}>
           <div className="min-w-0 flex-1" aria-live="polite">
             {!floating && <p className="text-sm text-fg-muted">Your order</p>}
-            <p className="num truncate font-display text-lg font-bold text-fg-heading">
+            <p className="num truncate text-lg font-bold text-fg-heading">
               {birds ? birdsText(birds) : "Choose your birds"}
               {birds && day
                 ? `, ${day.toLowerCase() === "today" || day.toLowerCase() === "tomorrow" ? day.toLowerCase() : day}`
@@ -771,7 +768,7 @@ function Summary({
             disabled={sending}
             aria-busy={sending || undefined}
             className={cn(
-              "focus-ring relative inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-comb px-6 text-base font-bold text-white shadow-button transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-80",
+              "focus-ring relative inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-comb px-5 text-base font-bold text-white shadow-button transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-80",
               !floating && "w-full",
             )}
           >
@@ -798,7 +795,7 @@ function CallButton({ phone, name, className }: { phone: string; name: string; c
     <a
       href={`tel:${phone.replace(/\s/g, "")}`}
       className={cn(
-        "focus-ring inline-flex min-h-12 items-center gap-2 rounded-2xl border border-line-strong bg-surface px-5 font-semibold text-fg",
+        "focus-ring inline-flex min-h-12 items-center gap-2 rounded-xl border border-line-strong bg-surface px-5 font-semibold text-fg",
         className,
       )}
     >
@@ -820,14 +817,10 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
         <div className="mx-auto max-w-xl">
           {/* eslint-disable-next-line @next/next/no-img-element -- an SVG logo, already the right size */}
           <img src="/brand/fowlex-logo-horizontal-reverse.svg" alt={placed.farm.name} className="h-7 w-auto" />
-          <span aria-hidden className="mt-10 grid size-16 animate-pop-in place-items-center rounded-full bg-comb">
+          <span aria-hidden className="mt-10 grid size-12 animate-pop-in place-items-center rounded-full bg-comb">
             <Check className="size-8" />
           </span>
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className="mt-6 font-display text-4xl font-bold tracking-tight outline-none sm:text-5xl"
-          >
+          <h1 ref={heading} tabIndex={-1} className="mt-5 text-3xl font-extrabold tracking-tight outline-none">
             Order placed
           </h1>
           <p className="mt-2 text-lg text-white/70">
@@ -837,7 +830,7 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
         </div>
       </header>
       <main className="mx-auto max-w-xl space-y-6 px-4 py-8">
-        <dl className="divide-y divide-line rounded-3xl border border-line bg-surface">
+        <dl className="divide-y divide-line rounded-xl border border-line bg-surface">
           {[
             ["Order", placed.number],
             ["Birds", birdsText(placed.birds)],
@@ -862,7 +855,7 @@ function Confirmation({ placed, today, onAgain }: { placed: Placed; today: strin
           <button
             type="button"
             onClick={onAgain}
-            className="focus-ring inline-flex min-h-12 items-center justify-center rounded-2xl px-5 font-semibold text-brand-fg"
+            className="focus-ring inline-flex min-h-12 items-center justify-center rounded-xl px-5 font-semibold text-brand-fg"
           >
             Order more birds
           </button>

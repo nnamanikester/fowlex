@@ -99,7 +99,7 @@ export function RunDetail({
         <ChevronLeft className="size-4" aria-hidden /> Payroll
       </Link>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-bold text-fg-heading">{month} pay</h1>
+        <h1 className="text-2xl font-bold text-fg-heading">{month} pay</h1>
         <Badge tone={STATE_TONE[run.payState]}>{PAY_STATE_LABELS[run.payState]}</Badge>
       </div>
       {draft && (

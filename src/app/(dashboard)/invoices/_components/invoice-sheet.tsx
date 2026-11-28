@@ -181,7 +181,7 @@ export function InvoiceSheet({
             </p>
           )}
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="num font-display text-3xl font-bold text-fg-heading">{formatNaira(i.balanceKobo)}</span>
+            <span className="num text-3xl font-bold text-fg-heading">{formatNaira(i.balanceKobo)}</span>
             <span className="text-sm text-fg-muted">
               {i.status === "paid" ? "paid in full" : i.paidKobo ? `left of ${formatNaira(i.totalKobo)}` : "to pay"}
             </span>
