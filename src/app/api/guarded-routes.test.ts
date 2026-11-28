@@ -345,6 +345,13 @@ describe("log routes", () => {
     const listed = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${today}`));
     expect((await listed.json()).map((l: { id: string }) => l.id)).toEqual([log.id]);
     expect(await (await listLogs(req("GET", `/api/logs?batchId=${batch.id}`))).json()).toHaveLength(1);
+    // A week logged together is found by any day in it.
+    const back = (n: number) => new Date(Date.parse(today) - n * 86_400_000).toISOString().slice(0, 10);
+    const week = await (
+      await createLog(req("POST", "/api/logs", { batchId: batch.id, date: back(9), endDate: back(3), deaths: 7 }))
+    ).json();
+    const inWeek = await listLogs(req("GET", `/api/logs?batchId=${batch.id}&date=${back(5)}`));
+    expect((await inWeek.json()).map((l: { id: string }) => l.id)).toEqual([week.id]);
 
     const saved = await updateLog(
       req("PATCH", `/api/logs/${log.id}`, { ...body, deaths: 4, version: log.version }),

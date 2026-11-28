@@ -15,13 +15,43 @@
  * missing, the feed total is too low and the numbers look far better than they are.
  */
 import { ageOn, daysBetween } from "./rules";
+import { addDays } from "@/lib/dates";
 
 export const FEED_COVERAGE = 0.8;
 
 export const CHICK_WEIGHT_GRAMS = 42;
 
 type Batch = { placed: number; placedOn: string; ageAtPlacementDays: number };
-type Log = { date: string; deaths: number; culls: number; sold: number; feedKg: number; avgWeightGrams: number | null };
+type Log = {
+  date: string;
+  /** The last day a week's or month's log covers. */
+  endDate?: string | null;
+  deaths: number;
+  culls: number;
+  sold: number;
+  feedKg: number;
+  avgWeightGrams: number | null;
+};
+
+/**
+ * Logs one day each: a week's or month's log is shared evenly across its days (deaths, culls,
+ * sold and feed), with its weighing on its last day. Totals are the same; day-by-day numbers
+ * (feed up to a weighing, days with feed logged) stay true.
+ */
+export function spreadLogs<T extends Log>(logs: T[]): Log[] {
+  return logs.flatMap((l) => {
+    const days = l.endDate ? daysBetween(l.date, l.endDate) + 1 : 1;
+    if (days <= 1) return [l];
+    return Array.from({ length: days }, (_, i) => ({
+      date: addDays(l.date, i),
+      deaths: l.deaths / days,
+      culls: l.culls / days,
+      sold: l.sold / days,
+      feedKg: l.feedKg / days,
+      avgWeightGrams: i === days - 1 ? l.avgWeightGrams : null,
+    }));
+  });
+}
 
 export type Kpis = {
   livability: number | null;
@@ -39,7 +69,8 @@ export type Kpis = {
 
 const round = (x: number, places: number) => Math.round(x * 10 ** places) / 10 ** places;
 
-export function batchKpis(batch: Batch, logs: Log[]): Kpis {
+export function batchKpis(batch: Batch, given: Log[]): Kpis {
+  const logs = spreadLogs(given);
   const lost = (upTo?: string) =>
     logs.filter((l) => !upTo || l.date <= upTo).reduce((sum, l) => sum + l.deaths + l.culls, 0);
   const feed = (upTo?: string) => logs.filter((l) => !upTo || l.date <= upTo).reduce((sum, l) => sum + l.feedKg, 0);
@@ -104,7 +135,8 @@ export function standardWeight(day: number, curve = ROSS_308): number | null {
 }
 
 /** Actual weighings against the standard, one row a week up to the later of today and the target. */
-export function growthRows(batch: Batch & { targetSellAgeDays: number }, logs: Log[], today: string) {
+export function growthRows(batch: Batch & { targetSellAgeDays: number }, given: Log[], today: string) {
+  const logs = spreadLogs(given);
   const weighings = new Map(
     logs.filter((l) => l.avgWeightGrams && l.avgWeightGrams > 0).map((l) => [ageOn(batch, l.date), l.avgWeightGrams!]),
   );
