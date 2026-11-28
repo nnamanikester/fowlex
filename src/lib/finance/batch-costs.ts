@@ -41,7 +41,12 @@ const empty = (): CostSheet => ({
  * (feed, drugs, vaccines, litter…) at the average cost on the day it was used. Shared costs (rent,
  * power, salaried staff) come on top in 8.2.
  */
-export async function costSheets(farmId: string, batchIds: string[]): Promise<Map<string, CostSheet>> {
+export async function costSheets(
+  farmId: string,
+  batchIds: string[],
+  /** Only what was spent or used in these days; omitted, everything. */
+  range?: { from: string; to: string },
+): Promise<Map<string, CostSheet>> {
   await connectDb();
   const ids = [...new Set(batchIds)].filter((id) => Types.ObjectId.isValid(id));
   const sheets = new Map(ids.map((id) => [id, empty()]));
@@ -59,6 +64,7 @@ export async function costSheets(farmId: string, batchIds: string[]): Promise<Ma
           approval: { $in: ["approved", null] },
           capital: { $ne: true },
           deletedAt: null,
+          ...(range && { date: { $gte: range.from, $lte: range.to } }),
         },
       },
       { $group: { _id: { batchId: "$batchId", category: "$category" }, kobo: { $sum: COST_OF_EXPENSE } } },
@@ -95,7 +101,8 @@ export async function costSheets(farmId: string, batchIds: string[]): Promise<Ma
           })),
       );
       for (const r of rows) {
-        const sheet = r.batchId && r.quantity < 0 ? sheets.get(r.batchId) : undefined;
+        const inRange = !range || (r.date >= range.from && r.date <= range.to);
+        const sheet = r.batchId && r.quantity < 0 && inRange ? sheets.get(r.batchId) : undefined;
         if (!sheet) continue;
         sheet.byKind[kindOf(item.category)] += -r.valueKobo;
         sheet.stockKobo += -r.valueKobo;
@@ -117,4 +124,15 @@ export function perUnit(
     perSurvivorKobo: batch.survivors ? Math.round(sheet.totalKobo / batch.survivors) : null,
     perKgKobo: kg ? Math.round(sheet.totalKobo / kg) : null,
   };
+}
+
+/** The direct costs of every batch that spent or used anything in a range. */
+export async function costSheetsIn(farmId: string, range: { from: string; to: string }) {
+  await connectDb();
+  const dates = { $gte: range.from, $lte: range.to };
+  const [spent, used] = await Promise.all([
+    ExpenseModel.distinct("batchId", { farmId, batchId: { $ne: null }, date: dates }),
+    StockMovementModel.distinct("batchId", { farmId, batchId: { $ne: null }, quantity: { $lt: 0 }, date: dates }),
+  ]);
+  return costSheets(farmId, [...spent, ...used].map(String), range);
 }

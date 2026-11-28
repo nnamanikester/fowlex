@@ -113,6 +113,7 @@ describe("shared costs split by bird-days", () => {
       lines: [
         { batchId: new Types.ObjectId(b.id), birds: 40 },
         { batchId: null, birds: 5 },
+        { batchId: new Types.ObjectId(), birds: 3 },
       ],
     });
     await BatchModel.updateOne({ _id: b.id }, { $set: { status: "closed", closedOn: "2026-11-20" } });
@@ -149,6 +150,10 @@ describe("shared costs split by bird-days", () => {
     expect(nov.batches.map((x) => x.birdDays)).toEqual([aDays, bDays]);
     expect(nov).toMatchObject({ expensesKobo: 6_000, depreciationKobo: 1_000_000, totalKobo: 1_006_000 });
     expect(nov.batches.reduce((n, x) => n + x.shareKobo, 0)).toBe(1_006_000);
+    // A batch that lost every bird in October has no bird-days in November, so no share.
+    const lost = await place("2026-10-01", 50);
+    await createLog(owner, { batchId: lost.id, date: "2026-10-05", deaths: 50 }, {}, TODAY);
+    expect((await monthOverhead(owner.farmId, "2026-11", TODAY)).batches.map((x) => x.batchId)).toEqual([a.id, b.id]);
     // Closed in November: nothing of December's.
     expect((await monthOverhead(owner.farmId, "2026-12", TODAY)).batches.map((x) => x.batchId)).toEqual([a.id]);
   });

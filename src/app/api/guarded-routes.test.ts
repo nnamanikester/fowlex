@@ -169,7 +169,15 @@ describe("GET /api/reports/summary", () => {
     const manager = await signInAs("manager");
     const ok = await summary();
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ farmId: manager.farmId, revenueKobo: 0, expensesKobo: 0, profitKobo: 0 });
+    // This month's numbers: a new farm has none yet.
+    expect(await ok.json()).toEqual({
+      farmId: manager.farmId,
+      month: expect.stringMatching(/^\d{4}-\d{2}$/),
+      revenueKobo: 0,
+      expensesKobo: 0,
+      profitKobo: 0,
+      marginPct: null,
+    });
   });
 });
 
