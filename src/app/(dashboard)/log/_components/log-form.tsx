@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CircleCheck, CloudOff, LoaderCircle, Plus, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
@@ -119,6 +120,8 @@ export function LogForm({
   const [endDate, setEndDate] = React.useState<string | null>(null);
   // Doses ticked as given on this log, with the vaccine taken from stock if one is chosen.
   const [vaccines, setVaccines] = React.useState<Record<string, { itemId: string; quantity: string }>>({});
+  // Any other vaccine or medicine given, typed by name.
+  const [others, setOthers] = React.useState<Given[]>([]);
   const [fetched, setFetched] = React.useState<LogView[]>([]);
   const [saved, setSaved] = React.useState<LogView[]>([]);
   const [requestId, setRequestId] = React.useState(newRequestId);
@@ -173,6 +176,7 @@ export function LogForm({
     setShownKey(key);
     setValues(existing ? fromLog(existing) : blank(feedFor(age, feeds)));
     setVaccines({});
+    setOthers([]);
     setFailure(null);
     setSubmitted(false);
   }
@@ -230,11 +234,21 @@ export function LogForm({
       batchId,
       date,
       endDate: span_,
-      vaccines: Object.entries(vaccines).map(([scheduleKey, v]) => ({
-        scheduleKey,
-        itemId: v.itemId || null,
-        quantity: v.itemId && Number(v.quantity) > 0 ? Number(v.quantity) : null,
-      })),
+      vaccines: [
+        ...Object.entries(vaccines).map(([scheduleKey, v]) => ({
+          scheduleKey,
+          itemId: v.itemId || null,
+          quantity: v.itemId && Number(v.quantity) > 0 ? Number(v.quantity) : null,
+        })),
+        ...others
+          .filter((o) => o.product.trim())
+          .map((o) => ({
+            product: o.product.trim(),
+            kind: o.kind,
+            itemId: o.itemId || null,
+            quantity: o.itemId && Number(o.quantity) > 0 ? Number(o.quantity) : null,
+          })),
+      ],
     };
     setBusy(true);
     try {
@@ -243,6 +257,7 @@ export function LogForm({
         : await apiRequest<LogView>("/api/logs", "POST", { ...body, requestId });
       setSaved((s) => [log, ...s.filter((l) => l.id !== log.id)]);
       setVaccines({});
+      setOthers([]);
       setRequestId(newRequestId());
       const when = span_
         ? (choices.find((c) => c.from === date)?.label.toLowerCase() ?? spanLabel(date, span_))
@@ -597,7 +612,7 @@ export function LogForm({
       </Field>
 
       {batch && (
-        <VaccinesDue
+        <HealthGiven
           due={needsAttention(
             vaccinationPlan(
               batch,
@@ -607,9 +622,12 @@ export function LogForm({
               span_ ?? date,
             ),
           )}
-          stock={stock.filter((i) => i.category === "vaccine")}
+          stock={stock.filter((i) => i.category === "vaccine" || i.category === "medication")}
           ticked={vaccines}
           onChange={setVaccines}
+          others={others}
+          onOthers={setOthers}
+          names={[...new Set(vaccinationPlan(batch, new Map(), today).map((d) => d.vaccine))]}
         />
       )}
 
@@ -621,53 +639,44 @@ export function LogForm({
         over={over}
       />
 
-      <details className="rounded-xl border border-line px-4 py-3" open={values.avgWeightGrams !== null}>
-        <summary className="cursor-pointer text-sm font-semibold text-fg">Weighed some birds?</summary>
-        <div className="pt-3">
-          <Field
-            id="avgWeightGrams"
-            label="Average weight (kg)"
-            error={show("avgWeightGrams")}
-            hint="Weigh 10 or more birds from different spots and divide."
-          >
-            {(a11y) => (
-              <Input
-                {...a11y}
-                inputMode="decimal"
-                className="num"
-                placeholder="1.25"
-                value={values.avgWeightGrams === null ? "" : String(values.avgWeightGrams / 1000)}
-                onChange={(e) =>
-                  set("avgWeightGrams", e.target.value === "" ? null : Math.round(Number(e.target.value) * 1000))
-                }
-              />
-            )}
-          </Field>
-        </div>
-      </details>
-
-      <details className="rounded-xl border border-line px-4 py-3" open={values.sold > 0}>
-        <summary className="cursor-pointer text-sm font-semibold text-fg">Birds taken for sale?</summary>
-        <div className="pt-3">
-          <Field
-            id="sold"
-            label="Birds taken"
-            error={show("sold")}
-            hint="Taken by buyers today without a sales order: birds on orders come off by themselves"
-          >
-            {(a11y) => (
-              <Stepper
-                id={a11y.id}
-                label="Bird taken"
-                value={values.sold}
-                onChange={(n) => set("sold", n)}
-                invalid={a11y["aria-invalid"]}
-                describedBy={a11y["aria-describedby"]}
-              />
-            )}
-          </Field>
-        </div>
-      </details>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          id="avgWeightGrams"
+          label="Average weight (kg)"
+          error={show("avgWeightGrams")}
+          hint="Optional: weigh 10 or more birds from different spots and divide."
+        >
+          {(a11y) => (
+            <Input
+              {...a11y}
+              inputMode="decimal"
+              className="num"
+              placeholder="1.25"
+              value={values.avgWeightGrams === null ? "" : String(values.avgWeightGrams / 1000)}
+              onChange={(e) =>
+                set("avgWeightGrams", e.target.value === "" ? null : Math.round(Number(e.target.value) * 1000))
+              }
+            />
+          )}
+        </Field>
+        <Field
+          id="sold"
+          label="Birds taken for sale"
+          error={show("sold")}
+          hint="Taken by buyers without a sales order: birds on orders come off by themselves."
+        >
+          {(a11y) => (
+            <Stepper
+              id={a11y.id}
+              label="Bird taken"
+              value={values.sold}
+              onChange={(n) => set("sold", n)}
+              invalid={a11y["aria-invalid"]}
+              describedBy={a11y["aria-describedby"]}
+            />
+          )}
+        </Field>
+      </div>
 
       <Field id="notes" label="Notes" error={show("notes")} hint="Optional: anything unusual">
         {(a11y) => (
@@ -696,92 +705,189 @@ export function LogForm({
   );
 }
 
+/** Any other vaccine or medicine given, typed by name: optional from stock. */
+type Given = { product: string; kind: "vaccination" | "medication"; itemId: string; quantity: string };
+
 /**
- * Doses due or overdue on the day (or by the end of the week) logged: tick the ones given. Each
- * goes on the batch's health record, the vaccine taken from stock when one is chosen.
+ * Vaccines and medicine given on the day (or week) logged. Doses due or overdue are ticks; anything
+ * else is typed by name. Each goes on the batch's health record, taken from stock when an item is
+ * chosen. Always shown, so a log can record any of them.
  */
-function VaccinesDue({
+function HealthGiven({
   due,
   stock,
   ticked,
   onChange,
+  others,
+  onOthers,
+  names,
 }: {
   due: ReturnType<typeof needsAttention>;
   stock: SupplyStock[];
   ticked: Record<string, { itemId: string; quantity: string }>;
   onChange: (next: Record<string, { itemId: string; quantity: string }>) => void;
+  others: Given[];
+  onOthers: (next: Given[]) => void;
+  /** Vaccines from the schedule, suggested as you type. */
+  names: string[];
 }) {
-  if (!due.length) return null;
+  const vaccines = stock.filter((i) => i.category === "vaccine");
   const toggle = (key: string) => {
     const next = { ...ticked };
     if (next[key]) delete next[key];
-    else next[key] = { itemId: stock.length === 1 ? stock[0].id : "", quantity: stock.length === 1 ? "1" : "" };
+    else
+      next[key] = { itemId: vaccines.length === 1 ? vaccines[0].id : "", quantity: vaccines.length === 1 ? "1" : "" };
     onChange(next);
   };
+  const edit = (i: number, patch: Partial<Given>) => onOthers(others.map((o, j) => (j === i ? { ...o, ...patch } : o)));
   return (
     <section className="space-y-3">
       <div className="space-y-1">
-        <h2 className="text-sm font-semibold text-fg">Vaccines due</h2>
-        <p className="text-sm text-fg-muted">Tick the ones given. They go on the batch&apos;s health record.</p>
+        <h2 className="text-sm font-semibold text-fg">Vaccines and medicine</h2>
+        <p className="text-sm text-fg-muted">
+          {due.length ? "Tick the doses given, and add anything else. " : "None due. Add any given. "}
+          Each goes on the batch&apos;s health record.
+        </p>
       </div>
-      <ul className="space-y-2">
-        {due.map((d) => {
-          const on = ticked[d.key];
-          return (
-            <li
-              key={d.key}
-              className={cn("rounded-xl border p-3", on ? "border-brand bg-brand-subtle" : "border-line bg-surface")}
-            >
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={!!on}
-                  onChange={() => toggle(d.key)}
-                  className="focus-ring mt-0.5 size-5 shrink-0 accent-[rgb(var(--brand))]"
-                />
-                <span className="min-w-0 space-y-0.5">
-                  <span className="block font-semibold text-fg">{d.vaccine} given</span>
-                  <span className="block text-xs text-fg-muted">
-                    {d.disease} · {d.route.toLowerCase()} · {d.state === "overdue" ? "overdue since" : "due"}{" "}
-                    {formatRange({ from: d.dueOn, to: d.dueOn })}
+      {due.length > 0 && (
+        <ul className="space-y-2">
+          {due.map((d) => {
+            const on = ticked[d.key];
+            return (
+              <li
+                key={d.key}
+                className={cn("rounded-xl border p-3", on ? "border-brand bg-brand-subtle" : "border-line bg-surface")}
+              >
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={!!on}
+                    onChange={() => toggle(d.key)}
+                    className="focus-ring mt-0.5 size-5 shrink-0 accent-[rgb(var(--brand))]"
+                  />
+                  <span className="min-w-0 space-y-0.5">
+                    <span className="block font-semibold text-fg">{d.vaccine} given</span>
+                    <span className="block text-xs text-fg-muted">
+                      {d.disease} · {d.route.toLowerCase()} · {d.state === "overdue" ? "overdue since" : "due"}{" "}
+                      {formatRange({ from: d.dueOn, to: d.dueOn })}
+                    </span>
                   </span>
-                </span>
-              </label>
-              {on && stock.length > 0 && (
-                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_7rem] gap-2 pl-8">
-                  <Select
-                    aria-label={`${d.vaccine} from stock`}
-                    value={on.itemId}
-                    onChange={(e) => onChange({ ...ticked, [d.key]: { ...on, itemId: e.target.value } })}
-                  >
-                    <option value="">Not from stock</option>
-                    {stock.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name} ({quantity(i.onHand, i.unit as Unit)} left)
-                      </option>
-                    ))}
-                  </Select>
-                  {on.itemId && (
-                    <Input
-                      aria-label={`${d.vaccine} used`}
-                      inputMode="decimal"
-                      className="num"
-                      value={on.quantity}
-                      placeholder="1"
-                      onChange={(e) =>
-                        onChange({
-                          ...ticked,
-                          [d.key]: { ...on, quantity: e.target.value.replace(/[^\d.]/g, "").slice(0, 8) },
-                        })
-                      }
-                    />
-                  )}
-                </div>
+                </label>
+                {on && vaccines.length > 0 && (
+                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)_7rem] gap-2 pl-8">
+                    <Select
+                      aria-label={`${d.vaccine} from stock`}
+                      value={on.itemId}
+                      onChange={(e) => onChange({ ...ticked, [d.key]: { ...on, itemId: e.target.value } })}
+                    >
+                      <option value="">Not from stock</option>
+                      {vaccines.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name} ({quantity(i.onHand, i.unit as Unit)} left)
+                        </option>
+                      ))}
+                    </Select>
+                    {on.itemId && (
+                      <Input
+                        aria-label={`${d.vaccine} used`}
+                        inputMode="decimal"
+                        className="num"
+                        value={on.quantity}
+                        placeholder="1"
+                        onChange={(e) =>
+                          onChange({
+                            ...ticked,
+                            [d.key]: { ...on, quantity: e.target.value.replace(/[^\d.]/g, "").slice(0, 8) },
+                          })
+                        }
+                      />
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <datalist id="health-names">
+        {[...new Set([...names, ...stock.map((i) => i.name)])].map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+      {others.map((o, i) => (
+        <div key={i} className="space-y-2 rounded-xl border border-line bg-surface p-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+            <Input
+              aria-label={`Given ${i + 1}`}
+              list="health-names"
+              placeholder="What was given, like Gumboro or Amprolium"
+              maxLength={120}
+              value={o.product}
+              onChange={(e) => edit(i, { product: e.target.value })}
+            />
+            <button
+              type="button"
+              aria-label={`Remove given ${i + 1}`}
+              onClick={() => onOthers(others.filter((_, j) => j !== i))}
+              className="focus-ring grid size-11 place-items-center rounded-lg text-fg-subtle hover:bg-surface-subtle hover:text-fg"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+          <Segmented
+            label={`Given ${i + 1} is`}
+            size="sm"
+            value={o.kind}
+            onChange={(kind) => edit(i, { kind })}
+            options={[
+              { value: "vaccination", label: "Vaccine" },
+              { value: "medication", label: "Medicine" },
+            ]}
+          />
+          {stock.length > 0 && (
+            <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+              <Select
+                aria-label={`Given ${i + 1} from stock`}
+                value={o.itemId}
+                onChange={(e) => {
+                  const item = stock.find((x) => x.id === e.target.value);
+                  edit(i, {
+                    itemId: e.target.value,
+                    // Chosen from stock: its name and kind fill in.
+                    ...(item && !o.product.trim() && { product: item.name }),
+                    ...(item && { kind: item.category === "medication" ? "medication" : "vaccination" }),
+                    ...(item && !o.quantity && { quantity: "1" }),
+                  });
+                }}
+              >
+                <option value="">Not from stock</option>
+                {stock.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name} ({quantity(x.onHand, x.unit as Unit)} left)
+                  </option>
+                ))}
+              </Select>
+              {o.itemId && (
+                <Input
+                  aria-label={`Given ${i + 1} used`}
+                  inputMode="decimal"
+                  className="num"
+                  placeholder="1"
+                  value={o.quantity}
+                  onChange={(e) => edit(i, { quantity: e.target.value.replace(/[^\d.]/g, "").slice(0, 8) })}
+                />
               )}
-            </li>
-          );
-        })}
-      </ul>
+            </div>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onOthers([...others, { product: "", kind: "vaccination", itemId: "", quantity: "" }])}
+        className="focus-ring inline-flex items-center gap-2 rounded text-sm font-semibold text-brand-fg"
+      >
+        <Plus className="size-4" aria-hidden /> Add a vaccine or medicine given
+      </button>
     </section>
   );
 }
@@ -819,8 +925,20 @@ function SuppliesUsed({
     setSeen(clean);
     onChange(clean);
   };
-  if (!stock.length) return null;
   const item = (id: string) => stock.find((i) => i.id === id);
+  if (!stock.length)
+    return (
+      <section className="space-y-1">
+        <h2 className="text-sm font-semibold text-fg">Other things used</h2>
+        <p className="text-sm text-fg-muted">
+          Drugs, disinfectant, litter, fuel: once they&apos;re in the store, choose them here and they come off stock,
+          charged to this batch.{" "}
+          <Link href="/inventory" className="font-semibold text-brand-fg underline-offset-4 hover:underline">
+            Add them to the store
+          </Link>
+        </p>
+      </section>
+    );
   return (
     <section className="space-y-3">
       <div className="space-y-1">

@@ -135,8 +135,12 @@ export async function sellable(farmId: string, today: string): Promise<Sellable[
       code: b.code,
       free: Math.max(0, b.liveBirds - (held.get(b.id) ?? 0)),
       readyOn: readyOn(b.placedOn, b.targetSellAgeDays, today),
-      // Their last weighing, or the weight they're grown to.
-      weightGrams: b.totals.lastWeight?.grams ?? b.targetWeightGrams,
+      // Ready: their last weighing (or the weight they're grown to). Not yet: they'll be sold at the
+      // weight they're grown to, so a young batch's weighing doesn't pull the estimate down.
+      weightGrams:
+        readyOn(b.placedOn, b.targetSellAgeDays, today) <= today
+          ? (b.totals.lastWeight?.grams ?? b.targetWeightGrams)
+          : b.targetWeightGrams,
     }))
     .filter((b) => b.free > 0)
     .sort((a, b) => a.readyOn.localeCompare(b.readyOn) || a.code.localeCompare(b.code));

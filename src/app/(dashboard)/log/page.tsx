@@ -13,7 +13,10 @@ export const metadata: Metadata = { title: "Daily log" };
 export default function LogPage() {
   return (
     <RequirePermission permission="log.write">
-      <PageHeader title="Daily log" description="Today's deaths, culls, feed and water for each batch." />
+      <PageHeader
+        title="Daily log"
+        description="Each batch's deaths, culls, feed, water, vaccines, medicine and anything else used."
+      />
       <Suspense fallback={<PageSkeleton />}>
         <Log />
       </Suspense>

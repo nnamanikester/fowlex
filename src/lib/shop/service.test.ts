@@ -8,6 +8,7 @@ import { createBatch } from "@/lib/batches/service";
 import { createContract } from "@/lib/contracts/service";
 import { createCustomer, listCustomers } from "@/lib/customers/service";
 import { outbox } from "@/lib/email";
+import { createLog } from "@/lib/logs/service";
 import { createHouse } from "@/lib/houses/service";
 import { listOrders, priceFor } from "@/lib/sales/service";
 import { getSettings } from "@/lib/settings/service";
@@ -109,6 +110,13 @@ describe("the order page", () => {
     expect(offer.days[0]).toEqual({ date: TODAY, birds: 300 });
     expect(offer.days.find((d) => d.date === "2026-12-01")?.birds).toBe(800);
     expect(offer.days).toHaveLength(14);
+  });
+
+  it("estimates a bird's weight from ready batches' weighings, not a young batch's", async () => {
+    const { owner, young, slug } = await farm();
+    // The young batch weighed at 1 kg: it'll be sold at the 2 kg it's grown to, so nothing changes.
+    await createLog(owner, { batchId: young.id, date: TODAY, avgWeightGrams: 1000 }, {}, TODAY);
+    expect((await shopOffer(slug, TODAY))!.weightGrams).toBe(2000);
   });
 
   it("books an online order: the customer is added, birds taken oldest first, and the farm and customer emailed", async () => {
