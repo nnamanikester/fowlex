@@ -28,6 +28,7 @@ export const PERMISSIONS = [
   "customer.write",
   "contract.read",
   "contract.write",
+  "contract.approve",
   "sales.read",
   "sales.write",
   "invoice.read",
@@ -48,8 +49,14 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-/** Partners can do everything. Only they move money, approve and change settings. */
-const OWNER_ONLY: Permission[] = ["expense.approve", "payroll.run", "payout.send", "settings.manage"];
+/** Partners can do everything. Only they move money, approve (spending and changes to agreed contracts) and change settings. */
+const OWNER_ONLY: Permission[] = [
+  "expense.approve",
+  "contract.approve",
+  "payroll.run",
+  "payout.send",
+  "settings.manage",
+];
 /** Farm hands log the day and see the birds and stock they look after, but no money. */
 const STAFF: Permission[] = ["batch.read", "log.write", "inventory.read"];
 /** Every page's read permission: what anyone who needs the whole picture can open. */

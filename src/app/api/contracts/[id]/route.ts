@@ -7,7 +7,9 @@ import { deleteContract, updateContract } from "@/lib/contracts/service";
 export const PATCH = apiRoute(async (request: Request, context: RouteContext<"/api/contracts/[id]">) => {
   const actor = await requirePermission("contract.write");
   const { version, ...body } = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  return NextResponse.json(await updateContract(actor, (await context.params).id, body, version));
+  return NextResponse.json(
+    await updateContract(actor, (await context.params).id, body, version, undefined, new URL(request.url).origin),
+  );
 });
 
 /** Removes a draft written by mistake. */

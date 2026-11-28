@@ -53,9 +53,12 @@ export function ContractSheet({
   templates,
   today,
   canWrite,
+  canApprove = false,
   onClose,
   onSaved,
 }: {
+  /** An owner: changes to an agreed contract apply at once instead of waiting for approval. */
+  canApprove?: boolean;
   contract: ContractView | null;
   customers: CustomerOption[];
   /** Writing one for this customer: the customer is set. */
@@ -88,6 +91,7 @@ export function ContractSheet({
   const [submitted, setSubmitted] = React.useState(false);
   const [confirm, setConfirm] = React.useState<"delete" | "end" | null>(null);
   const [endOn, setEndOn] = React.useState(today);
+  const [reason, setReason] = React.useState("");
   const action = useAction();
   const errors = validateContract({ ...v, priceKobo: Number.isFinite(v.priceKobo) ? v.priceKobo : undefined });
   const show = (f: keyof ContractInput) => action.fieldError(f, submitted ? errors[f] : undefined);
@@ -119,6 +123,7 @@ export function ContractSheet({
           });
         const saved = await apiRequest<ContractView>(`/api/contracts/${contract.id}`, "PATCH", {
           ...body,
+          reason,
           version: contract.version,
         });
         return activate ? apiRequest<ContractView>(`/api/contracts/${contract.id}/activate`, "POST") : saved;
@@ -130,7 +135,9 @@ export function ContractSheet({
             activate
               ? `${saved.number} is active: ${saved.customerName}'s orders use its price.`
               : contract
-                ? `${saved.number} saved.`
+                ? saved.pendingChange?.status === "pending" && !canApprove
+                  ? `Sent to an owner: ${saved.number} keeps its terms until they approve the change.`
+                  : `${saved.number} saved.`
                 : `${saved.number} saved as a draft.`,
           ),
       },
@@ -186,7 +193,7 @@ export function ContractSheet({
                   disabled={action.busy}
                   onClick={() => save(false)}
                 >
-                  Save changes
+                  {canApprove ? "Save changes" : "Ask an owner to approve"}
                 </Button>
               )}
               {contract && status === "draft" && (
@@ -210,6 +217,26 @@ export function ContractSheet({
         }
       >
         <div className="space-y-5">
+          {contract && status === "active" && editable && (
+            <div className="space-y-3 rounded-xl border border-brand-line bg-brand-subtle px-4 py-3">
+              <p className="text-sm text-fg">
+                {canApprove
+                  ? "This contract is agreed: your change applies at once and is kept on its record."
+                  : "This contract is agreed: an owner approves any change before it applies. Until then it keeps its terms."}
+              </p>
+              <Field id="reason" label="Why the change?" hint="Optional: shown to whoever approves it">
+                {(a11y) => (
+                  <Input
+                    {...a11y}
+                    value={reason}
+                    maxLength={500}
+                    placeholder="Feed prices went up"
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          )}
           {ended && (
             <p className="rounded-xl border border-line bg-surface-subtle px-3 py-2.5 text-sm text-fg">
               This contract has ended, so it stays as it was agreed. Write a new one to keep selling on contract.

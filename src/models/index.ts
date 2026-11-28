@@ -7,6 +7,7 @@ import { BatchModel } from "./batch";
 import { CounterModel } from "./counter";
 import { CollectionModel } from "./collection";
 import { ContractModel, ContractTemplateModel } from "./contract";
+import { ContractChangeModel } from "./contract-change";
 import { CustomerModel } from "./customer";
 import { DailyLogModel } from "./daily-log";
 import { EmployeeModel } from "./employee";
@@ -42,6 +43,7 @@ export const ALL_MODELS = [
   CounterModel,
   CollectionModel,
   ContractModel,
+  ContractChangeModel,
   ContractTemplateModel,
   CustomerModel,
   DailyLogModel,

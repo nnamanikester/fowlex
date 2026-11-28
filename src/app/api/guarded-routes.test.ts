@@ -106,6 +106,7 @@ import { POST as collectInvoice } from "./invoices/[id]/collect/route";
 import { GET as portalCollection } from "./portal/collections/[id]/route";
 import { POST as portalCollect } from "./portal/invoices/[id]/collect/route";
 import { POST as quickSaleRoute } from "./sales/quick/route";
+import { POST as decideContractChange } from "./contracts/changes/[id]/route";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import { readSettings } from "@/lib/settings/service";
 import { AuditLogModel } from "@/models/audit-log";
@@ -1197,7 +1198,27 @@ describe("contract routes", () => {
       req("PATCH", "/x", { ...terms, priceKobo: 900_000, version: active.version }),
       ctx(draft.id),
     );
-    expect((await changed.json()).priceKobo).toBe(900_000);
+    // Sales asks; the agreed price stands until an owner approves.
+    const asked = await changed.json();
+    expect(asked).toMatchObject({
+      priceKobo: 850_000,
+      pendingChange: { status: "pending", after: { priceKobo: 900_000 } },
+    });
+    expect((await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id))).status).toBe(
+      403,
+    );
+    session.user = { ...session.user!, role: "owner" };
+    const approved = await decideContractChange(req("POST", "/x", { approve: true }), ctx(asked.pendingChange.id));
+    expect((await approved.json()).priceKobo).toBe(900_000);
+    expect(
+      (
+        await decideContractChange(
+          new Request(`${BASE}/x`, { method: "POST", body: "{oops" }),
+          ctx(asked.pendingChange.id),
+        )
+      ).status,
+    ).toBe(409);
+    session.user = { ...session.user!, role: "sales" };
     expect((await (await endContract(req("POST", "/x", {}), ctx(draft.id))).json()).status).toBe("terminated");
     expect(await (await listContracts(req("GET", `/api/contracts?customerId=${customer.id}`))).json()).toHaveLength(1);
     const other = await (

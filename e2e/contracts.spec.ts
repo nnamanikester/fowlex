@@ -44,17 +44,20 @@ test("write a contract from the customer's page, keep it as a template, start th
 
   const row = main.getByRole("listitem").filter({ hasText: "₦3,200.00" });
   await expect(row).toContainText("Active");
-  await row.getByRole("button").click();
+  // Its own page: the agreement as signed, with the signed copy.
+  await row.getByRole("link").click();
+  await expect(page.getByRole("heading", { level: 1, name: new RegExp(`Grill ${tag}`) })).toBeVisible();
+  await expect(main.getByRole("link", { name: /signed\.pdf/ })).toBeVisible();
+  await main.getByRole("button", { name: "Change terms" }).click();
   const open = page.getByRole("dialog", { name: new RegExp(`Grill ${tag}`) });
   await expect(open).toContainText("Running:");
-  await expect(open.getByRole("link", { name: "signed.pdf" })).toBeVisible();
   await open.getByRole("button", { name: "End it early" }).click();
   await page
     .getByRole("dialog", { name: /^End CON-/ })
     .getByRole("button", { name: "End contract" })
     .click();
   await expect(page.getByText(/^CON-\d{4}-\d{4} has ended\.$/)).toBeVisible();
-  await expect(row).toContainText("Ended early");
+  await expect(main.getByText("Ended early").first()).toBeVisible();
 
   // The next contract starts from the template.
   await page.goto("/contracts");
