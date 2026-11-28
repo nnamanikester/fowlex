@@ -37,6 +37,7 @@ export function ForecastChart({
   data,
   unit = "kobo",
   height = 280,
+  rangeLabel = "Likely range (80%)",
 }: {
   title: string;
   /** The measure's name ("Revenue"), for the legend and tooltip. */
@@ -44,6 +45,8 @@ export function ForecastChart({
   data: ForecastRow[];
   unit?: Unit;
   height?: number;
+  /** What the band means, in the legend: say how it was worked out. */
+  rangeLabel?: string;
 }) {
   const theme = useChartTheme();
   const color = theme.series[0];
@@ -56,7 +59,7 @@ export function ForecastChart({
         items={[
           { label: measure, color },
           { label: "Forecast", color, key: "dashed" },
-          { label: "Likely range (80%)", color: `${color}33`, key: "block" },
+          { label: rangeLabel, color: `${color}33`, key: "block" },
         ]}
       />
       <div role="img" aria-label={title} style={{ height }}>
